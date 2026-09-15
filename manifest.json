@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "DEEN Delivery Parser - Courier & Pathao Exporter",
+  "version": "1.0.0",
+  "description": "Extract, parse, and export Pathao and courier deliveries directly to Excel and CSV with 1-click and live KPI metrics.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "DEEN Delivery Parser"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "clipboardWrite",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "https://merchant.pathao.com/*",
+    "https://*.pathao.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://merchant.pathao.com/*",
+        "https://*.pathao.com/*"
+      ],
+      "js": ["parser.js", "content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

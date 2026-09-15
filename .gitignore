@@ -1,0 +1,21 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node & Package Managers
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build & Archives
+dist/
+build/
+*.zip
+*.crx

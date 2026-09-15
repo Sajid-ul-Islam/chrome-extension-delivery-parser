@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DEEN Delivery Parser</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <div class="brand-text">
+          <h1>DEEN Delivery Parser</h1>
+          <span class="brand-tag">Pathao & Courier Intelligence</span>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span class="version-badge">v1.0</span>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="tab-current">
+        <span>🌐 Current Tab</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-paste">
+        <span>📋 Paste & Parse</span>
+      </button>
+    </nav>
+
+    <!-- Tab 1: Current Tab Extractor -->
+    <div id="tab-current" class="tab-content active">
+      <div class="extract-banner">
+        <div class="url-row">
+          <span class="dot-indicator"></span>
+          <span id="current-url" class="truncate-url">Detecting active page...</span>
+        </div>
+        <button id="btn-extract-tab" class="btn-primary-large">
+          <span>⚡ Extract Deliveries from This Page</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Tab 2: Paste Input -->
+    <div id="tab-paste" class="tab-content">
+      <div class="paste-area-wrapper">
+        <textarea
+          id="raw-text-input"
+          placeholder="Paste copied courier text blocks or unstructured delivery notes here..."
+          rows="4"
+        ></textarea>
+        <div class="paste-controls">
+          <label class="checkbox-label">
+            <input type="checkbox" id="chk-force-fuzzy" />
+            <span>Force Aggressive Fuzzy Mode</span>
+          </label>
+          <div class="btn-row">
+            <button id="btn-clear-paste" class="btn-text">Clear</button>
+            <button id="btn-parse-paste" class="btn-primary">
+              <span>🧩 Parse Records</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Section (KPIs + Table) -->
+    <div id="results-container" class="results-section hidden">
+      <!-- KPI Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-title">Total Parcels</div>
+          <div class="kpi-value" id="kpi-total">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Paid / Unpaid</div>
+          <div class="kpi-value"><span id="kpi-paid">0</span> / <span id="kpi-unpaid">0</span></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Total COD</div>
+          <div class="kpi-value green" id="kpi-cod">৳0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Net Revenue</div>
+          <div class="kpi-value blue" id="kpi-net">৳0</div>
+        </div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="action-bar">
+        <input
+          type="text"
+          id="search-input"
+          class="search-box"
+          placeholder="🔍 Search consignment, customer, phone..."
+        />
+        <div class="export-buttons">
+          <button id="btn-export-excel" class="btn-success" title="Download formatted Excel spreadsheet">
+            <span>📥 Excel</span>
+          </button>
+          <button id="btn-export-csv" class="btn-secondary" title="Download standard CSV file">
+            <span>📄 CSV</span>
+          </button>
+          <button id="btn-copy-table" class="btn-secondary" title="Copy clean table for Google Sheets/Excel">
+            <span>📋 Copy</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Table Container -->
+      <div class="table-container">
+        <table id="records-table">
+          <thead>
+            <tr>
+              <th>Consignment</th>
+              <th>Order ID</th>
+              <th>Customer</th>
+              <th>Phone</th>
+              <th>Status</th>
+              <th>COD (৳)</th>
+              <th>Payment</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">📦</div>
+      <div class="empty-title">Ready to Parse Deliveries</div>
+      <div class="empty-desc">
+        Open <strong>merchant.pathao.com</strong> and click <em>Extract</em>, or switch to the <em>Paste & Parse</em> tab to parse copied text.
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="popup-toast" class="popup-toast hidden"></div>
+  </div>
+
+  <script src="parser.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
