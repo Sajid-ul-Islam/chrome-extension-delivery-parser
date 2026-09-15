@@ -35,11 +35,16 @@ function initTabs() {
  */
 async function initActiveTabInfo() {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (typeof chrome === "undefined" || !chrome.tabs) return;
+    let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+      [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    }
     const urlEl = document.getElementById("current-url");
-    if (tab && tab.url) {
-      urlEl.textContent = tab.url;
-      urlEl.title = tab.url;
+    if (tab && (tab.url || tab.title)) {
+      const displayStr = tab.url || tab.title;
+      urlEl.textContent = displayStr;
+      urlEl.title = displayStr;
     } else {
       urlEl.textContent = "No active tab detected";
     }
@@ -90,7 +95,7 @@ function initActionHandlers() {
 }
 
 /**
- * Extract data from current tab
+ * Extract data from current tab (robust multi-layer detection)
  */
 async function handleExtractFromCurrentTab() {
   const btn = document.getElementById("btn-extract-tab");
@@ -99,37 +104,85 @@ async function handleExtractFromCurrentTab() {
   btn.disabled = true;
 
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+      [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    }
     if (!tab || !tab.id) {
       showToast("No accessible active tab found.");
       return;
     }
 
-    // Try communicating with content script
-    chrome.tabs.sendMessage(tab.id, { action: "extract_page_data" }, async (response) => {
-      if (chrome.runtime.lastError || !response) {
-        // Fallback: inject a quick script to extract innerText
-        try {
-          const injectionResults = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: () => document.body.innerText
-          });
+    // Check if the current tab is an internal browser page
+    if (tab.url && (tab.url.startsWith("chrome://") || tab.url.startsWith("edge://") || tab.url.startsWith("about:") || tab.url.startsWith("chrome-extension://"))) {
+      showToast("Cannot read internal browser pages. Switch to Pathao or courier tab.");
+      return;
+    }
 
-          if (injectionResults && injectionResults[0] && injectionResults[0].result) {
-            const pageText = injectionResults[0].result;
-            const parsed = parseDeliveryData(pageText);
-            displayResults(parsed);
+    let parsedResult = null;
+
+    // Layer 1: Communicate with in-page content script if already loaded
+    try {
+      parsedResult = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tab.id, { action: "extract_page_data" }, (response) => {
+          if (chrome.runtime.lastError || !response || !response.records || response.records.length === 0) {
+            resolve(null);
           } else {
-            showToast("Could not read text from this tab.");
+            resolve(response);
           }
-        } catch (injectErr) {
-          showToast("Cannot read this page due to browser security settings.");
+        });
+      });
+    } catch (e) {
+      parsedResult = null;
+    }
+
+    // Layer 2: Directly execute smart extractor via chrome.scripting (works even if page wasn't reloaded)
+    if (!parsedResult || !parsedResult.records || parsedResult.records.length === 0) {
+      try {
+        const injectionResults = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const isConsignmentId = (s) => /[A-Z]{2}\d{6}[A-Z0-9]+/i.test(s);
+
+            // 1. User selection
+            const sel = window.getSelection ? window.getSelection().toString().trim() : "";
+            if (sel && isConsignmentId(sel)) return sel.replace(/\t/g, "\n");
+
+            // 2. Scan all candidate tables and rows
+            const candidates = Array.from(document.querySelectorAll(
+              "table, tbody, [class*='table'], [class*='order'], [class*='parcel'], .ant-table-body, .ant-table-content, [role='table'], [role='rowgroup'], main, [role='main']"
+            ));
+            for (const el of candidates) {
+              const txt = el.innerText || "";
+              if (isConsignmentId(txt)) return txt.replace(/\t/g, "\n");
+            }
+
+            // 3. Fallback to whole body
+            return (document.body ? document.body.innerText : "").replace(/\t/g, "\n");
+          }
+        });
+
+        if (injectionResults && injectionResults[0] && injectionResults[0].result) {
+          const pageText = injectionResults[0].result;
+          parsedResult = parseDeliveryData(pageText);
+
+          // Auto fallback to fuzzy if standard mode didn't find sequential tokens
+          if (!parsedResult || !parsedResult.records || parsedResult.records.length === 0) {
+            parsedResult = parseDeliveryData(pageText, true);
+          }
         }
-      } else {
-        displayResults(response);
+      } catch (injectErr) {
+        console.warn("Direct script execution:", injectErr);
       }
-    });
+    }
+
+    if (parsedResult && parsedResult.records && parsedResult.records.length > 0) {
+      displayResults(parsedResult);
+    } else {
+      showToast("No deliveries detected. Refresh the tab or switch to Paste & Parse.");
+    }
   } catch (err) {
+    console.error("Tab extract error:", err);
     showToast("Error extracting tab data.");
   } finally {
     setTimeout(() => {

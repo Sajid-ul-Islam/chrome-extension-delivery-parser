@@ -22,17 +22,22 @@
     "scripting",
     "storage",
     "clipboardWrite",
-    "contextMenus"
+    "contextMenus",
+    "tabs"
   ],
   "host_permissions": [
     "https://merchant.pathao.com/*",
-    "https://*.pathao.com/*"
+    "https://*.pathao.com/*",
+    "http://merchant.pathao.com/*",
+    "http://*.pathao.com/*"
   ],
   "content_scripts": [
     {
       "matches": [
         "https://merchant.pathao.com/*",
-        "https://*.pathao.com/*"
+        "https://*.pathao.com/*",
+        "http://merchant.pathao.com/*",
+        "http://*.pathao.com/*"
       ],
       "js": ["parser.js", "content.js"],
       "css": ["content.css"],

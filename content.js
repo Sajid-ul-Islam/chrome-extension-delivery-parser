@@ -18,17 +18,37 @@
   }
 
   function extractPageText() {
-    // Collect text from document body or specific main table
-    const tableEl = document.querySelector("table") || document.querySelector('[class*="table"]') || document.querySelector('[class*="order"]');
-    if (tableEl) {
-      return tableEl.innerText.replace(/\t/g, "\n");
+    const isConsignmentId = (s) => /[A-Z]{2}\d{6}[A-Z0-9]+/i.test(s);
+
+    // 1. Check if user currently has text selected
+    const selection = window.getSelection ? window.getSelection().toString().trim() : "";
+    if (selection && isConsignmentId(selection)) {
+      return selection.replace(/\t/g, "\n");
     }
-    return document.body.innerText.replace(/\t/g, "\n");
+
+    // 2. Scan all tables, table bodies, and order row containers
+    const candidates = Array.from(document.querySelectorAll(
+      "table, tbody, [class*='table'], [class*='order'], [class*='parcel'], .ant-table-body, .ant-table-content, [role='table'], [role='rowgroup'], main, [role='main']"
+    ));
+    for (const el of candidates) {
+      const txt = el.innerText || "";
+      if (isConsignmentId(txt)) {
+        return txt.replace(/\t/g, "\n");
+      }
+    }
+
+    // 3. Fallback to whole document body
+    return (document.body ? document.body.innerText : "").replace(/\t/g, "\n");
   }
 
   function runParse() {
     const text = extractPageText();
-    cachedParsed = parseDeliveryData(text);
+    let res = parseDeliveryData(text);
+    if (!res || !res.records || res.records.length === 0) {
+      // Auto fallback to fuzzy if standard sequential tokens were not matched
+      res = parseDeliveryData(text, true);
+    }
+    cachedParsed = res;
     return cachedParsed;
   }
 
