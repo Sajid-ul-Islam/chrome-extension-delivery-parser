@@ -30,7 +30,12 @@ function cleanLines(raw) {
 
 function isConsignmentId(value) {
   if (!value || typeof value !== "string") return false;
-  return /^[A-Z]{2}\d{6}[A-Z0-9]+$/i.test(value.trim());
+  return /^[A-Z]{2}\d{6}[A-Z0-9]+$/i.test(value.trim()) || /([A-Z]{2}\d{6}[A-Z0-9]+)/i.test(value.trim());
+}
+
+function getConsignmentId(value) {
+  const m = value.match(/([A-Z]{2}\d{6}[A-Z0-9]+)/i);
+  return m ? m[1] : value.trim();
 }
 
 function parseAmount(line) {
@@ -52,7 +57,7 @@ function parseDate(line) {
 }
 
 /**
- * Standard sequential token parser
+ * Standard sequential token parser with resilient anchors
  */
 function parseStandardRecords(raw) {
   const lines = cleanLines(raw);
@@ -66,7 +71,7 @@ function parseStandardRecords(raw) {
     }
 
     const rec = {
-      "Consignment ID": lines[i].trim(),
+      "Consignment ID": getConsignmentId(lines[i]),
       "Type": "",
       "Order ID": "",
       "Store": "",
@@ -83,76 +88,97 @@ function parseStandardRecords(raw) {
     };
     i++;
 
-    if (i < lines.length && /^Type:?$/i.test(lines[i].trim())) {
+    // 1. Optional Type
+    if (i < lines.length && /^(?:Type:?|Express|Normal)/i.test(lines[i])) {
+      rec["Type"] = lines[i].replace(/^Type:\s*/i, "").trim();
       i++;
-      if (i < lines.length) {
+      if (rec["Type"] === "" && i < lines.length && /^(?:Express|Normal)$/i.test(lines[i])) {
         rec["Type"] = lines[i].trim();
         i++;
       }
-    } else if (i < lines.length && /^Type:\s*.+/i.test(lines[i].trim())) {
-      rec["Type"] = lines[i].replace(/^Type:\s*/i, "").trim();
-      i++;
-    } else if (i < lines.length) {
-      rec["Type"] = lines[i].trim();
-      i++;
     }
 
-    if (i < lines.length) {
-      rec["Order ID"] = lines[i];
-      i++;
-    }
-    if (i < lines.length) {
-      rec["Store"] = lines[i];
-      i++;
-    }
-    if (i < lines.length) {
-      rec["Recipient Name"] = lines[i];
-      i++;
-    }
-    if (i < lines.length) {
-      rec["Address"] = lines[i];
-      i++;
-    }
-    if (i < lines.length) {
-      rec["Phone"] = lines[i];
-      i++;
+    // 2. Scan ahead for Phone number anchor (avoids column shifting)
+    let phoneIdx = -1;
+    for (let p = i; p < Math.min(i + 8, lines.length); p++) {
+      if (isConsignmentId(lines[p])) break;
+      if (/(?:(?:\+?880)|0)1[3-9]\d{8}/.test(lines[p])) {
+        phoneIdx = p;
+        break;
+      }
     }
 
-    const statusLines = [];
-    while (i < lines.length && !lines[i].toLowerCase().startsWith("updated on")) {
-      statusLines.push(lines[i]);
+    if (phoneIdx !== -1) {
+      rec["Phone"] = lines[phoneIdx].match(/(?:(?:\+?880)|0)1[3-9]\d{8}/)[0];
+      const preTokens = lines.slice(i, phoneIdx);
+      i = phoneIdx + 1;
+
+      let tIdx = 0;
+      if (tIdx < preTokens.length && (/^ORD[-\d]+/i.test(preTokens[tIdx]) || /^\d{4,8}$/.test(preTokens[tIdx]))) {
+        rec["Order ID"] = preTokens[tIdx];
+        tIdx++;
+      }
+      if (tIdx < preTokens.length && (/store|commerce|deen|outlet/i.test(preTokens[tIdx]) || (preTokens.length - tIdx >= 3))) {
+        rec["Store"] = preTokens[tIdx];
+        tIdx++;
+      }
+      if (tIdx < preTokens.length) {
+        rec["Recipient Name"] = preTokens[tIdx];
+        tIdx++;
+      }
+      if (tIdx < preTokens.length) {
+        rec["Address"] = preTokens.slice(tIdx).join(", ");
+      }
+    } else {
+      // Sequential fallback
+      if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Order ID"] = lines[i]; i++; }
+      if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Store"] = lines[i]; i++; }
+      if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Recipient Name"] = lines[i]; i++; }
+      if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Address"] = lines[i]; i++; }
+      if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Phone"] = lines[i]; i++; }
+    }
+
+    // 3. Delivery Status & Date (stops at numbers, updated on, or next consignment)
+    const statusParts = [];
+    while (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) {
+      if (lines[i].toLowerCase().startsWith("updated on")) {
+        rec["Status Updated On"] = parseDate(lines[i]);
+        i++;
+        break;
+      }
+      statusParts.push(lines[i]);
       i++;
     }
-    rec["Delivery Status"] = statusLines.join("; ");
-
+    rec["Delivery Status"] = statusParts.join("; ");
     if (i < lines.length && lines[i].toLowerCase().startsWith("updated on")) {
       rec["Status Updated On"] = parseDate(lines[i]);
       i++;
     }
 
-    if (i < lines.length) {
+    // 4. Amounts (COD Amount, Charge, Discount)
+    if (i < lines.length && /^[\d,]+(?:\.\d+)?$/.test(lines[i])) {
       rec["COD Amount"] = parseAmount(lines[i]);
       i++;
     }
-    if (i < lines.length) {
+    if (i < lines.length && /^[\d,]+(?:\.\d+)?$/.test(lines[i])) {
       rec["Charge"] = parseAmount(lines[i]);
       i++;
     }
-    if (i < lines.length) {
+    if (i < lines.length && /^[\d,]+(?:\.\d+)?$/.test(lines[i])) {
       rec["Discount"] = parseAmount(lines[i]);
       i++;
     }
 
-    if (i < lines.length) {
+    // 5. Payment Status
+    if (i < lines.length && /^(?:Paid|Unpaid)$/i.test(lines[i])) {
       rec["Payment Status"] = lines[i];
       i++;
     }
 
+    // 6. Action
     const actionLines = [];
     while (i < lines.length && !isConsignmentId(lines[i])) {
-      if (!lines[i].startsWith("Type")) {
-        actionLines.push(lines[i]);
-      }
+      actionLines.push(lines[i]);
       i++;
     }
     rec["Action"] = actionLines.join(", ");
@@ -507,6 +533,51 @@ function exportToExcelXML(records, filename = "deliveries.xls") {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Export records as genuine OpenXML .xlsx spreadsheet
+ */
+function exportToXLSX(records, filename = "deliveries.xlsx") {
+  if (!records || records.length === 0) return;
+
+  if (typeof XLSX !== "undefined") {
+    const ws = XLSX.utils.json_to_sheet(records);
+
+    // Auto-fit column widths
+    const colWidths = [];
+    const keys = Object.keys(records[0]);
+    for (let k of keys) {
+      let maxLen = k.length;
+      for (let r of records) {
+        const valStr = r[k] !== undefined && r[k] !== null ? String(r[k]) : "";
+        if (valStr.length > maxLen) maxLen = Math.min(valStr.length, 60);
+      }
+      colWidths.push({ wch: maxLen + 3 });
+    }
+    ws["!cols"] = colWidths;
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Deliveries");
+
+    // Write binary xlsx array
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+
+    if (typeof document !== "undefined" && typeof URL !== "undefined") {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+  } else {
+    console.warn("XLSX not available, falling back to Excel XML");
+    exportToExcelXML(records, filename.replace(/\.xlsx$/i, ".xls"));
+  }
+}
+
 function escapeXML(str) {
   if (!str) return "";
   return String(str)
@@ -522,6 +593,7 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     cleanLines,
     isConsignmentId,
+    getConsignmentId,
     parseAmount,
     parseDate,
     parseStandardRecords,
@@ -530,6 +602,7 @@ if (typeof module !== "undefined" && module.exports) {
     computeMetrics,
     parseDeliveryData,
     exportToCSV,
-    exportToExcelXML
+    exportToExcelXML,
+    exportToXLSX
   };
 }

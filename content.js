@@ -41,7 +41,122 @@
     return (document.body ? document.body.innerText : "").replace(/\t/g, "\n");
   }
 
+  function extractDOMRows() {
+    const isConsId = (s) => /[A-Z]{2}\d{6}[A-Z0-9]+/i.test(s);
+    const isPhone = (s) => /(?:(?:\+?880)|0)1[3-9]\d{8}/.test(s);
+
+    const rows = Array.from(document.querySelectorAll("table tbody tr, .ant-table-tbody tr, tr[class*='row'], div[role='row']"));
+    const parcelRows = rows.filter(r => isConsId(r.innerText || ""));
+    if (parcelRows.length === 0) return null;
+
+    const extracted = [];
+    for (const row of parcelRows) {
+      const cells = Array.from(row.querySelectorAll("td, [role='cell'], div[class*='cell']"));
+      const cellTexts = cells.map(c => (c.innerText || "").trim());
+
+      let consId = "";
+      let type = "";
+      const consCell = cellTexts.find(t => isConsId(t)) || "";
+      if (consCell) {
+        const m = consCell.match(/([A-Z]{2}\d{6}[A-Z0-9]+)/i);
+        consId = m ? m[1] : "";
+        if (/express/i.test(consCell)) type = "Express";
+        else if (/normal/i.test(consCell)) type = "Normal";
+      }
+
+      let phone = "";
+      let name = "";
+      let address = "";
+      const phoneCell = cellTexts.find(t => isPhone(t)) || "";
+      if (phoneCell) {
+        const pm = phoneCell.match(/(?:(?:\+?880)|0)1[3-9]\d{8}/);
+        phone = pm ? pm[0] : "";
+        const lines = phoneCell.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const nonPhone = lines.filter(l => !l.includes(phone));
+        if (nonPhone.length > 0) name = nonPhone[0];
+        if (nonPhone.length > 1) address = nonPhone.slice(1).join(", ");
+      }
+
+      let paymentStatus = "Unpaid";
+      for (const t of cellTexts) {
+        if (/^paid$/i.test(t) || (/\bpaid\b/i.test(t) && !/unpaid/i.test(t))) {
+          paymentStatus = "Paid";
+          break;
+        }
+      }
+
+      let deliveryStatus = "";
+      let statusUpdatedOn = "";
+      for (const t of cellTexts) {
+        if (/updated on/i.test(t) || /(At Delivery Hub|Delivered|In Transit|Returned|Hold|Pending|Cancelled)/i.test(t)) {
+          const dm = t.match(/updated on\s*([^\n\r]+)/i);
+          if (dm) statusUpdatedOn = dm[1].trim();
+          deliveryStatus = t.replace(/updated on[^\n\r]*/i, "").trim().replace(/\n+/g, "; ");
+          break;
+        }
+      }
+
+      let cod = 0, charge = 0, discount = 0;
+      for (const t of cellTexts) {
+        if (t === consCell || t === phoneCell) continue;
+        if (/updated on/i.test(t) || /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(t)) continue;
+        if (/(?:delivered|transit|hub|return|hold|pending|cancel)/i.test(t)) continue;
+
+        const nums = Array.from(t.matchAll(/([\d,]+(?:\.\d+)?)/g))
+          .map(m => parseFloat(m[1].replace(/,/g, "")))
+          .filter(n => !isNaN(n) && n < 1000000);
+        if (nums.length >= 3) {
+          cod = nums[0]; charge = nums[1]; discount = nums[2]; break;
+        } else if (nums.length === 2 && !nums.includes(Number(phone))) {
+          cod = nums[0]; charge = nums[1]; break;
+        } else if (nums.length === 1 && (t.toLowerCase().includes("cod") || nums[0] > 100) && !t.includes(phone)) {
+          cod = nums[0];
+        }
+      }
+
+      let orderId = "";
+      let store = "";
+      for (const t of cellTexts) {
+        if (t === consCell || t === phoneCell) continue;
+        if (!orderId && (/^ORD[-\d]+/i.test(t) || /^\d{4,8}$/.test(t))) {
+          orderId = t;
+        } else if (!store && /store|commerce|deen|outlet/i.test(t)) {
+          store = t;
+        }
+      }
+
+      extracted.push({
+        "Consignment ID": consId,
+        "Type": type,
+        "Order ID": orderId,
+        "Store": store,
+        "Recipient Name": name,
+        "Address": address,
+        "Phone": phone,
+        "Delivery Status": deliveryStatus,
+        "Status Updated On": statusUpdatedOn,
+        "COD Amount": cod,
+        "Charge": charge,
+        "Discount": discount,
+        "Payment Status": paymentStatus,
+        "Action": ""
+      });
+    }
+
+    return extracted.length > 0 ? extracted : null;
+  }
+
   function runParse() {
+    const domRows = extractDOMRows();
+    if (domRows && domRows.length > 0) {
+      cachedParsed = {
+        records: domRows,
+        metrics: computeMetrics(domRows),
+        mode: "DOM Table"
+      };
+      return cachedParsed;
+    }
+
     const text = extractPageText();
     let res = parseDeliveryData(text);
     if (!res || !res.records || res.records.length === 0) {
@@ -108,7 +223,7 @@
 
           <div class="deen-actions">
             <button class="deen-btn-primary" id="deen-btn-excel">
-              <span>📥 Export to Excel (.xls)</span>
+              <span>📥 Export to Excel (.xlsx)</span>
             </button>
             <div class="deen-btn-group">
               <button class="deen-btn-secondary" id="deen-btn-csv">
@@ -136,8 +251,8 @@
           return;
         }
         const todayStr = new Date().toISOString().split("T")[0];
-        exportToExcelXML(records, `pathao_deliveries_${todayStr}.xls`);
-        showToast(`Exported ${records.length} parcels to Excel!`);
+        exportToXLSX(records, `pathao_deliveries_${todayStr}.xlsx`);
+        showToast(`Exported ${records.length} parcels to Excel (.xlsx)!`);
       });
 
       container.querySelector("#deen-btn-csv").addEventListener("click", () => {

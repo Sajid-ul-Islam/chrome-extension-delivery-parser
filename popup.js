@@ -76,8 +76,8 @@ function initActionHandlers() {
   document.getElementById("btn-export-excel").addEventListener("click", () => {
     if (!currentRecords.length) return;
     const todayStr = new Date().toISOString().split("T")[0];
-    exportToExcelXML(currentRecords, `deliveries_${todayStr}.xls`);
-    showToast(`Exported ${currentRecords.length} records to Excel!`);
+    exportToXLSX(currentRecords, `deliveries_${todayStr}.xlsx`);
+    showToast(`Exported ${currentRecords.length} records to Excel (.xlsx)!`);
   });
 
   document.getElementById("btn-export-csv").addEventListener("click", () => {
@@ -95,7 +95,7 @@ function initActionHandlers() {
 }
 
 /**
- * Extract data from current tab (robust multi-layer detection)
+ * Extract data from current tab (intelligent multi-strategy detection)
  */
 async function handleExtractFromCurrentTab() {
   const btn = document.getElementById("btn-extract-tab");
@@ -121,65 +121,175 @@ async function handleExtractFromCurrentTab() {
 
     let parsedResult = null;
 
-    // Layer 1: Communicate with in-page content script if already loaded
+    // Strategy 1: Directly inspect and extract structured DOM table rows or text from the page
     try {
-      parsedResult = await new Promise((resolve) => {
-        chrome.tabs.sendMessage(tab.id, { action: "extract_page_data" }, (response) => {
-          if (chrome.runtime.lastError || !response || !response.records || response.records.length === 0) {
-            resolve(null);
-          } else {
-            resolve(response);
-          }
-        });
-      });
-    } catch (e) {
-      parsedResult = null;
-    }
+      const injectionResults = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const isConsId = (s) => /[A-Z]{2}\d{6}[A-Z0-9]+/i.test(s);
+          const isPhone = (s) => /(?:(?:\+?880)|0)1[3-9]\d{8}/.test(s);
 
-    // Layer 2: Directly execute smart extractor via chrome.scripting (works even if page wasn't reloaded)
-    if (!parsedResult || !parsedResult.records || parsedResult.records.length === 0) {
-      try {
-        const injectionResults = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: () => {
-            const isConsignmentId = (s) => /[A-Z]{2}\d{6}[A-Z0-9]+/i.test(s);
+          // 1. Check if table rows with consignment IDs exist directly in DOM
+          const rows = Array.from(document.querySelectorAll("table tbody tr, .ant-table-tbody tr, tr[class*='row'], div[role='row']"));
+          const parcelRows = rows.filter(r => isConsId(r.innerText || ""));
 
-            // 1. User selection
-            const sel = window.getSelection ? window.getSelection().toString().trim() : "";
-            if (sel && isConsignmentId(sel)) return sel.replace(/\t/g, "\n");
+          if (parcelRows.length > 0) {
+            const extracted = [];
+            for (const row of parcelRows) {
+              const cells = Array.from(row.querySelectorAll("td, [role='cell'], div[class*='cell']"));
+              const cellTexts = cells.map(c => (c.innerText || "").trim());
 
-            // 2. Scan all candidate tables and rows
-            const candidates = Array.from(document.querySelectorAll(
-              "table, tbody, [class*='table'], [class*='order'], [class*='parcel'], .ant-table-body, .ant-table-content, [role='table'], [role='rowgroup'], main, [role='main']"
-            ));
-            for (const el of candidates) {
-              const txt = el.innerText || "";
-              if (isConsignmentId(txt)) return txt.replace(/\t/g, "\n");
+              let consId = "";
+              let type = "";
+              const consCell = cellTexts.find(t => isConsId(t)) || "";
+              if (consCell) {
+                const m = consCell.match(/([A-Z]{2}\d{6}[A-Z0-9]+)/i);
+                consId = m ? m[1] : "";
+                if (/express/i.test(consCell)) type = "Express";
+                else if (/normal/i.test(consCell)) type = "Normal";
+              }
+
+              let phone = "";
+              let name = "";
+              let address = "";
+              const phoneCell = cellTexts.find(t => isPhone(t)) || "";
+              if (phoneCell) {
+                const pm = phoneCell.match(/(?:(?:\+?880)|0)1[3-9]\d{8}/);
+                phone = pm ? pm[0] : "";
+                const lines = phoneCell.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                const nonPhone = lines.filter(l => !l.includes(phone));
+                if (nonPhone.length > 0) name = nonPhone[0];
+                if (nonPhone.length > 1) address = nonPhone.slice(1).join(", ");
+              }
+
+              let paymentStatus = "Unpaid";
+              for (const t of cellTexts) {
+                if (/^paid$/i.test(t) || (/\bpaid\b/i.test(t) && !/unpaid/i.test(t))) {
+                  paymentStatus = "Paid";
+                  break;
+                }
+              }
+
+              let deliveryStatus = "";
+              let statusUpdatedOn = "";
+              for (const t of cellTexts) {
+                if (/updated on/i.test(t) || /(At Delivery Hub|Delivered|In Transit|Returned|Hold|Pending|Cancelled)/i.test(t)) {
+                  const dm = t.match(/updated on\s*([^\n\r]+)/i);
+                  if (dm) statusUpdatedOn = dm[1].trim();
+                  deliveryStatus = t.replace(/updated on[^\n\r]*/i, "").trim().replace(/\n+/g, "; ");
+                  break;
+                }
+              }
+
+              let cod = 0, charge = 0, discount = 0;
+              for (const t of cellTexts) {
+                if (t === consCell || t === phoneCell) continue;
+                if (/updated on/i.test(t) || /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(t)) continue;
+                if (/(?:delivered|transit|hub|return|hold|pending|cancel)/i.test(t)) continue;
+
+                const nums = Array.from(t.matchAll(/([\d,]+(?:\.\d+)?)/g))
+                  .map(m => parseFloat(m[1].replace(/,/g, "")))
+                  .filter(n => !isNaN(n) && n < 1000000);
+                if (nums.length >= 3) {
+                  cod = nums[0]; charge = nums[1]; discount = nums[2]; break;
+                } else if (nums.length === 2 && !nums.includes(Number(phone))) {
+                  cod = nums[0]; charge = nums[1]; break;
+                } else if (nums.length === 1 && (t.toLowerCase().includes("cod") || nums[0] > 100) && !t.includes(phone)) {
+                  cod = nums[0];
+                }
+              }
+
+              let orderId = "";
+              let store = "";
+              for (const t of cellTexts) {
+                if (t === consCell || t === phoneCell) continue;
+                if (!orderId && (/^ORD[-\d]+/i.test(t) || /^\d{4,8}$/.test(t))) {
+                  orderId = t;
+                } else if (!store && /store|commerce|deen|outlet/i.test(t)) {
+                  store = t;
+                }
+              }
+
+              extracted.push({
+                "Consignment ID": consId,
+                "Type": type,
+                "Order ID": orderId,
+                "Store": store,
+                "Recipient Name": name,
+                "Address": address,
+                "Phone": phone,
+                "Delivery Status": deliveryStatus,
+                "Status Updated On": statusUpdatedOn,
+                "COD Amount": cod,
+                "Charge": charge,
+                "Discount": discount,
+                "Payment Status": paymentStatus,
+                "Action": ""
+              });
             }
 
-            // 3. Fallback to whole body
-            return (document.body ? document.body.innerText : "").replace(/\t/g, "\n");
+            if (extracted.length > 0) {
+              return { mode: "structured", records: extracted };
+            }
           }
-        });
 
-        if (injectionResults && injectionResults[0] && injectionResults[0].result) {
-          const pageText = injectionResults[0].result;
-          parsedResult = parseDeliveryData(pageText);
+          // 2. User selection
+          const sel = window.getSelection ? window.getSelection().toString().trim() : "";
+          if (sel && isConsId(sel)) return { mode: "text", text: sel.replace(/\t/g, "\n") };
 
-          // Auto fallback to fuzzy if standard mode didn't find sequential tokens
+          // 3. Scan candidate tables/containers
+          const candidates = Array.from(document.querySelectorAll(
+            "table, tbody, [class*='table'], [class*='order'], [class*='parcel'], .ant-table-body, .ant-table-content, [role='table'], [role='rowgroup'], main, [role='main']"
+          ));
+          for (const el of candidates) {
+            const txt = el.innerText || "";
+            if (isConsId(txt)) return { mode: "text", text: txt.replace(/\t/g, "\n") };
+          }
+
+          return { mode: "text", text: (document.body ? document.body.innerText : "").replace(/\t/g, "\n") };
+        }
+      });
+
+      if (injectionResults && injectionResults[0] && injectionResults[0].result) {
+        const resObj = injectionResults[0].result;
+        if (resObj.mode === "structured" && resObj.records && resObj.records.length > 0) {
+          parsedResult = {
+            records: resObj.records,
+            metrics: computeMetrics(resObj.records),
+            mode: "DOM Table"
+          };
+        } else if (resObj.mode === "text" && resObj.text) {
+          parsedResult = parseDeliveryData(resObj.text);
           if (!parsedResult || !parsedResult.records || parsedResult.records.length === 0) {
-            parsedResult = parseDeliveryData(pageText, true);
+            parsedResult = parseDeliveryData(resObj.text, true);
           }
         }
-      } catch (injectErr) {
-        console.warn("Direct script execution:", injectErr);
+      }
+    } catch (injectErr) {
+      console.warn("Direct DOM extraction error:", injectErr);
+    }
+
+    // Strategy 2: Fallback to messaging in-page content script if available
+    if (!parsedResult || !parsedResult.records || parsedResult.records.length === 0) {
+      try {
+        parsedResult = await new Promise((resolve) => {
+          chrome.tabs.sendMessage(tab.id, { action: "extract_page_data" }, (response) => {
+            if (chrome.runtime.lastError || !response || !response.records || response.records.length === 0) {
+              resolve(null);
+            } else {
+              resolve(response);
+            }
+          });
+        });
+      } catch (e) {
+        parsedResult = null;
       }
     }
 
     if (parsedResult && parsedResult.records && parsedResult.records.length > 0) {
       displayResults(parsedResult);
     } else {
-      showToast("No deliveries detected. Refresh the tab or switch to Paste & Parse.");
+      showToast("No deliveries detected. Make sure the orders table is open or use Paste & Parse.");
     }
   } catch (err) {
     console.error("Tab extract error:", err);

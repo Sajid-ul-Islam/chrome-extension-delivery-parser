@@ -29,7 +29,8 @@
     "https://merchant.pathao.com/*",
     "https://*.pathao.com/*",
     "http://merchant.pathao.com/*",
-    "http://*.pathao.com/*"
+    "http://*.pathao.com/*",
+    "*://*/*"
   ],
   "content_scripts": [
     {
@@ -39,7 +40,7 @@
         "http://merchant.pathao.com/*",
         "http://*.pathao.com/*"
       ],
-      "js": ["parser.js", "content.js"],
+      "js": ["xlsx.mini.min.js", "parser.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }

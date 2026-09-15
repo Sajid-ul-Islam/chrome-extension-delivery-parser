@@ -373,8 +373,9 @@ View Details`;
     await pageConn.send('Runtime.enable');
     await pageConn.send('DOM.enable');
 
-    // Inject content.css and parser.js + content.js
+    // Inject content.css and xlsx.mini.min.js + parser.js + content.js
     const contentCss = fs.readFileSync(path.join(EXT_PATH, 'content.css'), 'utf8');
+    const xlsxJs = fs.readFileSync(path.join(EXT_PATH, 'xlsx.mini.min.js'), 'utf8');
     const parserJs = fs.readFileSync(path.join(EXT_PATH, 'parser.js'), 'utf8');
     const contentJs = fs.readFileSync(path.join(EXT_PATH, 'content.js'), 'utf8');
 
@@ -385,6 +386,7 @@ View Details`;
         document.head.appendChild(style);
       `
     });
+    await pageConn.send('Runtime.evaluate', { expression: xlsxJs });
     await pageConn.send('Runtime.evaluate', { expression: parserJs });
     await pageConn.send('Runtime.evaluate', { expression: contentJs });
 
