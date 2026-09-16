@@ -30,6 +30,9 @@
       <button class="nav-tab" data-tab="tab-paste">
         <span>📋 Paste & Parse</span>
       </button>
+      <button class="nav-tab" data-tab="tab-sync">
+        <span>⚡ Pathao Sync</span>
+      </button>
     </nav>
 
     <!-- Tab 1: Current Tab Extractor -->
@@ -63,6 +66,57 @@
             <button id="btn-parse-paste" class="btn-primary">
               <span>🧩 Parse Records</span>
             </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Pathao Sync & Auto-Detect -->
+    <div id="tab-sync" class="tab-content">
+      <div class="sync-panel">
+        <div class="sync-banner">
+          <div class="sync-badge">Live Auto-Detect Enabled</div>
+          <p class="sync-desc">When you copy any customer phone number on <strong>WooCommerce</strong> (<code>deencommerce.com/wp-admin/...</code>), the extension automatically populates it into <strong>Pathao's Recipient Details</strong> and triggers Pathao's customer fraud & success rate check!</p>
+        </div>
+
+        <div class="last-synced-card">
+          <div class="sync-card-title">Recent Synced Customer</div>
+          <div class="customer-details-grid">
+            <div class="detail-item">
+              <span class="detail-label">Phone:</span>
+              <strong class="detail-val" id="sync-phone">None yet</strong>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Name:</span>
+              <span class="detail-val" id="sync-name">-</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Order ID:</span>
+              <span class="detail-val" id="sync-order">-</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">COD Total:</span>
+              <span class="detail-val" id="sync-cod">-</span>
+            </div>
+          </div>
+          <button id="btn-open-pathao-form" class="btn-primary-large" style="margin-top: 12px;">
+            <span>🚀 Open Pathao Create Delivery & Fill</span>
+          </button>
+        </div>
+
+        <div class="sync-instructions">
+          <div class="instruction-title">💡 How it works:</div>
+          <div class="step-item">
+            <span class="step-num">1</span>
+            <span>Open your <a href="https://deencommerce.com/wp-admin/admin.php?page=wc-orders&status=wc-processing" target="_blank" style="color: #60a5fa; text-decoration: underline;">WooCommerce Processing Orders</a> page.</span>
+          </div>
+          <div class="step-item">
+            <span class="step-num">2</span>
+            <span>Highlight & copy any customer phone number with <kbd>Ctrl+C</kbd> or click the <strong>⚡ Pathao</strong> button directly on the table.</span>
+          </div>
+          <div class="step-item">
+            <span class="step-num">3</span>
+            <span>In Pathao, the phone is auto-filled and Pathao's native system instantly detects the customer!</span>
           </div>
         </div>
       </div>

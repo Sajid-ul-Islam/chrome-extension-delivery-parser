@@ -5,12 +5,15 @@
 let currentRecords = [];
 let currentMetrics = null;
 
-document.addEventListener("DOMContentLoaded", async () => {
-  initTabs();
-  initActiveTabInfo();
-  initActionHandlers();
-  checkPendingStorage();
-});
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", async () => {
+    initTabs();
+    initActiveTabInfo();
+    initActionHandlers();
+    checkPendingStorage();
+    initSyncTab();
+  });
+}
 
 /**
  * Tab switching logic
@@ -468,3 +471,55 @@ function escapeHTML(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
+
+/**
+ * Initialize Pathao Sync Tab
+ */
+function initSyncTab() {
+  const phoneEl = document.getElementById("sync-phone");
+  const nameEl = document.getElementById("sync-name");
+  const orderEl = document.getElementById("sync-order");
+  const codEl = document.getElementById("sync-cod");
+  const btnOpen = document.getElementById("btn-open-pathao-form");
+
+  if (!phoneEl) return;
+
+  function updateSyncUI(data) {
+    if (!data || !data.phone) {
+      phoneEl.textContent = "None yet";
+      nameEl.textContent = "-";
+      orderEl.textContent = "-";
+      codEl.textContent = "-";
+      return;
+    }
+    phoneEl.textContent = data.phone;
+    nameEl.textContent = data.name || "Customer";
+    orderEl.textContent = data.orderId ? `#${data.orderId}` : "-";
+    codEl.textContent = data.cod ? `৳${Number(data.cod).toLocaleString()}` : "-";
+  }
+
+  // Load initial data from storage
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(["pathao_autofill_data"], (res) => {
+      if (res && res.pathao_autofill_data) {
+        updateSyncUI(res.pathao_autofill_data);
+      }
+    });
+
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === "local" && changes.pathao_autofill_data) {
+        updateSyncUI(changes.pathao_autofill_data.newValue);
+      }
+    });
+  }
+
+  if (btnOpen) {
+    btnOpen.addEventListener("click", () => {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ action: "focus_or_open_pathao" });
+        showToast("Opening Pathao Create Delivery...");
+      }
+    });
+  }
+}
+
