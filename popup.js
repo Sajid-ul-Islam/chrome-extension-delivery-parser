@@ -2,6 +2,15 @@
  * DEEN Delivery Parser - Popup Controller
  */
 
+// Safely suppress disconnection errors if a tab lacks content script
+if (typeof window !== "undefined") {
+  window.addEventListener("unhandledrejection", (event) => {
+    if (event && event.reason && event.reason.message && event.reason.message.includes("Could not establish connection")) {
+      event.preventDefault();
+    }
+  });
+}
+
 let currentRecords = [];
 let currentMetrics = null;
 
@@ -275,15 +284,11 @@ async function handleExtractFromCurrentTab() {
     // Strategy 2: Fallback to messaging in-page content script if available
     if (!parsedResult || !parsedResult.records || parsedResult.records.length === 0) {
       try {
-        parsedResult = await new Promise((resolve) => {
-          chrome.tabs.sendMessage(tab.id, { action: "extract_page_data" }, (response) => {
-            if (chrome.runtime.lastError || !response || !response.records || response.records.length === 0) {
-              resolve(null);
-            } else {
-              resolve(response);
-            }
-          });
-        });
+        const response = await chrome.tabs.sendMessage(tab.id, { action: "extract_page_data" })
+          .catch(() => null);
+        if (response && response.records && response.records.length > 0) {
+          parsedResult = response;
+        }
       } catch (e) {
         parsedResult = null;
       }
@@ -515,9 +520,42 @@ function initSyncTab() {
 
   if (btnOpen) {
     btnOpen.addEventListener("click", () => {
-      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
-        chrome.runtime.sendMessage({ action: "focus_or_open_pathao" });
-        showToast("Opening Pathao Create Delivery...");
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(["pathao_autofill_data"], (res) => {
+          if (res && res.pathao_autofill_data && res.pathao_autofill_data.phone) {
+            const updated = {
+              ...res.pathao_autofill_data,
+              userTriggered: true,
+              timestamp: Date.now()
+            };
+            chrome.storage.local.set({ "pathao_autofill_data": updated }, () => {
+              if (chrome.runtime && chrome.runtime.sendMessage) {
+                chrome.runtime.sendMessage({ action: "focus_or_open_pathao" }).catch(() => {});
+              }
+            });
+          } else {
+            if (chrome.runtime && chrome.runtime.sendMessage) {
+              chrome.runtime.sendMessage({ action: "focus_or_open_pathao" }).catch(() => {});
+            }
+          }
+        });
+      } else if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ action: "focus_or_open_pathao" }).catch(() => {});
+      }
+      showToast("Opening Pathao Create Delivery...");
+    });
+  }
+
+  const btnClearSync = document.getElementById("btn-clear-pathao-sync");
+  if (btnClearSync) {
+    btnClearSync.addEventListener("click", () => {
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.remove(["pathao_autofill_data"], () => {
+          updateSyncUI(null);
+          showToast("🗑️ Stored phone number removed!");
+        });
+      } else {
+        updateSyncUI(null);
       }
     });
   }

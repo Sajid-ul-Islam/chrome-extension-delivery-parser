@@ -79,10 +79,12 @@
   }
 
   /**
-   * Sync customer information to Pathao
+   * Sync customer information to Pathao (only executed when user explicitly triggers)
    */
   function syncToPathao(payload, options = {}) {
     if (!payload || !payload.phone) return;
+
+    const isUserTriggered = options.userTriggered === true;
 
     const data = {
       phone: payload.phone,
@@ -91,38 +93,40 @@
       cod: payload.cod || "",
       orderId: payload.orderId || "",
       source: "woocommerce",
+      userTriggered: isUserTriggered,
       timestamp: Date.now()
     };
 
-    // Store in chrome storage
-    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    // Store in chrome storage ONLY when explicitly triggered
+    if (isUserTriggered && typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       chrome.storage.local.set({ "pathao_autofill_data": data });
     }
 
-    // Send message to background to coordinate with Pathao tab
-    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+    // Send message to background
+    if (isUserTriggered && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
       chrome.runtime.sendMessage({
         action: "sync_to_pathao",
         data: data,
         autoSwitch: options.autoSwitch || false
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          // Extension reloaded or inactive
-        }
+      }).catch(() => {
+        // Extension reloaded or inactive
       });
     }
 
     // Show on-screen toast
-    const msg = `⚡ Customer <strong>${data.phone}</strong> ${data.name ? "(" + data.name + ") " : ""}ready for Pathao!`;
-    showWCToast(msg, "👉 Switch to Pathao", () => {
-      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
-        chrome.runtime.sendMessage({ action: "focus_or_open_pathao" });
-      }
-    });
+    if (isUserTriggered) {
+      const msg = `⚡ Customer <strong>${data.phone}</strong> sent to Pathao!`;
+      showWCToast(msg, "👉 Switch to Pathao", () => {
+        if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({ action: "focus_or_open_pathao" }).catch(() => {});
+        }
+      });
+    }
   }
 
   /**
    * Listen for native Copy events on WooCommerce
+   * Does NOT auto-fill Pathao automatically. Only offers a 1-click button.
    */
   function initCopyListener() {
     document.addEventListener("copy", () => {
@@ -156,7 +160,11 @@
           orderId: rowDetails.orderId || ""
         };
 
-        syncToPathao(payload, { autoSwitch: false });
+        // Do NOT automatically auto-put into Pathao on mere copy!
+        // Show an optional 1-click action so the user can trigger it explicitly if they want:
+        showWCToast(`📋 Phone <strong>${phone}</strong> copied`, "⚡ Send to Pathao", () => {
+          syncToPathao(payload, { autoSwitch: true, userTriggered: true });
+        });
       }, 50);
     });
   }
@@ -203,7 +211,7 @@
 
           const details = extractRowOrderDetails(row);
           details.phone = phone; // Ensure phone is set
-          syncToPathao(details, { autoSwitch: false });
+          syncToPathao(details, { autoSwitch: true, userTriggered: true });
         });
 
         // Add to container

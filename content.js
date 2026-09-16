@@ -406,60 +406,112 @@
     return true;
   }
 
-  function findPathaoRecipientFields() {
-    const fields = {
-      phone: null,
-      name: null,
-      address: null,
-      cod: null
-    };
+  function isElementVisible(el) {
+    if (!el) return false;
+    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  }
 
-    // 1. Recipient Name / Customer Search input (Primary target for phone lookup)
-    fields.name = document.querySelector(
-      "input[id*='recipient_name'], input[name*='recipient_name'], input[id*='customer_name'], input[name*='customer_name'], input[placeholder*='Recipient Name' i], input[placeholder*='Customer Name' i], input[placeholder*='গ্রহীতার নাম' i], input[placeholder*='Search customer' i], input[placeholder*='Search by' i]"
-    );
+  /**
+   * Specifically locate the "Recipient's phone" / "Enter phone number" input field
+   * on Pathao order creation page (https://merchant.pathao.com/courier/orders/create)
+   */
+  function findRecipientPhoneInput() {
+    // 1. Direct placeholder matches for "Enter phone number" or related terms
+    const placeholderSelectors = [
+      "input[placeholder*='enter phone number' i]",
+      "input[placeholder*='enter phone' i]",
+      "input[placeholder*='recipient\'s phone' i]",
+      "input[placeholder*='recipient phone' i]",
+      "input[placeholder*='phone number' i]",
+      "input[placeholder*='customer phone' i]",
+      "input[placeholder*='mobile number' i]",
+      "input[placeholder*='01' i]",
+      "input[placeholder*='ফোন' i]",
+      "input[placeholder*='মোবাইল' i]"
+    ];
+    for (const sel of placeholderSelectors) {
+      const el = document.querySelector(sel);
+      if (el && isElementVisible(el)) return el;
+    }
 
-    // 2. Recipient Phone input
-    fields.phone = document.querySelector(
-      "input[id*='recipient_phone'], input[name*='recipient_phone'], input[id*='phone'], input[name*='phone'], input[placeholder*='01'], input[placeholder*='Phone' i], input[placeholder*='Mobile' i], input[placeholder*='ফোন' i]"
-    );
+    // 2. Direct ID or Name matches for recipient phone
+    const idNameSelectors = [
+      "input[id*='recipient_phone' i]",
+      "input[name*='recipient_phone' i]",
+      "input[id*='recipientPhone' i]",
+      "input[name*='recipientPhone' i]",
+      "input[id*='customer_phone' i]",
+      "input[name*='customer_phone' i]",
+      "input[id*='contact_number' i]",
+      "input[name*='contact_number' i]",
+      "input[id*='recipient_mobile' i]",
+      "input[name*='recipient_mobile' i]"
+    ];
+    for (const sel of idNameSelectors) {
+      const el = document.querySelector(sel);
+      if (el && isElementVisible(el)) return el;
+    }
 
-    // 3. Address
-    fields.address = document.querySelector(
-      "textarea[id*='recipient_address'], textarea[name*='recipient_address'], textarea[id*='address'], textarea[name*='address'], textarea[placeholder*='address' i], textarea[placeholder*='ঠিকানা' i], input[id*='recipient_address']"
-    );
+    // 3. Search by Label containing "Recipient's phone", "Recipient phone", or "Enter phone number"
+    const labels = Array.from(document.querySelectorAll("label, span, div, p, strong, h4, h5"));
+    for (const lbl of labels) {
+      const txt = (lbl.innerText || "").trim().toLowerCase();
+      const isPhoneLabel =
+        (txt.includes("recipient") && (txt.includes("phone") || txt.includes("mobile") || txt.includes("contact"))) ||
+        txt.includes("recipient's phone") ||
+        txt.includes("enter phone number") ||
+        (txt.includes("customer") && txt.includes("phone")) ||
+        (txt.includes("গ্রহীতা") && (txt.includes("ফোন") || txt.includes("মোবাইল")));
 
-    // 4. COD / Amount
-    fields.cod = document.querySelector(
-      "input[id*='amount_to_collect'], input[name*='amount_to_collect'], input[id*='cod'], input[name*='cod'], input[placeholder*='Amount' i], input[placeholder*='টাকা' i]"
-    );
-
-    // Fallback: Scan Ant Design / Bootstrap form items by label text
-    if (!fields.name || !fields.phone) {
-      const formItems = Array.from(document.querySelectorAll(".ant-form-item, .form-group, .form-item, div[class*='formItem'], div[class*='input-wrapper']"));
-      for (const item of formItems) {
-        const labelEl = item.querySelector("label, .ant-form-item-label, div[class*='label'], span[class*='label']");
-        const labelText = (labelEl ? labelEl.innerText : item.innerText || "").toLowerCase();
-        const input = item.querySelector("input");
-        const textarea = item.querySelector("textarea");
-
-        if (!fields.name && (labelText.includes("recipient name") || labelText.includes("গ্রহীতার নাম") || labelText.includes("customer name") || (labelText.includes("name") && !labelText.includes("store") && !labelText.includes("item")))) {
-          if (input) fields.name = input;
+      if (isPhoneLabel && txt.length < 80) {
+        if (lbl.htmlFor) {
+          const target = document.getElementById(lbl.htmlFor);
+          if (target && target.tagName === "INPUT" && isElementVisible(target)) return target;
         }
-        if (!fields.phone && (labelText.includes("phone") || labelText.includes("mobile") || labelText.includes("ফোন") || labelText.includes("contact"))) {
-          if (input) fields.phone = input;
+        const nested = lbl.querySelector("input");
+        if (nested && isElementVisible(nested)) return nested;
+
+        const wrapper = lbl.closest(".ant-form-item, .form-group, .form-item, [class*='form-item'], [class*='formItem'], [class*='inputWrapper'], [class*='field'], tr, div");
+        if (wrapper) {
+          const input = wrapper.querySelector("input:not([type='hidden']):not([type='checkbox']):not([type='radio'])");
+          if (input && isElementVisible(input)) return input;
         }
-        if (!fields.address && (labelText.includes("address") || labelText.includes("ঠিকানা"))) {
-          if (textarea) fields.address = textarea;
-          else if (input) fields.address = input;
-        }
-        if (!fields.cod && (labelText.includes("collect") || labelText.includes("amount") || labelText.includes("cod"))) {
-          if (input) fields.cod = input;
+
+        let sibling = lbl.nextElementSibling;
+        while (sibling) {
+          const input = sibling.tagName === "INPUT" ? sibling : sibling.querySelector("input");
+          if (input && isElementVisible(input)) return input;
+          sibling = sibling.nextElementSibling;
         }
       }
     }
 
-    return fields;
+    // 4. Any visible input[type='tel']
+    const telInput = document.querySelector("input[type='tel']");
+    if (telInput && isElementVisible(telInput)) return telInput;
+
+    // 5. Fallback: Any visible input with 'phone' or 'mobile' in name/id/placeholder (excluding sender/store)
+    const inputs = Array.from(document.querySelectorAll("input:not([type='hidden'])"));
+    for (const inp of inputs) {
+      const id = (inp.id || "").toLowerCase();
+      const name = (inp.name || "").toLowerCase();
+      const ph = (inp.placeholder || "").toLowerCase();
+      if ((id.includes("phone") || name.includes("phone") || ph.includes("phone") || id.includes("mobile") || name.includes("mobile")) &&
+          !id.includes("store") && !name.includes("store") && !id.includes("sender") && !name.includes("sender")) {
+        if (isElementVisible(inp)) return inp;
+      }
+    }
+
+    return null;
+  }
+
+  function findPathaoRecipientFields() {
+    return {
+      phone: findRecipientPhoneInput(),
+      name: document.querySelector("input[id*='recipient_name'], input[name*='recipient_name'], input[id*='customer_name'], input[name*='customer_name'], input[placeholder*='Recipient Name' i], input[placeholder*='Customer Name' i], input[placeholder*='গ্রহীতার নাম' i]"),
+      address: document.querySelector("textarea[id*='recipient_address'], textarea[name*='recipient_address'], textarea[id*='address'], textarea[name*='address'], textarea[placeholder*='address' i], textarea[placeholder*='ঠিকানা' i], input[id*='recipient_address']"),
+      cod: document.querySelector("input[id*='amount_to_collect'], input[name*='amount_to_collect'], input[id*='cod'], input[name*='cod'], input[placeholder*='Amount' i], input[placeholder*='টাকা' i]")
+    };
   }
 
   function highlightField(el) {
@@ -473,10 +525,13 @@
   function autofillRecipientDetails(data) {
     if (!data || !data.phone) return false;
 
-    const fields = findPathaoRecipientFields();
-    if (!fields.name && !fields.phone) {
+    // STRICT REQUIREMENT: Locate the Recipient Phone ("Enter phone number") input
+    const phoneInput = findRecipientPhoneInput();
+    if (!phoneInput) {
       return false;
     }
+
+    const fields = findPathaoRecipientFields();
 
     // 1. Fill COD first if provided
     if (data.cod && fields.cod) {
@@ -484,25 +539,16 @@
       highlightField(fields.cod);
     }
 
-    // 2. Fill Phone field as well if a distinct phone field exists
-    if (fields.phone && fields.phone !== fields.name) {
-      setReactInputValue(fields.phone, data.phone, false);
-      highlightField(fields.phone);
-    }
+    // 2. MAIN: Enter phone number into Recipient's Phone ("Enter phone number") field & trigger popup
+    triggerSearchPopup(phoneInput, data.phone);
+    highlightField(phoneInput);
 
-    // 3. MAIN: Input phone number in Recipient Name (receptionise tanme) to trigger Pathao customer popup
-    const targetSearchField = fields.name || fields.phone;
-    if (targetSearchField) {
-      triggerSearchPopup(targetSearchField, data.phone);
-      highlightField(targetSearchField);
-    }
-
-    showToast(`⚡ Phone ${data.phone} entered in Recipient Name! Customer popup should now appear.`);
+    showToast(`⚡ Phone ${data.phone} entered in Recipient's Phone!`);
     return true;
   }
 
   /**
-   * Periodically check for pending autofill data (with retries for dynamic SPA rendering)
+   * Check for pending user-triggered autofill data
    */
   function checkPendingAutofill(retryCount = 0) {
     if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
@@ -510,56 +556,50 @@
     chrome.storage.local.get(["pathao_autofill_data"], (res) => {
       if (res && res.pathao_autofill_data) {
         const item = res.pathao_autofill_data;
-        // Only apply if copied within the last 15 minutes
-        if (Date.now() - (item.timestamp || 0) < 15 * 60 * 1000) {
-          const success = autofillRecipientDetails(item);
-          if (!success && retryCount < 8) {
-            setTimeout(() => checkPendingAutofill(retryCount + 1), 700);
-          }
+
+        // STRICT RULE: ONLY fill if the user explicitly triggered this action!
+        if (!item.userTriggered) {
+          chrome.storage.local.remove(["pathao_autofill_data"]);
+          return;
+        }
+
+        // Must be fresh (within 60 seconds of explicit user click)
+        if (Date.now() - (item.timestamp || 0) > 60 * 1000) {
+          chrome.storage.local.remove(["pathao_autofill_data"]);
+          return;
+        }
+
+        // If currently on orders list, navigate directly to orders create page
+        if (typeof window !== "undefined" && window.location && window.location.href.includes("/courier/orders/list")) {
+          window.location.href = "https://merchant.pathao.com/courier/orders/create";
+          return;
+        }
+
+        const success = autofillRecipientDetails(item);
+        if (success) {
+          // CONSUME IMMEDIATELY so it never auto-fills again!
+          chrome.storage.local.remove(["pathao_autofill_data"]);
+        } else if (retryCount < 25) {
+          // React is still rendering the order creation form - retry in 250ms (up to ~6.5 seconds)
+          setTimeout(() => checkPendingAutofill(retryCount + 1), 250);
         }
       }
     });
   }
 
-  // Listen for storage changes from WooCommerce
-  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
-    chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === "local" && changes.pathao_autofill_data && changes.pathao_autofill_data.newValue) {
-        // Try filling immediately, with retries if page is transitioning
-        checkPendingAutofill(0);
-      }
-    });
-  }
-
-  // Listen for messages from extension background/popup
-  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      if (request.action === "extract_page_data") {
-        const result = runParse();
-        sendResponse(result);
-      } else if (request.action === "autofill_pathao_recipient") {
-        const ok = autofillRecipientDetails(request.data);
-        if (!ok) {
-          checkPendingAutofill(0);
-        }
-        sendResponse({ success: ok });
-      }
-      return true;
-    });
-  }
-
-  // Watch for page navigation / dynamic form loading in Pathao SPA
+  // Observe dynamic form appearance for Pathao SPA page changes
   if (typeof MutationObserver !== "undefined" && typeof document !== "undefined") {
-    let debounceTimer = null;
+    let obsTimeout = null;
     const observer = new MutationObserver(() => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        // Check if recipient name input has newly appeared and is currently empty
-        const nameField = document.querySelector(
-          "input[id*='recipient_name'], input[name*='recipient_name'], input[placeholder*='Recipient Name' i], input[placeholder*='Customer Name' i]"
-        );
-        if (nameField && !nameField.value) {
-          checkPendingAutofill(0);
+      if (obsTimeout) return;
+      obsTimeout = setTimeout(() => {
+        obsTimeout = null;
+        if (typeof window !== "undefined" && window.location && window.location.href.includes("/courier")) {
+          chrome.storage.local.get(["pathao_autofill_data"], (res) => {
+            if (res && res.pathao_autofill_data && res.pathao_autofill_data.userTriggered) {
+              checkPendingAutofill(0);
+            }
+          });
         }
       }, 300);
     });
@@ -573,16 +613,64 @@
     }
   }
 
-  // Delay widget injection and check pending autofill slightly so the host page finishes rendering
+  // Listen for storage changes from explicit user triggers
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === "local" && changes.pathao_autofill_data && changes.pathao_autofill_data.newValue) {
+        if (changes.pathao_autofill_data.newValue.userTriggered === true) {
+          checkPendingAutofill(0);
+        }
+      }
+    });
+  }
+
+  // Listen for messages from extension background/popup
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (!request) return false;
+
+      if (request.action === "extract_page_data") {
+        const result = runParse();
+        sendResponse(result);
+        return false;
+      } else if (request.action === "autofill_pathao_recipient") {
+        if (!request.data || !request.data.userTriggered) {
+          sendResponse({ skipped: "not_user_triggered" });
+          return false;
+        }
+
+        if (typeof window !== "undefined" && window.location && window.location.href.includes("/courier/orders/list")) {
+          window.location.href = "https://merchant.pathao.com/courier/orders/create";
+          sendResponse({ redirected: true });
+          return false;
+        }
+
+        const ok = autofillRecipientDetails(request.data);
+        if (ok) {
+          chrome.storage.local.remove(["pathao_autofill_data"]);
+        } else {
+          checkPendingAutofill(0);
+        }
+        sendResponse({ success: ok });
+        return false;
+      }
+      return false;
+    });
+  }
+
+  // When arriving on page (e.g. after clicking trigger), immediately check for pending autofill
+  checkPendingAutofill(0);
+
   if (typeof document !== "undefined") {
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => {
+        checkPendingAutofill(0);
         setTimeout(initFloatingWidget, 800);
-        setTimeout(() => checkPendingAutofill(0), 1000);
       });
     } else {
+      checkPendingAutofill(0);
       setTimeout(initFloatingWidget, 800);
-      setTimeout(() => checkPendingAutofill(0), 1000);
     }
   }
 })();
+

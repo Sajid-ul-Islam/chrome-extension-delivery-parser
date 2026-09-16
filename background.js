@@ -23,13 +23,24 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
 
   chrome.runtime.onInstalled.addListener(() => {
     console.log("DEEN Delivery Parser Extension Installed.");
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.remove(["pathao_autofill_data"]);
+    }
     setupContextMenus();
   });
 
   if (chrome.runtime.onStartup) {
     chrome.runtime.onStartup.addListener(() => {
+      if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.remove(["pathao_autofill_data"]);
+      }
       setupContextMenus();
     });
+  }
+
+  // Purge any stuck autofill data immediately on service worker start / reload
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.remove(["pathao_autofill_data"]);
   }
 
   // Register immediately as well
@@ -64,6 +75,7 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
           cod: "",
           orderId: "",
           source: "contextMenu",
+          userTriggered: true,
           timestamp: Date.now()
         };
 
@@ -85,42 +97,56 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
     });
   }
 
-  // Handle messages from content scripts
+  // Handle messages from content scripts or popup
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "sync_to_pathao") {
+    if (request && request.action === "sync_to_pathao") {
       findAndSyncPathaoTab(request.data, request.autoSwitch);
       sendResponse({ status: "sync_dispatched" });
-    } else if (request.action === "focus_or_open_pathao") {
+    } else if (request && request.action === "focus_or_open_pathao") {
       focusOrOpenPathao();
       sendResponse({ status: "handled" });
+    } else {
+      sendResponse({ status: "ignored" });
     }
-    return true;
+    return false;
   });
 }
+
+const PATHAO_CREATE_ORDER_URL = "https://merchant.pathao.com/courier/orders/create";
 
 function findAndSyncPathaoTab(data, autoSwitch = false) {
   chrome.tabs.query({ url: ["*://merchant.pathao.com/*", "*://*.pathao.com/*"] }, (tabs) => {
     if (tabs && tabs.length > 0) {
-      const pathaoTab = tabs[0];
-      // Send autofill message to Pathao tab
-      chrome.tabs.sendMessage(pathaoTab.id, {
-        action: "autofill_pathao_recipient",
-        data: data
-      }, () => {
-        if (chrome.runtime.lastError) {
-          // Tab might be loading or on an un-injected subpage
-        }
-      });
+      // Prioritize tab that is already on /courier/orders/create
+      const createTab = tabs.find(t => t.url && t.url.includes("/courier/orders/create"));
+      const targetTab = createTab || tabs[0];
 
       if (autoSwitch) {
-        chrome.tabs.update(pathaoTab.id, { active: true });
-        if (pathaoTab.windowId) {
-          chrome.windows.update(pathaoTab.windowId, { focused: true });
+        // If the target tab is not on the order creation page (e.g. on /orders/list), navigate directly to /create!
+        if (!targetTab.url || !targetTab.url.includes("/courier/orders/create")) {
+          chrome.tabs.update(targetTab.id, {
+            url: PATHAO_CREATE_ORDER_URL,
+            active: true
+          });
+        } else {
+          chrome.tabs.update(targetTab.id, { active: true });
+        }
+
+        if (targetTab.windowId) {
+          chrome.windows.update(targetTab.windowId, { focused: true });
         }
       }
+
+      // Send autofill message to Pathao tab safely
+      chrome.tabs.sendMessage(targetTab.id, {
+        action: "autofill_pathao_recipient",
+        data: data
+      }).catch(() => {
+        // Tab might be loading or on an un-injected subpage
+      });
     } else if (autoSwitch) {
-      // Pathao is not currently open, open a new active tab directly!
-      chrome.tabs.create({ url: "https://merchant.pathao.com/", active: true });
+      // Pathao is not currently open, open directly to the order creation page!
+      chrome.tabs.create({ url: PATHAO_CREATE_ORDER_URL, active: true });
     }
   });
 }
@@ -128,15 +154,21 @@ function findAndSyncPathaoTab(data, autoSwitch = false) {
 function focusOrOpenPathao() {
   chrome.tabs.query({ url: ["*://merchant.pathao.com/*", "*://*.pathao.com/*"] }, (tabs) => {
     if (tabs && tabs.length > 0) {
-      const pathaoTab = tabs[0];
-      chrome.tabs.update(pathaoTab.id, { active: true });
-      if (pathaoTab.windowId) {
-        chrome.windows.update(pathaoTab.windowId, { focused: true });
+      const createTab = tabs.find(t => t.url && t.url.includes("/courier/orders/create"));
+      const targetTab = createTab || tabs[0];
+      if (!targetTab.url || !targetTab.url.includes("/courier/orders/create")) {
+        chrome.tabs.update(targetTab.id, { url: PATHAO_CREATE_ORDER_URL, active: true });
+      } else {
+        chrome.tabs.update(targetTab.id, { active: true });
+      }
+      if (targetTab.windowId) {
+        chrome.windows.update(targetTab.windowId, { focused: true });
       }
     } else {
-      chrome.tabs.create({ url: "https://merchant.pathao.com/", active: true });
+      chrome.tabs.create({ url: PATHAO_CREATE_ORDER_URL, active: true });
     }
   });
 }
+
 
 
