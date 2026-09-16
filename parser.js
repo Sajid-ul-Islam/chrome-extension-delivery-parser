@@ -22,6 +22,7 @@ function cleanLines(raw) {
   for (let line of rawLines) {
     const val = line.trim();
     if (!val) continue;
+    if (val === "---" || /^[-=_*]{3,}$/.test(val)) continue;
     if (HEADER_TOKENS.has(val)) continue;
     lines.push(val);
   }
@@ -89,7 +90,7 @@ function parseStandardRecords(raw) {
     i++;
 
     // 1. Optional Type immediately following Consignment ID
-    if (i < lines.length && /^(?:Type:?|Parcel|Express|Normal|Document|Fragile)/i.test(lines[i])) {
+    if (i < lines.length && /^(?:Type:?|Parcel|Express|Normal|Document|Fragile|Exchange)/i.test(lines[i])) {
       rec["Type"] = lines[i].replace(/^Type:\s*/i, "").trim();
       i++;
     }
@@ -118,9 +119,9 @@ function parseStandardRecords(raw) {
         const token = preTokens[t].trim();
         if (!token) continue;
 
-        if (!rec["Type"] && /^(?:Parcel|Express|Normal|Document|Fragile)$/i.test(token)) {
+        if (!rec["Type"] && /^(?:Parcel|Express|Normal|Document|Fragile|Exchange)$/i.test(token)) {
           rec["Type"] = token;
-        } else if (!orderId && /^(?:#?\d{3,8}(?:\s*[a-zA-Z])?|ORD[-\w]+)$/i.test(token)) {
+        } else if (!orderId && /^(?:(?:D|EX)\s*-\s*\d{3,8}(?:\s*[a-zA-Z0-9_-]+)?|[a-zA-Z]{1,4}-\d{3,8}(?:\s*[a-zA-Z0-9_-]+)?|#?\d{3,8}(?:\s*[a-zA-Z])?|ORD[-\w]+)$/i.test(token)) {
           orderId = token;
         } else if (!store && (/store|commerce|deen|outlet|mart|shop|enterprise|hub/i.test(token) || (orderId && !name && preTokens.length - t >= 3))) {
           store = token;
@@ -131,10 +132,23 @@ function parseStandardRecords(raw) {
         }
       }
 
+      // Safeguard: If orderId wasn't found but name looks like an Order ID (e.g. D-14489, 14782 c)
+      if (!orderId && /^(?:(?:D|EX)\s*-\s*\d{3,8}(?:\s*[a-zA-Z0-9_-]+)?|[a-zA-Z]{1,4}-\d{3,8}(?:\s*[a-zA-Z0-9_-]+)?|#?\d{3,8}(?:\s*[a-zA-Z])?|ORD[-\w]+)$/i.test(name)) {
+        orderId = name;
+        name = addressParts.length > 0 ? addressParts.shift() : "";
+      }
+
       rec["Order ID"] = orderId;
       rec["Store"] = store;
       rec["Recipient Name"] = name;
       rec["Address"] = addressParts.join(", ");
+
+      // D- or EX- prefix means Exchange Order
+      if (/^(?:D|EX)\s*-\s*\d/i.test(orderId)) {
+        if (!rec["Type"] || /^(?:Parcel|Normal)$/i.test(rec["Type"])) {
+          rec["Type"] = "Exchange";
+        }
+      }
     } else {
       // Sequential fallback
       if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Order ID"] = lines[i]; i++; }
@@ -142,6 +156,17 @@ function parseStandardRecords(raw) {
       if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Recipient Name"] = lines[i]; i++; }
       if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Address"] = lines[i]; i++; }
       if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Phone"] = lines[i]; i++; }
+
+      if (/^(?:D|EX)\s*-\s*\d/i.test(rec["Order ID"])) {
+        if (!rec["Type"] || /^(?:Parcel|Normal)$/i.test(rec["Type"])) {
+          rec["Type"] = "Exchange";
+        }
+      }
+      if (/^(?:D|EX)\s*-\s*\d/i.test(rec["Recipient Name"]) && !rec["Order ID"]) {
+        rec["Order ID"] = rec["Recipient Name"];
+        rec["Recipient Name"] = "";
+        rec["Type"] = "Exchange";
+      }
     }
 
     // 3. Tokens after Phone (Delivery Status, Updated On, Amounts, Payment, Actions)
@@ -193,11 +218,16 @@ function lenSafe(arr) {
  * Fuzzy extraction for a single consignment block
  */
 function extractFieldsFuzzy(consId, textBlock) {
-  const orderIdMatch = textBlock.match(/\b(ORD[-\w]+|#?\d{3,8}(?:\s*[a-zA-Z])?)\b/i);
+  const orderIdMatch = textBlock.match(/\b((?:D|EX)\s*-\s*\d{3,8}(?:\s*[a-zA-Z0-9_-]+)?|[a-zA-Z]{1,4}-\d{3,8}(?:\s*[a-zA-Z0-9_-]+)?|ORD[-\w]+|#?\d{3,8}(?:\s*[a-zA-Z])?)\b/i);
   const orderId = orderIdMatch ? orderIdMatch[1].trim() : "";
 
-  const typeMatch = textBlock.match(/\b(Parcel|Express|Normal|Document)\b/i);
-  const type = typeMatch ? typeMatch[1] : "Parcel";
+  const typeMatch = textBlock.match(/\b(Exchange|Parcel|Express|Normal|Document)\b/i);
+  let type = typeMatch ? typeMatch[1] : "Parcel";
+  if (/^(?:D|EX)\s*-\s*\d/i.test(orderId)) {
+    if (!type || /^(?:Parcel|Normal)$/i.test(type)) {
+      type = "Exchange";
+    }
+  }
 
   const storeMatch = textBlock.match(/\b(DEEN\s+[A-Za-z\s]+?OUTLET|Deen Commerce|[A-Za-z0-9\s'-]+?(?:Store|Commerce|Outlet|Mart|Shop))\b/i);
   let store = storeMatch ? storeMatch[1].trim().replace(/[\r\n]+/g, " ") : "";
@@ -324,22 +354,182 @@ function parseFuzzyRecords(rawText) {
 }
 
 /**
+ * Detect if text is from WooCommerce admin orders list
+ */
+function isWooCommerceText(raw) {
+  if (!raw || typeof raw !== "string") return false;
+  return /Preview\s*#\d+/i.test(raw) ||
+         (/wc-orders/i.test(raw) && /#\d+/i.test(raw)) ||
+         (/Send with Pathao/i.test(raw) && /#\d+/i.test(raw)) ||
+         (/Orders Add order/i.test(raw) && /Preview/i.test(raw)) ||
+         (/woocommerce/i.test(raw) && /#\d+/i.test(raw));
+}
+
+/**
+ * Intelligent Parser for WooCommerce Orders Admin Table
+ */
+function parseWooCommerceOrders(raw) {
+  const lines = (raw || "").replace(/\t/g, "\n").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const records = [];
+
+  const isOrderHeader = (s) => /^(?:Preview\s*)?#?((?:D|EX)?[-\s]?\d{3,8})\s*(.*)$/i.test(s) &&
+                               !/items|page|orders|sort ascending|select all/i.test(s);
+
+  const blocks = [];
+  let currentBlock = null;
+
+  for (let line of lines) {
+    if (isOrderHeader(line) && (/Preview\s*#/i.test(line) || /^#((?:D|EX)?[-\s]?\d{3,8})\s+[a-zA-Z\u0980-\u09FF]/i.test(line))) {
+      if (currentBlock) blocks.push(currentBlock);
+      currentBlock = [line];
+    } else if (currentBlock) {
+      currentBlock.push(line);
+    }
+  }
+  if (currentBlock) blocks.push(currentBlock);
+
+  for (let b of blocks) {
+    const headerLine = b[0];
+    let orderId = "";
+    let name = "";
+
+    const mPreview = headerLine.match(/^(?:Preview\s*)?#?((?:D|EX)?[-\s]?\d{3,8})\s*(.*)$/i);
+    if (mPreview) {
+      orderId = mPreview[1].replace(/\s+/g, "");
+      name = mPreview[2].trim();
+    }
+
+    const isExchange = /^(?:D|EX)\s*-\s*\d/i.test(orderId);
+    const type = isExchange ? "Exchange" : "Parcel";
+
+    let date = "";
+    let wcStatus = "";
+    let store = "";
+    let total = 0;
+    let consId = "";
+    let pathaoStatus = "";
+    let fee = 0;
+    let origin = "";
+    let invoice = "";
+    let phone = "";
+
+    for (let i = 1; i < b.length; i++) {
+      const line = b[i];
+
+      if (!phone && /(?:(?:\+?880)|0)1[3-9]\d{8}/.test(line)) {
+        const mPhone = line.match(/(?:(?:\+?880)|0)1[3-9]\d{8}/);
+        if (mPhone) phone = mPhone[0];
+      }
+
+      if (!date && (/\b(?:ago|yesterday|today)\b/i.test(line) || /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(line))) {
+        date = line;
+        continue;
+      }
+
+      if (!wcStatus && /^(?:Completed|Processing|On hold|Cancelled|Failed|Pending payment|Refunded)$/i.test(line)) {
+        wcStatus = line;
+        continue;
+      }
+
+      if (!store && (/^—\s*[a-zA-Z0-9\s,]+/.test(line) || /online|outlet|warehouse|mart|shop|store/i.test(line))) {
+        store = line.replace(/^[—\-\s]+/, "").trim();
+        continue;
+      }
+
+      if (total === 0 && (line.includes("৳") || /[\d,]+\s*৳/.test(line))) {
+        total = parseAmount(line);
+        continue;
+      }
+
+      if (!consId && isConsignmentId(line)) {
+        consId = getConsignmentId(line);
+        continue;
+      }
+
+      if (/Send with Pathao/i.test(line)) {
+        pathaoStatus = "Send with Pathao";
+        continue;
+      }
+
+      if (consId && !pathaoStatus && /^(?:Pending|In Transit|Delivered|Returned|Hold|Cancelled)$/i.test(line)) {
+        pathaoStatus = line;
+        continue;
+      }
+
+      if (consId && fee === 0 && /^\d+(?:\.\d+)?$/.test(line) && line !== orderId) {
+        fee = parseAmount(line);
+        continue;
+      }
+
+      if (!origin && (/^Source:/i.test(line) || /^(?:Direct|Fb|Website|Facebook)$/i.test(line) || (store && line.toLowerCase() === store.toLowerCase()))) {
+        origin = line;
+        continue;
+      }
+
+      if (!invoice && /^\d+$/.test(line)) {
+        invoice = line;
+        continue;
+      }
+    }
+
+    let deliveryStatus = "";
+    if (consId) {
+      deliveryStatus = pathaoStatus ? `Pathao: ${pathaoStatus}` : "Dispatched";
+    } else if (pathaoStatus) {
+      deliveryStatus = "Send with Pathao";
+    } else {
+      deliveryStatus = wcStatus || "Pending";
+    }
+
+    records.push({
+      "Consignment ID": consId || "Send with Pathao",
+      "Type": type,
+      "Order ID": orderId,
+      "Store": store,
+      "Recipient Name": name,
+      "Address": origin ? `Origin: ${origin}` : "",
+      "Phone": phone,
+      "Delivery Status": deliveryStatus,
+      "Status Updated On": date,
+      "COD Amount": total,
+      "Charge": fee,
+      "Discount": 0.0,
+      "Payment Status": wcStatus || "Unpaid",
+      "Action": origin ? `Origin: ${origin}` : ""
+    });
+  }
+
+  return records;
+}
+
+/**
  * Compute KPI metrics for parsed delivery records
  */
 function computeMetrics(records) {
   const totalParcels = records.length;
   let paidCount = 0;
   let unpaidCount = 0;
+  let unsentCount = 0;
+  let dispatchedCount = 0;
   let totalCOD = 0;
   let totalCharge = 0;
   let totalDiscount = 0;
 
   for (let rec of records) {
     const pStatus = (rec["Payment Status"] || "").toString().toLowerCase();
-    if (pStatus === "paid") {
+    if (pStatus === "paid" || pStatus === "completed") {
       paidCount++;
     } else {
       unpaidCount++;
+    }
+
+    const cons = (rec["Consignment ID"] || "").toString();
+    const delStatus = (rec["Delivery Status"] || "").toString();
+    const isUnsent = /Send with Pathao|Unsent/i.test(cons) || /Send with Pathao|Unsent/i.test(delStatus);
+    if (isUnsent) {
+      unsentCount++;
+    } else if (cons && !/Send with Pathao/i.test(cons)) {
+      dispatchedCount++;
     }
 
     totalCOD += Number(rec["COD Amount"]) || 0;
@@ -353,6 +543,8 @@ function computeMetrics(records) {
     totalParcels,
     paidCount,
     unpaidCount,
+    unsentCount,
+    dispatchedCount,
     totalCOD,
     totalCharge,
     totalDiscount,
@@ -371,7 +563,19 @@ function parseDeliveryData(rawText, forceFuzzy = false) {
   let records = [];
   let mode = "standard";
 
-  if (!forceFuzzy) {
+  // Check if WooCommerce text format
+  if (!forceFuzzy && isWooCommerceText(rawText)) {
+    try {
+      records = parseWooCommerceOrders(rawText);
+      if (records.length > 0) {
+        mode = "woocommerce";
+      }
+    } catch (err) {
+      records = [];
+    }
+  }
+
+  if (records.length === 0 && !forceFuzzy) {
     try {
       records = parseStandardRecords(rawText);
     } catch (err) {
@@ -608,6 +812,8 @@ if (typeof module !== "undefined" && module.exports) {
     parseFuzzyRecords,
     computeMetrics,
     parseDeliveryData,
+    isWooCommerceText,
+    parseWooCommerceOrders,
     exportToCSV,
     exportToExcelXML,
     exportToXLSX

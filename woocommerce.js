@@ -6,6 +6,33 @@
 (function () {
   "use strict";
 
+  // Gracefully suppress "Extension context invalidated" errors on orphaned content script after extension reload
+  if (typeof window !== "undefined") {
+    window.addEventListener("error", (event) => {
+      if (event && event.message && event.message.includes("Extension context invalidated")) {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+      }
+    }, true);
+
+    window.addEventListener("unhandledrejection", (event) => {
+      if (event && event.reason && event.reason.message &&
+         (event.reason.message.includes("Extension context invalidated") ||
+          event.reason.message.includes("Could not establish connection"))) {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+      }
+    }, true);
+  }
+
+  function isExtensionValid() {
+    try {
+      return typeof chrome !== "undefined" && Boolean(chrome.runtime && chrome.runtime.id);
+    } catch (e) {
+      return false;
+    }
+  }
+
   const BD_PHONE_REGEX = /(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/;
 
   /**
@@ -43,7 +70,7 @@
     if (orderLink) {
       orderId = orderLink.textContent.trim().replace(/^#/, "");
     } else {
-      const idMatch = text.match(/#(\d{3,8})/);
+      const idMatch = text.match(/#?((?:D|EX)\s*-\s*\d{3,8}(?:\s*[a-zA-Z0-9_-]+)?)/i) || text.match(/#(\d{3,8})/);
       if (idMatch) orderId = idMatch[1];
     }
 
@@ -82,6 +109,7 @@
    * Sync customer information to Pathao (only executed when user explicitly triggers)
    */
   function syncToPathao(payload, options = {}) {
+    if (!isExtensionValid()) return;
     if (!payload || !payload.phone) return;
 
     const isUserTriggered = options.userTriggered === true;
@@ -126,11 +154,12 @@
 
   /**
    * Listen for native Copy events on WooCommerce
-   * Does NOT auto-fill Pathao automatically. Only offers a 1-click button.
+   * Syncs the copied phone number to Pathao so customer delivery ratio / fraud check is detected
    */
   function initCopyListener() {
     document.addEventListener("copy", () => {
-      // Small timeout to allow clipboard data selection to complete
+      if (!isExtensionValid()) return;
+
       setTimeout(() => {
         const selection = window.getSelection ? window.getSelection().toString().trim() : "";
         if (!selection) return;
@@ -157,14 +186,24 @@
           name: rowDetails.name || "",
           address: rowDetails.address || "",
           cod: rowDetails.cod || "",
-          orderId: rowDetails.orderId || ""
+          orderId: rowDetails.orderId || "",
+          source: "woocommerce_copy",
+          userTriggered: true,
+          timestamp: Date.now()
         };
 
-        // Do NOT automatically auto-put into Pathao on mere copy!
-        // Show an optional 1-click action so the user can trigger it explicitly if they want:
-        showWCToast(`📋 Phone <strong>${phone}</strong> copied`, "⚡ Send to Pathao", () => {
-          syncToPathao(payload, { autoSwitch: true, userTriggered: true });
-        });
+        // Automatically sync to Pathao so customer delivery ratio check is triggered!
+        syncToPathao(payload, { autoSwitch: false, userTriggered: true });
+
+        showWCToast(
+          `⚡ Phone <strong>${phone}</strong> ready in Pathao for customer ratio check!`,
+          "👉 Open Pathao",
+          () => {
+            if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+              chrome.runtime.sendMessage({ action: "focus_or_open_pathao" }).catch(() => {});
+            }
+          }
+        );
       }, 50);
     });
   }
@@ -312,22 +351,77 @@
     }, 5000);
   }
 
+  /**
+   * Listen for messages from popup (e.g. tab extraction request)
+   */
+  function initMessageListener() {
+    if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.onMessage) return;
+
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === "extract_page_data") {
+        const rows = Array.from(document.querySelectorAll(
+          "table.wp-list-table tbody tr, table.wc-orders-list-table tbody tr, tr[id*='post-'], tr.type-shop_order"
+        ));
+        if (rows.length > 0) {
+          const rowTexts = rows.map(r => {
+            const cells = Array.from(r.querySelectorAll("td, th"));
+            if (cells.length > 0) {
+              return cells.map(c => (c.innerText || "").trim()).filter(Boolean).join("\n");
+            }
+            return (r.innerText || "").trim();
+          });
+          sendResponse({ rawText: rowTexts.join("\n---\n"), count: rows.length });
+        } else {
+          sendResponse({ rawText: (document.body ? document.body.innerText : ""), count: 0 });
+        }
+      }
+      return true;
+    });
+  }
+
   // Initialize
   function init() {
-    initCopyListener();
-    injectTableActionButtons();
-    injectSingleOrderPageButton();
+    if (!isExtensionValid()) return;
 
-    // Observe DOM mutations for AJAX pagination / filter reload
-    const observer = new MutationObserver(() => {
+    try {
+      initCopyListener();
+      initMessageListener();
       injectTableActionButtons();
       injectSingleOrderPageButton();
-    });
+    } catch (e) {
+      if (!isExtensionValid()) return;
+    }
 
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
+    // Observe DOM mutations for AJAX pagination / filter reload
+    let observer = null;
+    try {
+      observer = new MutationObserver(() => {
+        if (!isExtensionValid()) {
+          if (observer) {
+            try { observer.disconnect(); } catch (e) {}
+          }
+          return;
+        }
+
+        try {
+          injectTableActionButtons();
+          injectSingleOrderPageButton();
+        } catch (err) {
+          if (!isExtensionValid() && observer) {
+            try { observer.disconnect(); } catch (e) {}
+          }
+        }
+      });
+
+      if (document.body && isExtensionValid()) {
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+      }
+    } catch (obsErr) {
+      // Ignored if extension context invalidated
+    }
   }
 
   if (typeof document !== "undefined") {

@@ -4,6 +4,33 @@
  */
 
 (function () {
+  // Gracefully suppress "Extension context invalidated" errors on orphaned content script after extension reload
+  if (typeof window !== "undefined") {
+    window.addEventListener("error", (event) => {
+      if (event && event.message && event.message.includes("Extension context invalidated")) {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+      }
+    }, true);
+
+    window.addEventListener("unhandledrejection", (event) => {
+      if (event && event.reason && event.reason.message &&
+         (event.reason.message.includes("Extension context invalidated") ||
+          event.reason.message.includes("Could not establish connection"))) {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+      }
+    }, true);
+  }
+
+  function isExtensionValid() {
+    try {
+      return typeof chrome !== "undefined" && Boolean(chrome.runtime && chrome.runtime.id);
+    } catch (e) {
+      return false;
+    }
+  }
+
   let cachedParsed = null;
   let isExpanded = false;
 
@@ -26,7 +53,21 @@
       return selection.replace(/\t/g, "\n");
     }
 
-    // 2. Scan all tables, table bodies, and order row containers
+    // 2. Scan for table rows with consignment IDs
+    const rows = Array.from(document.querySelectorAll("table tbody tr, .ant-table-tbody tr, tr[class*='row'], div[role='row']"));
+    const parcelRows = rows.filter(r => isConsignmentId(r.innerText || ""));
+    if (parcelRows.length > 0) {
+      const rowTexts = parcelRows.map(row => {
+        const cells = Array.from(row.querySelectorAll("td, [role='cell'], div[class*='cell']"));
+        if (cells.length > 0) {
+          return cells.map(c => (c.innerText || "").trim()).filter(Boolean).join("\n");
+        }
+        return (row.innerText || "").trim();
+      });
+      return rowTexts.join("\n---\n");
+    }
+
+    // 3. Scan all tables, table bodies, and order row containers
     const candidates = Array.from(document.querySelectorAll(
       "table, tbody, [class*='table'], [class*='order'], [class*='parcel'], .ant-table-body, .ant-table-content, [role='table'], [role='rowgroup'], main, [role='main']"
     ));
@@ -37,143 +78,11 @@
       }
     }
 
-    // 3. Fallback to whole document body
+    // 4. Fallback to whole document body
     return (document.body ? document.body.innerText : "").replace(/\t/g, "\n");
   }
 
-  function extractDOMRows() {
-    const isConsId = (s) => /[A-Z]{2}\d{6}[A-Z0-9]+/i.test(s);
-    const isPhone = (s) => /(?:(?:\+?880)|0)1[3-9]\d{8}/.test(s);
-
-    const rows = Array.from(document.querySelectorAll("table tbody tr, .ant-table-tbody tr, tr[class*='row'], div[role='row']"));
-    const parcelRows = rows.filter(r => isConsId(r.innerText || ""));
-    if (parcelRows.length === 0) return null;
-
-    const extracted = [];
-    for (const row of parcelRows) {
-      const cells = Array.from(row.querySelectorAll("td, [role='cell'], div[class*='cell']"));
-      const cellTexts = cells.map(c => (c.innerText || "").trim());
-
-      let consId = "";
-      let type = "Parcel";
-      const consCell = cellTexts.find(t => isConsId(t)) || "";
-      if (consCell) {
-        const m = consCell.match(/([A-Z]{2}\d{6}[A-Z0-9]+)/i);
-        consId = m ? m[1] : "";
-        if (/express/i.test(consCell)) type = "Express";
-        else if (/normal/i.test(consCell)) type = "Normal";
-        else if (/document/i.test(consCell)) type = "Document";
-        else if (/parcel/i.test(consCell)) type = "Parcel";
-      }
-
-      let phone = "";
-      let name = "";
-      let address = "";
-      const phoneCell = cellTexts.find(t => isPhone(t)) || "";
-      if (phoneCell) {
-        const pm = phoneCell.match(/(?:(?:\+?880)|0)1[3-9]\d{8}/);
-        phone = pm ? pm[0] : "";
-        const lines = phoneCell.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-        const nonPhone = lines.filter(l => !l.includes(phone));
-        if (nonPhone.length > 0) name = nonPhone[0];
-        if (nonPhone.length > 1) address = nonPhone.slice(1).join(", ");
-      }
-
-      let orderId = "";
-      let store = "";
-      for (const t of cellTexts) {
-        if (t === consCell || t === phoneCell) continue;
-        if (!orderId) {
-          const mOrder = t.match(/\b(ORD[-\w]+|#?\d{3,8}(?:\s*[a-zA-Z])?)\b/i);
-          if (mOrder && !mOrder[1].startsWith("01")) {
-            orderId = mOrder[1].trim();
-          }
-        }
-        if (!store && /store|commerce|deen|outlet|mart|shop/i.test(t)) {
-          const storeLine = t.split(/\r?\n/).find(l => /store|commerce|deen|outlet|mart|shop/i.test(l));
-          if (storeLine) store = storeLine.trim();
-        }
-      }
-
-      let paymentStatus = "Unpaid";
-      for (const t of cellTexts) {
-        if (/^paid$/i.test(t) || (/\bpaid\b/i.test(t) && !/unpaid/i.test(t))) {
-          paymentStatus = "Paid";
-          break;
-        }
-      }
-
-      let deliveryStatus = "";
-      let statusUpdatedOn = "";
-      for (const t of cellTexts) {
-        if (/updated on/i.test(t) || /(At Delivery Hub|Delivered|In Transit|Returned|Hold|Pending|Waiting for Pickup|Cancelled)/i.test(t)) {
-          const dm = t.match(/updated on\s*([^\n\r]+)/i);
-          if (dm) statusUpdatedOn = dm[1].trim();
-          deliveryStatus = t.replace(/updated on[^\n\r]*/i, "").trim().replace(/\n+/g, "; ");
-          break;
-        }
-      }
-
-      let cod = 0, charge = 0, discount = 0;
-      for (const t of cellTexts) {
-        if (t === consCell || t === phoneCell) continue;
-        if (/updated on/i.test(t) || /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(t)) continue;
-        if (/(?:delivered|transit|hub|return|hold|pending|cancel|pickup)/i.test(t)) continue;
-
-        const codM = t.match(/COD\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
-        const chargeM = t.match(/Charge\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
-        const discountM = t.match(/Discount\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
-
-        if (codM) cod = parseFloat(codM[1].replace(/,/g, ""));
-        if (chargeM) charge = parseFloat(chargeM[1].replace(/,/g, ""));
-        if (discountM) discount = parseFloat(discountM[1].replace(/,/g, ""));
-
-        if (!cod && !charge) {
-          const nums = Array.from(t.matchAll(/([\d,]+(?:\.\d+)?)/g))
-            .map(m => parseFloat(m[1].replace(/,/g, "")))
-            .filter(n => !isNaN(n) && n < 1000000);
-          if (nums.length >= 3) {
-            cod = nums[0]; charge = nums[1]; discount = nums[2]; break;
-          } else if (nums.length === 2 && !nums.includes(Number(phone))) {
-            cod = nums[0]; charge = nums[1]; break;
-          } else if (nums.length === 1 && (t.toLowerCase().includes("cod") || nums[0] > 100) && !t.includes(phone)) {
-            cod = nums[0];
-          }
-        }
-      }
-
-      extracted.push({
-        "Consignment ID": consId,
-        "Type": type,
-        "Order ID": orderId,
-        "Store": store,
-        "Recipient Name": name,
-        "Address": address,
-        "Phone": phone,
-        "Delivery Status": deliveryStatus,
-        "Status Updated On": statusUpdatedOn,
-        "COD Amount": cod,
-        "Charge": charge,
-        "Discount": discount,
-        "Payment Status": paymentStatus,
-        "Action": ""
-      });
-    }
-
-    return extracted.length > 0 ? extracted : null;
-  }
-
   function runParse() {
-    const domRows = extractDOMRows();
-    if (domRows && domRows.length > 0) {
-      cachedParsed = {
-        records: domRows,
-        metrics: computeMetrics(domRows),
-        mode: "DOM Table"
-      };
-      return cachedParsed;
-    }
-
     const text = extractPageText();
     let res = parseDeliveryData(text);
     if (!res || !res.records || res.records.length === 0) {
@@ -368,10 +277,23 @@
   }
 
   /**
-   * Input value with simulated typing keystrokes and keep focus so Pathao's customer popup appears
+   * Input value with simulated typing keystrokes and events so Pathao's customer ratio & fraud lookup triggers
    */
   function triggerSearchPopup(inputEl, value) {
     if (!inputEl) return false;
+
+    let cleanVal = (value || "").replace(/\D/g, "");
+    if (cleanVal.length === 13 && cleanVal.startsWith("8801")) {
+      cleanVal = cleanVal.slice(2);
+    } else if (cleanVal.length === 10 && cleanVal.startsWith("1")) {
+      cleanVal = "0" + cleanVal;
+    }
+
+    // Handle possible 10-digit requirement if field enforces maxlength 10
+    let targetVal = cleanVal;
+    if (inputEl.maxLength === 10 && targetVal.startsWith("0")) {
+      targetVal = targetVal.slice(1);
+    }
 
     // 1. Focus & Click to ensure active state
     inputEl.focus();
@@ -382,9 +304,9 @@
       window.HTMLInputElement.prototype, "value"
     )?.set;
     if (nativeSetter) {
-      nativeSetter.call(inputEl, value);
+      nativeSetter.call(inputEl, targetVal);
     } else {
-      inputEl.value = value;
+      inputEl.value = targetVal;
     }
 
     // 3. Dispatch InputEvent with data
@@ -392,7 +314,7 @@
       inputEl.dispatchEvent(new InputEvent("input", {
         bubbles: true,
         cancelable: true,
-        data: value,
+        data: targetVal,
         inputType: "insertText"
       }));
     } catch (e) {
@@ -400,26 +322,48 @@
     }
     inputEl.dispatchEvent(new Event("input", { bubbles: true }));
 
-    // 4. Dispatch Keyboard events (triggers Ant Design / React autocomplete lookup)
-    const lastChar = value.slice(-1) || "0";
-    inputEl.dispatchEvent(new KeyboardEvent("keydown", {
-      bubbles: true,
-      cancelable: true,
-      key: lastChar,
-      code: "Digit" + lastChar
-    }));
-    inputEl.dispatchEvent(new KeyboardEvent("keyup", {
-      bubbles: true,
-      cancelable: true,
-      key: lastChar,
-      code: "Digit" + lastChar
-    }));
+    // 4. Dispatch simulated keystrokes for each character (triggers AntD / Cleave / React autocomplete)
+    for (let char of targetVal) {
+      inputEl.dispatchEvent(new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: char,
+        code: "Digit" + char
+      }));
+      inputEl.dispatchEvent(new KeyboardEvent("keypress", {
+        bubbles: true,
+        cancelable: true,
+        key: char,
+        code: "Digit" + char
+      }));
+      inputEl.dispatchEvent(new KeyboardEvent("keyup", {
+        bubbles: true,
+        cancelable: true,
+        key: char,
+        code: "Digit" + char
+      }));
+    }
 
-    // 5. Dispatch change
+    // 5. Dispatch change & Enter event (triggers Pathao fraud / success rate API lookup)
     inputEl.dispatchEvent(new Event("change", { bubbles: true }));
+    inputEl.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
+    inputEl.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
 
-    // 6. Keep input focused so popup remains open
-    inputEl.focus();
+    // 6. Blur and refocus sequence to trigger onBlur customer rating/fraud API
+    setTimeout(() => {
+      inputEl.dispatchEvent(new Event("blur", { bubbles: true }));
+      setTimeout(() => {
+        inputEl.focus();
+        // If an autocomplete dropdown appeared, click the matching entry
+        const dropdownOption = document.querySelector(
+          ".ant-select-item-option-content, .ant-select-dropdown [role='option'], .ant-dropdown-menu-item"
+        );
+        if (dropdownOption && dropdownOption.innerText && dropdownOption.innerText.includes(targetVal)) {
+          dropdownOption.click();
+        }
+      }, 150);
+    }, 200);
+
     return true;
   }
 
@@ -568,20 +512,22 @@
    * Check for pending user-triggered autofill data
    */
   function checkPendingAutofill(retryCount = 0) {
+    if (!isExtensionValid()) return;
     if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
 
     chrome.storage.local.get(["pathao_autofill_data"], (res) => {
+      if (!isExtensionValid()) return;
       if (res && res.pathao_autofill_data) {
         const item = res.pathao_autofill_data;
 
-        // STRICT RULE: ONLY fill if the user explicitly triggered this action!
+        // ONLY fill if the user explicitly triggered this action!
         if (!item.userTriggered) {
           chrome.storage.local.remove(["pathao_autofill_data"]);
           return;
         }
 
-        // Must be fresh (within 60 seconds of explicit user click)
-        if (Date.now() - (item.timestamp || 0) > 60 * 1000) {
+        // Must be fresh (within 5 minutes of explicit user copy/trigger)
+        if (Date.now() - (item.timestamp || 0) > 300 * 1000) {
           chrome.storage.local.remove(["pathao_autofill_data"]);
           return;
         }
@@ -596,8 +542,8 @@
         if (success) {
           // CONSUME IMMEDIATELY so it never auto-fills again!
           chrome.storage.local.remove(["pathao_autofill_data"]);
-        } else if (retryCount < 25) {
-          // React is still rendering the order creation form - retry in 250ms (up to ~6.5 seconds)
+        } else if (retryCount < 40) {
+          // React is still rendering the order creation form - retry in 250ms (up to 10 seconds)
           setTimeout(() => checkPendingAutofill(retryCount + 1), 250);
         }
       }
@@ -607,27 +553,33 @@
   // Observe dynamic form appearance for Pathao SPA page changes
   if (typeof MutationObserver !== "undefined" && typeof document !== "undefined") {
     let obsTimeout = null;
-    const observer = new MutationObserver(() => {
-      if (obsTimeout) return;
-      obsTimeout = setTimeout(() => {
-        obsTimeout = null;
-        if (typeof window !== "undefined" && window.location && window.location.href.includes("/courier")) {
-          chrome.storage.local.get(["pathao_autofill_data"], (res) => {
-            if (res && res.pathao_autofill_data && res.pathao_autofill_data.userTriggered) {
-              checkPendingAutofill(0);
-            }
-          });
+    let observer = null;
+    try {
+      observer = new MutationObserver(() => {
+        if (!isExtensionValid()) {
+          if (observer) {
+            try { observer.disconnect(); } catch (e) {}
+          }
+          return;
         }
-      }, 300);
-    });
-
-    if (document.body) {
-      observer.observe(document.body, { childList: true, subtree: true });
-    } else {
-      document.addEventListener("DOMContentLoaded", () => {
-        if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+        if (obsTimeout) return;
+        obsTimeout = setTimeout(() => {
+          obsTimeout = null;
+          if (!isExtensionValid()) return;
+          if (typeof window !== "undefined" && window.location && window.location.href.includes("/courier")) {
+            chrome.storage.local.get(["pathao_autofill_data"], (res) => {
+              if (res && res.pathao_autofill_data && res.pathao_autofill_data.userTriggered) {
+                checkPendingAutofill(0);
+              }
+            });
+          }
+        }, 300);
       });
-    }
+
+      if (document.body && isExtensionValid()) {
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (e) {}
   }
 
   // Listen for storage changes from explicit user triggers

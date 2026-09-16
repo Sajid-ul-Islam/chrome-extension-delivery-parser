@@ -12,7 +12,9 @@ if (typeof window !== "undefined") {
 }
 
 let currentRecords = [];
+let displayedRecords = [];
 let currentMetrics = null;
+let currentActivityFilter = "all";
 
 if (typeof document !== "undefined") {
   document.addEventListener("DOMContentLoaded", async () => {
@@ -84,6 +86,14 @@ function initActionHandlers() {
     filterTable(e.target.value);
   });
 
+  // Activity filter buttons (All, Unsent / Send with Pathao, Dispatched)
+  document.querySelectorAll(".activity-filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const filter = btn.getAttribute("data-filter");
+      filterByActivity(filter);
+    });
+  });
+
   // Export buttons
   document.getElementById("btn-export-excel").addEventListener("click", () => {
     if (!currentRecords.length) return;
@@ -103,6 +113,34 @@ function initActionHandlers() {
     if (!currentRecords.length) return;
     copyTableToClipboard(currentRecords);
     showToast(`Copied ${currentRecords.length} rows to clipboard!`);
+  });
+
+  // Column-wise copy chips
+  document.querySelectorAll(".btn-chip").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const col = btn.getAttribute("data-col");
+      if (col) copyColumn(col, btn);
+    });
+  });
+
+  // Column-wise copy dropdown
+  const selectCol = document.getElementById("select-copy-column");
+  if (selectCol) {
+    selectCol.addEventListener("change", (e) => {
+      const col = e.target.value;
+      if (col) {
+        copyColumn(col, selectCol);
+        selectCol.value = "";
+      }
+    });
+  }
+
+  // Clickable table headers for instant column copy
+  document.querySelectorAll("th.copyable-th").forEach(th => {
+    th.addEventListener("click", () => {
+      const col = th.getAttribute("data-col");
+      if (col) copyColumn(col, th);
+    });
   });
 }
 
@@ -133,138 +171,32 @@ async function handleExtractFromCurrentTab() {
 
     let parsedResult = null;
 
-    // Strategy 1: Directly inspect and extract structured DOM table rows or text from the page
+    // Strategy 1: Directly inspect and extract text from DOM table rows or text from the page
     try {
       const injectionResults = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: () => {
           const isConsId = (s) => /[A-Z]{2}\d{6}[A-Z0-9]+/i.test(s);
-          const isPhone = (s) => /(?:(?:\+?880)|0)1[3-9]\d{8}/.test(s);
+          const isWcOrder = (s) => /Preview\s*#\d+/i.test(s) || /Send with Pathao/i.test(s) || /#\d{3,8}\s+[a-zA-Z]/i.test(s);
 
-          // 1. Check if table rows with consignment IDs exist directly in DOM
-          const rows = Array.from(document.querySelectorAll("table tbody tr, .ant-table-tbody tr, tr[class*='row'], div[role='row']"));
-          const parcelRows = rows.filter(r => isConsId(r.innerText || ""));
-
-          if (parcelRows.length > 0) {
-            const extracted = [];
-            for (const row of parcelRows) {
-              const cells = Array.from(row.querySelectorAll("td, [role='cell'], div[class*='cell']"));
-              const cellTexts = cells.map(c => (c.innerText || "").trim());
-
-              let consId = "";
-              let type = "Parcel";
-              const consCell = cellTexts.find(t => isConsId(t)) || "";
-              if (consCell) {
-                const m = consCell.match(/([A-Z]{2}\d{6}[A-Z0-9]+)/i);
-                consId = m ? m[1] : "";
-                if (/express/i.test(consCell)) type = "Express";
-                else if (/normal/i.test(consCell)) type = "Normal";
-                else if (/document/i.test(consCell)) type = "Document";
-                else if (/parcel/i.test(consCell)) type = "Parcel";
-              }
-
-              let phone = "";
-              let name = "";
-              let address = "";
-              const phoneCell = cellTexts.find(t => isPhone(t)) || "";
-              if (phoneCell) {
-                const pm = phoneCell.match(/(?:(?:\+?880)|0)1[3-9]\d{8}/);
-                phone = pm ? pm[0] : "";
-                const lines = phoneCell.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-                const nonPhone = lines.filter(l => !l.includes(phone));
-                if (nonPhone.length > 0) name = nonPhone[0];
-                if (nonPhone.length > 1) address = nonPhone.slice(1).join(", ");
-              }
-
-              let orderId = "";
-              let store = "";
-              for (const t of cellTexts) {
-                if (t === consCell || t === phoneCell) continue;
-                if (!orderId) {
-                  const mOrder = t.match(/\b(ORD[-\w]+|#?\d{3,8}(?:\s*[a-zA-Z])?)\b/i);
-                  if (mOrder && !mOrder[1].startsWith("01")) {
-                    orderId = mOrder[1].trim();
-                  }
-                }
-                if (!store && /store|commerce|deen|outlet|mart|shop/i.test(t)) {
-                  const storeLine = t.split(/\r?\n/).find(l => /store|commerce|deen|outlet|mart|shop/i.test(l));
-                  if (storeLine) store = storeLine.trim();
-                }
-              }
-
-              let paymentStatus = "Unpaid";
-              for (const t of cellTexts) {
-                if (/^paid$/i.test(t) || (/\bpaid\b/i.test(t) && !/unpaid/i.test(t))) {
-                  paymentStatus = "Paid";
-                  break;
-                }
-              }
-
-              let deliveryStatus = "";
-              let statusUpdatedOn = "";
-              for (const t of cellTexts) {
-                if (/updated on/i.test(t) || /(At Delivery Hub|Delivered|In Transit|Returned|Hold|Pending|Waiting for Pickup|Cancelled)/i.test(t)) {
-                  const dm = t.match(/updated on\s*([^\n\r]+)/i);
-                  if (dm) statusUpdatedOn = dm[1].trim();
-                  deliveryStatus = t.replace(/updated on[^\n\r]*/i, "").trim().replace(/\n+/g, "; ");
-                  break;
-                }
-              }
-
-              let cod = 0, charge = 0, discount = 0;
-              for (const t of cellTexts) {
-                if (t === consCell || t === phoneCell) continue;
-                if (/updated on/i.test(t) || /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(t)) continue;
-                if (/(?:delivered|transit|hub|return|hold|pending|cancel|pickup)/i.test(t)) continue;
-
-                const codM = t.match(/COD\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
-                const chargeM = t.match(/Charge\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
-                const discountM = t.match(/Discount\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
-
-                if (codM) cod = parseFloat(codM[1].replace(/,/g, ""));
-                if (chargeM) charge = parseFloat(chargeM[1].replace(/,/g, ""));
-                if (discountM) discount = parseFloat(discountM[1].replace(/,/g, ""));
-
-                if (!cod && !charge) {
-                  const nums = Array.from(t.matchAll(/([\d,]+(?:\.\d+)?)/g))
-                    .map(m => parseFloat(m[1].replace(/,/g, "")))
-                    .filter(n => !isNaN(n) && n < 1000000);
-                  if (nums.length >= 3) {
-                    cod = nums[0]; charge = nums[1]; discount = nums[2]; break;
-                  } else if (nums.length === 2 && !nums.includes(Number(phone))) {
-                    cod = nums[0]; charge = nums[1]; break;
-                  } else if (nums.length === 1 && (t.toLowerCase().includes("cod") || nums[0] > 100) && !t.includes(phone)) {
-                    cod = nums[0];
-                  }
-                }
-              }
-
-              extracted.push({
-                "Consignment ID": consId,
-                "Type": type,
-                "Order ID": orderId,
-                "Store": store,
-                "Recipient Name": name,
-                "Address": address,
-                "Phone": phone,
-                "Delivery Status": deliveryStatus,
-                "Status Updated On": statusUpdatedOn,
-                "COD Amount": cod,
-                "Charge": charge,
-                "Discount": discount,
-                "Payment Status": paymentStatus,
-                "Action": ""
-              });
-            }
-
-            if (extracted.length > 0) {
-              return { mode: "structured", records: extracted };
-            }
-          }
-
-          // 2. User selection
+          // 1. User selection
           const sel = window.getSelection ? window.getSelection().toString().trim() : "";
-          if (sel && isConsId(sel)) return { mode: "text", text: sel.replace(/\t/g, "\n") };
+          if (sel && (isConsId(sel) || isWcOrder(sel))) return { text: sel.replace(/\t/g, "\n") };
+
+          // 2. Check if table rows with consignment IDs OR WooCommerce order rows exist directly in DOM
+          const rows = Array.from(document.querySelectorAll("table tbody tr, .ant-table-tbody tr, tr[class*='row'], div[role='row'], tr[id*='post-'], tr.type-shop_order"));
+          const validRows = rows.filter(r => isConsId(r.innerText || "") || isWcOrder(r.innerText || "") || (r.id && r.id.startsWith("post-")));
+
+          if (validRows.length > 0) {
+            const rowTexts = validRows.map(row => {
+              const cells = Array.from(row.querySelectorAll("td, th, [role='cell'], div[class*='cell']"));
+              if (cells.length > 0) {
+                return cells.map(c => (c.innerText || "").trim()).filter(Boolean).join("\n");
+              }
+              return (row.innerText || "").trim();
+            });
+            return { text: rowTexts.join("\n---\n") };
+          }
 
           // 3. Scan candidate tables/containers
           const candidates = Array.from(document.querySelectorAll(
@@ -272,22 +204,16 @@ async function handleExtractFromCurrentTab() {
           ));
           for (const el of candidates) {
             const txt = el.innerText || "";
-            if (isConsId(txt)) return { mode: "text", text: txt.replace(/\t/g, "\n") };
+            if (isConsId(txt) || isWcOrder(txt)) return { text: txt.replace(/\t/g, "\n") };
           }
 
-          return { mode: "text", text: (document.body ? document.body.innerText : "").replace(/\t/g, "\n") };
+          return { text: (document.body ? document.body.innerText : "").replace(/\t/g, "\n") };
         }
       });
 
       if (injectionResults && injectionResults[0] && injectionResults[0].result) {
         const resObj = injectionResults[0].result;
-        if (resObj.mode === "structured" && resObj.records && resObj.records.length > 0) {
-          parsedResult = {
-            records: resObj.records,
-            metrics: computeMetrics(resObj.records),
-            mode: "DOM Table"
-          };
-        } else if (resObj.mode === "text" && resObj.text) {
+        if (resObj && resObj.text) {
           parsedResult = parseDeliveryData(resObj.text);
           if (!parsedResult || !parsedResult.records || parsedResult.records.length === 0) {
             parsedResult = parseDeliveryData(resObj.text, true);
@@ -305,6 +231,8 @@ async function handleExtractFromCurrentTab() {
           .catch(() => null);
         if (response && response.records && response.records.length > 0) {
           parsedResult = response;
+        } else if (response && response.rawText) {
+          parsedResult = parseDeliveryData(response.rawText);
         }
       } catch (e) {
         parsedResult = null;
@@ -349,6 +277,7 @@ function handleParsePaste() {
 function displayResults(result) {
   const { records, metrics, mode } = result;
   currentRecords = records || [];
+  displayedRecords = currentRecords;
   currentMetrics = metrics;
 
   const emptyEl = document.getElementById("empty-state");
@@ -364,17 +293,61 @@ function displayResults(result) {
   emptyEl.classList.add("hidden");
   resultsEl.classList.remove("hidden");
 
+  // WooCommerce Activity filter bar
+  const activityFilterBar = document.getElementById("activity-filter-bar");
+  const isWooCommerce = mode === "woocommerce" || (metrics.unsentCount > 0 && metrics.dispatchedCount >= 0);
+
+  if (activityFilterBar) {
+    if (isWooCommerce || metrics.unsentCount > 0) {
+      activityFilterBar.classList.remove("hidden");
+      const countAllEl = document.getElementById("filter-count-all");
+      const countUnsentEl = document.getElementById("filter-count-unsent");
+      const countDispatchedEl = document.getElementById("filter-count-dispatched");
+      if (countAllEl) countAllEl.textContent = metrics.totalParcels;
+      if (countUnsentEl) countUnsentEl.textContent = metrics.unsentCount;
+      if (countDispatchedEl) countDispatchedEl.textContent = metrics.dispatchedCount;
+    } else {
+      activityFilterBar.classList.add("hidden");
+    }
+  }
+
   // Update KPIs
-  document.getElementById("kpi-total").textContent = metrics.totalParcels;
-  document.getElementById("kpi-paid").textContent = metrics.paidCount;
-  document.getElementById("kpi-unpaid").textContent = metrics.unpaidCount;
-  document.getElementById("kpi-cod").textContent = `৳${Math.round(metrics.totalCOD).toLocaleString()}`;
-  document.getElementById("kpi-net").textContent = `৳${Math.round(metrics.netRevenue).toLocaleString()}`;
+  if (isWooCommerce) {
+    document.getElementById("kpi-title-total").textContent = "Total Orders";
+    document.getElementById("kpi-total").textContent = metrics.totalParcels;
+
+    document.getElementById("kpi-title-status").textContent = "⚡ Unsent Activity";
+    document.getElementById("kpi-status-container").innerHTML = `<strong class="amber">${metrics.unsentCount} Unsent</strong>`;
+
+    document.getElementById("kpi-title-cod").textContent = "Total Amount";
+    document.getElementById("kpi-cod").textContent = `৳${Math.round(metrics.totalCOD).toLocaleString()}`;
+
+    document.getElementById("kpi-title-net").textContent = "🚚 Dispatched";
+    document.getElementById("kpi-net").textContent = `${metrics.dispatchedCount} Dispatched`;
+  } else {
+    document.getElementById("kpi-title-total").textContent = "Total Parcels";
+    document.getElementById("kpi-total").textContent = metrics.totalParcels;
+
+    document.getElementById("kpi-title-status").textContent = "Paid / Unpaid";
+    document.getElementById("kpi-status-container").innerHTML = `<span id="kpi-paid">${metrics.paidCount}</span> / <span id="kpi-unpaid">${metrics.unpaidCount}</span>`;
+
+    document.getElementById("kpi-title-cod").textContent = "Total COD";
+    document.getElementById("kpi-cod").textContent = `৳${Math.round(metrics.totalCOD).toLocaleString()}`;
+
+    document.getElementById("kpi-title-net").textContent = "Net Revenue";
+    document.getElementById("kpi-net").textContent = `৳${Math.round(metrics.netRevenue).toLocaleString()}`;
+  }
+
+  currentActivityFilter = "all";
+  document.querySelectorAll(".activity-filter-btn").forEach(b => {
+    b.classList.toggle("active", b.getAttribute("data-filter") === "all");
+  });
 
   // Populate Table
   renderTableRows(currentRecords);
 
-  showToast(`Parsed ${currentRecords.length} records (${mode} mode)!`);
+  const modeName = mode === "woocommerce" ? "WooCommerce" : mode;
+  showToast(`Parsed ${currentRecords.length} records (${modeName} mode)!`);
 }
 
 /**
@@ -387,18 +360,64 @@ function renderTableRows(records) {
   for (let r of records) {
     const tr = document.createElement("tr");
 
+    const cons = (r["Consignment ID"] || "").toString();
+    const isUnsent = /Send with Pathao|Unsent/i.test(cons) || /Send with Pathao/i.test(r["Delivery Status"] || "");
+    if (isUnsent) {
+      tr.classList.add("row-unsent");
+    }
+
     const pStatus = (r["Payment Status"] || "Unpaid").toLowerCase();
-    const isPaid = pStatus === "paid";
+    const isPaid = pStatus === "paid" || pStatus === "completed";
     const statusPillClass = isPaid ? "status-paid" : "status-unpaid";
 
+    const isExchange = /exchange/i.test(r["Type"] || "") || /^(?:D|EX)\s*-\s*\d/i.test(r["Order ID"] || "");
+    const typeClass = isExchange ? "badge-type badge-exchange" : "badge-type";
+    const typeBadge = r["Type"] ? `<span class="${typeClass}">${escapeHTML(r["Type"])}</span>` : "";
+    const updatedOn = r["Status Updated On"] ? `<div class="sub-date">${escapeHTML(r["Status Updated On"])}</div>` : "";
+    const storeVal = r["Store"] ? escapeHTML(r["Store"]) : "-";
+    const chargeVal = r["Charge"] ? `৳${Number(r["Charge"]).toLocaleString()}` : "৳0";
+    const discountVal = r["Discount"] ? `৳${Number(r["Discount"]).toLocaleString()}` : "৳0";
+
+    let consCellContent = "";
+    if (isUnsent) {
+      consCellContent = `
+        <div class="cons-cell">
+          <span class="badge-unsent">⚡ Send with Pathao</span>
+          ${typeBadge}
+        </div>
+      `;
+    } else {
+      consCellContent = `
+        <div class="cons-cell">
+          <strong>${escapeHTML(r["Consignment ID"])}</strong>
+          ${typeBadge}
+        </div>
+      `;
+    }
+
+    let delStatusBadge = "";
+    if (isUnsent) {
+      delStatusBadge = `<span class="badge-unsent">⚡ Action Needed</span>`;
+    } else {
+      delStatusBadge = `<span class="status-pill">${escapeHTML(r["Delivery Status"] || "Unknown")}</span>`;
+    }
+
     tr.innerHTML = `
-      <td><strong>${escapeHTML(r["Consignment ID"])}</strong></td>
-      <td>${escapeHTML(r["Order ID"] || "-")}</td>
-      <td title="${escapeHTML(r["Address"] || "")}">${escapeHTML(r["Recipient Name"] || "-")}</td>
-      <td>${escapeHTML(r["Phone"] || "-")}</td>
-      <td><span class="status-pill">${escapeHTML(r["Delivery Status"] || "Unknown")}</span></td>
-      <td><strong>৳${Number(r["COD Amount"] || 0).toLocaleString()}</strong></td>
-      <td><span class="status-pill ${statusPillClass}">${isPaid ? "Paid" : "Unpaid"}</span></td>
+      <td>${consCellContent}</td>
+      <td>${escapeHTML(r["Type"] || "Parcel")}</td>
+      <td><strong>${escapeHTML(r["Order ID"] || "-")}</strong></td>
+      <td title="${storeVal}">${storeVal}</td>
+      <td title="${escapeHTML(r["Address"] || "")}"><strong>${escapeHTML(r["Recipient Name"] || "-")}</strong></td>
+      <td><code>${escapeHTML(r["Phone"] || "-")}</code></td>
+      <td title="${escapeHTML(r["Address"] || "")}" class="cell-address">${escapeHTML(r["Address"] || "-")}</td>
+      <td>
+        ${delStatusBadge}
+        ${updatedOn}
+      </td>
+      <td><strong class="text-green">৳${Number(r["COD Amount"] || 0).toLocaleString()}</strong></td>
+      <td>${chargeVal}</td>
+      <td>${discountVal}</td>
+      <td><span class="status-pill ${statusPillClass}">${escapeHTML(r["Payment Status"] || (isPaid ? "Paid" : "Unpaid"))}</span></td>
     `;
 
     tbody.appendChild(tr);
@@ -406,25 +425,100 @@ function renderTableRows(records) {
 }
 
 /**
+ * Filter records by unread/unsent activity (All / Unsent / Dispatched)
+ */
+function filterByActivity(filterType) {
+  currentActivityFilter = filterType || "all";
+
+  // Update button active state
+  document.querySelectorAll(".activity-filter-btn").forEach(b => {
+    b.classList.toggle("active", b.getAttribute("data-filter") === currentActivityFilter);
+  });
+
+  applyFilters();
+}
+
+/**
  * Search filter for table
  */
 function filterTable(query) {
-  if (!query || !query.trim()) {
-    renderTableRows(currentRecords);
+  applyFilters();
+}
+
+/**
+ * Combined activity filter + text search
+ */
+function applyFilters() {
+  const query = (document.getElementById("search-input").value || "").trim().toLowerCase();
+
+  displayedRecords = currentRecords.filter(r => {
+    // 1. Activity filter check
+    const cons = (r["Consignment ID"] || "").toString();
+    const delStatus = (r["Delivery Status"] || "").toString();
+    const isUnsent = /Send with Pathao|Unsent/i.test(cons) || /Send with Pathao|Unsent/i.test(delStatus);
+
+    if (currentActivityFilter === "unsent" && !isUnsent) return false;
+    if (currentActivityFilter === "dispatched" && (isUnsent || !cons)) return false;
+
+    // 2. Search query check
+    if (query) {
+      const matches = (
+        (r["Consignment ID"] && r["Consignment ID"].toLowerCase().includes(query)) ||
+        (r["Order ID"] && r["Order ID"].toLowerCase().includes(query)) ||
+        (r["Recipient Name"] && r["Recipient Name"].toLowerCase().includes(query)) ||
+        (r["Phone"] && r["Phone"].includes(query)) ||
+        (r["Address"] && r["Address"].toLowerCase().includes(query)) ||
+        (r["Delivery Status"] && r["Delivery Status"].toLowerCase().includes(query)) ||
+        (r["Store"] && r["Store"].toLowerCase().includes(query)) ||
+        (r["Type"] && r["Type"].toLowerCase().includes(query))
+      );
+      if (!matches) return false;
+    }
+
+    return true;
+  });
+
+  renderTableRows(displayedRecords);
+}
+
+/**
+ * Copy specific column (1-click column-wise copy)
+ */
+function copyColumn(colName, triggerEl) {
+  const list = (displayedRecords && displayedRecords.length > 0) ? displayedRecords : currentRecords;
+  if (!list || !list.length) {
+    showToast("No delivery records to copy from.");
     return;
   }
-  const q = query.toLowerCase().trim();
-  const filtered = currentRecords.filter(r => {
-    return (
-      (r["Consignment ID"] && r["Consignment ID"].toLowerCase().includes(q)) ||
-      (r["Order ID"] && r["Order ID"].toLowerCase().includes(q)) ||
-      (r["Recipient Name"] && r["Recipient Name"].toLowerCase().includes(q)) ||
-      (r["Phone"] && r["Phone"].includes(q)) ||
-      (r["Delivery Status"] && r["Delivery Status"].toLowerCase().includes(q)) ||
-      (r["Store"] && r["Store"].toLowerCase().includes(q))
-    );
+
+  const values = list.map(r => {
+    const val = r[colName];
+    if (val === undefined || val === null) return "";
+    return String(val).trim();
   });
-  renderTableRows(filtered);
+
+  const text = values.join("\n");
+  navigator.clipboard.writeText(text).then(() => {
+    const filledCount = values.filter(v => v !== "").length;
+    showToast(`📋 Copied ${filledCount} ${colName} values to clipboard!`);
+
+    if (triggerEl) {
+      triggerEl.classList.add("copied");
+      const origText = triggerEl.innerHTML;
+      if (triggerEl.classList.contains("btn-chip")) {
+        triggerEl.innerHTML = "✓ Copied!";
+      }
+      setTimeout(() => {
+        triggerEl.classList.remove("copied");
+        if (triggerEl.classList.contains("btn-chip")) {
+          triggerEl.innerHTML = origText;
+        }
+      }, 1200);
+    }
+  }).catch(err => {
+    console.error("Clipboard copy error:", err);
+    showToast("Failed to copy to clipboard.");
+  });
 }
 
 /**
@@ -449,7 +543,11 @@ function copyTableToClipboard(records) {
  */
 function resetResults() {
   currentRecords = [];
+  displayedRecords = [];
   currentMetrics = null;
+  currentActivityFilter = "all";
+  const activityFilterBar = document.getElementById("activity-filter-bar");
+  if (activityFilterBar) activityFilterBar.classList.add("hidden");
   document.getElementById("results-container").classList.add("hidden");
   document.getElementById("empty-state").classList.remove("hidden");
 }

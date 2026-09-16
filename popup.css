@@ -21,9 +21,9 @@
 }
 
 body {
-  width: 580px;
-  min-height: 480px;
-  max-height: 590px;
+  width: 760px;
+  min-height: 500px;
+  max-height: 600px;
   background-color: var(--bg-main);
   color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -375,10 +375,103 @@ textarea:focus {
   background: rgba(255, 255, 255, 0.14);
 }
 
+/* Column-Wise Copy Toolbar */
+.col-copy-toolbar {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.col-copy-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.col-copy-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.col-copy-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.col-copy-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.btn-chip {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.btn-chip:hover {
+  background: #1e293b;
+  color: #ffffff;
+  border-color: rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-chip:active {
+  transform: translateY(0);
+}
+
+.btn-chip.copied {
+  background: rgba(16, 185, 129, 0.25) !important;
+  color: #34d399 !important;
+  border-color: rgba(16, 185, 129, 0.6) !important;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+}
+
+.col-copy-select-wrapper {
+  margin-left: 2px;
+}
+
+.select-chip {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+}
+
+.select-chip:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #ffffff;
+}
+
 /* Table Container */
 .table-container {
   max-height: 230px;
   overflow-y: auto;
+  overflow-x: auto;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: var(--bg-card);
@@ -389,35 +482,108 @@ table {
   border-collapse: collapse;
   text-align: left;
   font-size: 11px;
+  min-width: 720px;
 }
 
 thead {
   position: sticky;
   top: 0;
-  background: #1e293b;
+  background: #1a2234;
   z-index: 10;
 }
 
 th {
-  padding: 8px 10px;
+  padding: 7px 9px;
   font-weight: 600;
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border-color);
   white-space: nowrap;
 }
 
+th.copyable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+th.copyable-th:hover {
+  background: #25334d;
+  color: #60a5fa;
+}
+
+th.copyable-th .copy-icon {
+  font-size: 9px;
+  opacity: 0.4;
+  margin-left: 3px;
+  display: inline-block;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+th.copyable-th:hover .copy-icon {
+  opacity: 1;
+  transform: scale(1.15);
+  color: #60a5fa;
+}
+
+th.copyable-th.copied {
+  background: rgba(16, 185, 129, 0.25) !important;
+  color: #34d399 !important;
+}
+
 td {
-  padding: 8px 10px;
+  padding: 6px 9px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 tbody tr:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.035);
 }
 
-/* Badges */
+/* Badges & Cell Formats */
+.cons-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.badge-type {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.badge-type.badge-exchange {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.sub-date {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.cell-address {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.text-green {
+  color: #34d399;
+}
+
 .status-pill {
   display: inline-block;
   padding: 2px 6px;
@@ -607,4 +773,128 @@ kbd {
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: #ffffff;
 }
+
+/* Activity Filter Bar (WooCommerce Unsent / Dispatched Activity) */
+.activity-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(19, 27, 46, 0.85);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 2px;
+}
+
+.activity-filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #93c5fd;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.activity-filter-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.activity-filter-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.activity-filter-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.activity-filter-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #3b82f6;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+}
+
+.activity-filter-btn.btn-filter-unsent {
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+}
+
+.activity-filter-btn.btn-filter-unsent:hover {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.activity-filter-btn.btn-filter-unsent.active {
+  background: #d97706;
+  border-color: #f59e0b;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
+}
+
+.activity-filter-btn.btn-filter-dispatched {
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+}
+
+.activity-filter-btn.btn-filter-dispatched:hover {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.activity-filter-btn.btn-filter-dispatched.active {
+  background: #059669;
+  border-color: #10b981;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.4);
+}
+
+/* Badges for WooCommerce Unsent / Dispatched Activity */
+.badge-unsent {
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-block;
+}
+
+.badge-dispatched {
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-block;
+}
+
+.kpi-value.amber {
+  color: #fbbf24;
+}
+
+tr.row-unsent {
+  background: rgba(245, 158, 11, 0.04);
+}
+
+tr.row-unsent:hover {
+  background: rgba(245, 158, 11, 0.09) !important;
+}
+
 

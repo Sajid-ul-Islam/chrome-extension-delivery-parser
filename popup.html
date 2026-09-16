@@ -132,20 +132,36 @@
       <!-- KPI Cards -->
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-title">Total Parcels</div>
+          <div class="kpi-title" id="kpi-title-total">Total Parcels</div>
           <div class="kpi-value" id="kpi-total">0</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-title">Paid / Unpaid</div>
-          <div class="kpi-value"><span id="kpi-paid">0</span> / <span id="kpi-unpaid">0</span></div>
+          <div class="kpi-title" id="kpi-title-status">Paid / Unpaid</div>
+          <div class="kpi-value" id="kpi-status-container"><span id="kpi-paid">0</span> / <span id="kpi-unpaid">0</span></div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-title">Total COD</div>
+          <div class="kpi-title" id="kpi-title-cod">Total COD</div>
           <div class="kpi-value green" id="kpi-cod">৳0</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-title">Net Revenue</div>
+          <div class="kpi-title" id="kpi-title-net">Net Revenue</div>
           <div class="kpi-value blue" id="kpi-net">৳0</div>
+        </div>
+      </div>
+
+      <!-- Activity / Dispatch Status Filter Bar -->
+      <div id="activity-filter-bar" class="activity-filter-bar hidden">
+        <div class="activity-filter-label">⚡ Activity Filter:</div>
+        <div class="activity-filter-buttons">
+          <button type="button" class="activity-filter-btn active" data-filter="all">
+            <span>All (<span id="filter-count-all">0</span>)</span>
+          </button>
+          <button type="button" class="activity-filter-btn btn-filter-unsent" data-filter="unsent" title="Filter orders needing Pathao dispatch">
+            <span>⚡ Unsent / Send with Pathao (<span id="filter-count-unsent">0</span>)</span>
+          </button>
+          <button type="button" class="activity-filter-btn btn-filter-dispatched" data-filter="dispatched" title="Filter already dispatched orders">
+            <span>🚚 Dispatched (<span id="filter-count-dispatched">0</span>)</span>
+          </button>
         </div>
       </div>
 
@@ -155,7 +171,7 @@
           type="text"
           id="search-input"
           class="search-box"
-          placeholder="🔍 Search consignment, customer, phone..."
+          placeholder="🔍 Search consignment, order, customer, phone, store..."
         />
         <div class="export-buttons">
           <button id="btn-export-excel" class="btn-success" title="Download formatted Excel (.xlsx) spreadsheet">
@@ -164,9 +180,38 @@
           <button id="btn-export-csv" class="btn-secondary" title="Download standard CSV file">
             <span>📄 CSV</span>
           </button>
-          <button id="btn-copy-table" class="btn-secondary" title="Copy clean table for Google Sheets/Excel">
-            <span>📋 Copy</span>
+          <button id="btn-copy-table" class="btn-secondary" title="Copy entire table for Google Sheets/Excel">
+            <span>📋 Copy Table</span>
           </button>
+        </div>
+      </div>
+
+      <!-- Column-Wise Copy Toolbar -->
+      <div class="col-copy-toolbar">
+        <div class="col-copy-header">
+          <span class="col-copy-title">📋 Copy Column:</span>
+          <span class="col-copy-hint">(Click chip or table header to copy)</span>
+        </div>
+        <div class="col-copy-chips">
+          <button type="button" class="btn-chip" data-col="Phone" title="Copy all customer phone numbers (1 per line)">📱 Phone</button>
+          <button type="button" class="btn-chip" data-col="Consignment ID" title="Copy all Consignment IDs">🏷️ Consignment</button>
+          <button type="button" class="btn-chip" data-col="Order ID" title="Copy all Order IDs">📦 Order ID</button>
+          <button type="button" class="btn-chip" data-col="COD Amount" title="Copy all COD Amounts">💰 COD (৳)</button>
+          <button type="button" class="btn-chip" data-col="Store" title="Copy all Store names">🏢 Store</button>
+          <button type="button" class="btn-chip" data-col="Recipient Name" title="Copy all Customer names">👤 Customer</button>
+          <button type="button" class="btn-chip" data-col="Address" title="Copy all Delivery addresses">📍 Address</button>
+          <button type="button" class="btn-chip" data-col="Delivery Status" title="Copy all Delivery statuses">🚚 Status</button>
+          <button type="button" class="btn-chip" data-col="Charge" title="Copy all Delivery charges">💳 Charge</button>
+          <div class="col-copy-select-wrapper">
+            <select id="select-copy-column" class="select-chip" title="Copy any other column">
+              <option value="">More columns...</option>
+              <option value="Type">Type (Parcel/Express)</option>
+              <option value="Status Updated On">Status Updated On</option>
+              <option value="Discount">Discount Amount</option>
+              <option value="Payment Status">Payment Status (Paid/Unpaid)</option>
+              <option value="Action">Actions (View/POD)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -175,13 +220,18 @@
         <table id="records-table">
           <thead>
             <tr>
-              <th>Consignment</th>
-              <th>Order ID</th>
-              <th>Customer</th>
-              <th>Phone</th>
-              <th>Status</th>
-              <th>COD (৳)</th>
-              <th>Payment</th>
+              <th class="copyable-th" data-col="Consignment ID" title="Click to copy all Consignment IDs">Consignment <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="Type" title="Click to copy all Types">Type <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="Order ID" title="Click to copy all Order IDs">Order ID <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="Store" title="Click to copy all Stores">Store <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="Recipient Name" title="Click to copy all Customers">Customer <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="Phone" title="Click to copy all Phone numbers">Phone <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="Address" title="Click to copy all Addresses">Address <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="Delivery Status" title="Click to copy all Statuses">Status <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="COD Amount" title="Click to copy all COD Amounts">COD (৳) <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="Charge" title="Click to copy all Charges">Charge (৳) <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="Discount" title="Click to copy all Discounts">Discount (৳) <span class="copy-icon">📋</span></th>
+              <th class="copyable-th" data-col="Payment Status" title="Click to copy all Payment statuses">Payment <span class="copy-icon">📋</span></th>
             </tr>
           </thead>
           <tbody id="table-body">
@@ -196,7 +246,7 @@
       <div class="empty-icon">📦</div>
       <div class="empty-title">Ready to Parse Deliveries</div>
       <div class="empty-desc">
-        Open <strong>merchant.pathao.com</strong> and click <em>Extract</em>, or switch to the <em>Paste & Parse</em> tab to parse copied text.
+        Open <strong>merchant.pathao.com</strong> or <strong>WooCommerce Orders</strong> (<code>deencommerce.com/wp-admin/...</code>) and click <em>Extract</em>, or switch to the <em>Paste & Parse</em> tab to parse copied text.
       </div>
     </div>
 
