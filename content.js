@@ -55,13 +55,15 @@
       const cellTexts = cells.map(c => (c.innerText || "").trim());
 
       let consId = "";
-      let type = "";
+      let type = "Parcel";
       const consCell = cellTexts.find(t => isConsId(t)) || "";
       if (consCell) {
         const m = consCell.match(/([A-Z]{2}\d{6}[A-Z0-9]+)/i);
         consId = m ? m[1] : "";
         if (/express/i.test(consCell)) type = "Express";
         else if (/normal/i.test(consCell)) type = "Normal";
+        else if (/document/i.test(consCell)) type = "Document";
+        else if (/parcel/i.test(consCell)) type = "Parcel";
       }
 
       let phone = "";
@@ -77,6 +79,22 @@
         if (nonPhone.length > 1) address = nonPhone.slice(1).join(", ");
       }
 
+      let orderId = "";
+      let store = "";
+      for (const t of cellTexts) {
+        if (t === consCell || t === phoneCell) continue;
+        if (!orderId) {
+          const mOrder = t.match(/\b(ORD[-\w]+|#?\d{3,8}(?:\s*[a-zA-Z])?)\b/i);
+          if (mOrder && !mOrder[1].startsWith("01")) {
+            orderId = mOrder[1].trim();
+          }
+        }
+        if (!store && /store|commerce|deen|outlet|mart|shop/i.test(t)) {
+          const storeLine = t.split(/\r?\n/).find(l => /store|commerce|deen|outlet|mart|shop/i.test(l));
+          if (storeLine) store = storeLine.trim();
+        }
+      }
+
       let paymentStatus = "Unpaid";
       for (const t of cellTexts) {
         if (/^paid$/i.test(t) || (/\bpaid\b/i.test(t) && !/unpaid/i.test(t))) {
@@ -88,7 +106,7 @@
       let deliveryStatus = "";
       let statusUpdatedOn = "";
       for (const t of cellTexts) {
-        if (/updated on/i.test(t) || /(At Delivery Hub|Delivered|In Transit|Returned|Hold|Pending|Cancelled)/i.test(t)) {
+        if (/updated on/i.test(t) || /(At Delivery Hub|Delivered|In Transit|Returned|Hold|Pending|Waiting for Pickup|Cancelled)/i.test(t)) {
           const dm = t.match(/updated on\s*([^\n\r]+)/i);
           if (dm) statusUpdatedOn = dm[1].trim();
           deliveryStatus = t.replace(/updated on[^\n\r]*/i, "").trim().replace(/\n+/g, "; ");
@@ -100,28 +118,27 @@
       for (const t of cellTexts) {
         if (t === consCell || t === phoneCell) continue;
         if (/updated on/i.test(t) || /\d{1,2}\/\d{1,2}\/\d{2,4}/.test(t)) continue;
-        if (/(?:delivered|transit|hub|return|hold|pending|cancel)/i.test(t)) continue;
+        if (/(?:delivered|transit|hub|return|hold|pending|cancel|pickup)/i.test(t)) continue;
 
-        const nums = Array.from(t.matchAll(/([\d,]+(?:\.\d+)?)/g))
-          .map(m => parseFloat(m[1].replace(/,/g, "")))
-          .filter(n => !isNaN(n) && n < 1000000);
-        if (nums.length >= 3) {
-          cod = nums[0]; charge = nums[1]; discount = nums[2]; break;
-        } else if (nums.length === 2 && !nums.includes(Number(phone))) {
-          cod = nums[0]; charge = nums[1]; break;
-        } else if (nums.length === 1 && (t.toLowerCase().includes("cod") || nums[0] > 100) && !t.includes(phone)) {
-          cod = nums[0];
-        }
-      }
+        const codM = t.match(/COD\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
+        const chargeM = t.match(/Charge\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
+        const discountM = t.match(/Discount\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
 
-      let orderId = "";
-      let store = "";
-      for (const t of cellTexts) {
-        if (t === consCell || t === phoneCell) continue;
-        if (!orderId && (/^ORD[-\d]+/i.test(t) || /^\d{4,8}$/.test(t))) {
-          orderId = t;
-        } else if (!store && /store|commerce|deen|outlet/i.test(t)) {
-          store = t;
+        if (codM) cod = parseFloat(codM[1].replace(/,/g, ""));
+        if (chargeM) charge = parseFloat(chargeM[1].replace(/,/g, ""));
+        if (discountM) discount = parseFloat(discountM[1].replace(/,/g, ""));
+
+        if (!cod && !charge) {
+          const nums = Array.from(t.matchAll(/([\d,]+(?:\.\d+)?)/g))
+            .map(m => parseFloat(m[1].replace(/,/g, "")))
+            .filter(n => !isNaN(n) && n < 1000000);
+          if (nums.length >= 3) {
+            cod = nums[0]; charge = nums[1]; discount = nums[2]; break;
+          } else if (nums.length === 2 && !nums.includes(Number(phone))) {
+            cod = nums[0]; charge = nums[1]; break;
+          } else if (nums.length === 1 && (t.toLowerCase().includes("cod") || nums[0] > 100) && !t.includes(phone)) {
+            cod = nums[0];
+          }
         }
       }
 

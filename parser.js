@@ -83,24 +83,20 @@ function parseStandardRecords(raw) {
       "COD Amount": 0.0,
       "Charge": 0.0,
       "Discount": 0.0,
-      "Payment Status": "",
+      "Payment Status": "Unpaid",
       "Action": ""
     };
     i++;
 
-    // 1. Optional Type
-    if (i < lines.length && /^(?:Type:?|Express|Normal)/i.test(lines[i])) {
+    // 1. Optional Type immediately following Consignment ID
+    if (i < lines.length && /^(?:Type:?|Parcel|Express|Normal|Document|Fragile)/i.test(lines[i])) {
       rec["Type"] = lines[i].replace(/^Type:\s*/i, "").trim();
       i++;
-      if (rec["Type"] === "" && i < lines.length && /^(?:Express|Normal)$/i.test(lines[i])) {
-        rec["Type"] = lines[i].trim();
-        i++;
-      }
     }
 
     // 2. Scan ahead for Phone number anchor (avoids column shifting)
     let phoneIdx = -1;
-    for (let p = i; p < Math.min(i + 8, lines.length); p++) {
+    for (let p = i; p < Math.min(i + 14, lines.length); p++) {
       if (isConsignmentId(lines[p])) break;
       if (/(?:(?:\+?880)|0)1[3-9]\d{8}/.test(lines[p])) {
         phoneIdx = p;
@@ -113,22 +109,32 @@ function parseStandardRecords(raw) {
       const preTokens = lines.slice(i, phoneIdx);
       i = phoneIdx + 1;
 
-      let tIdx = 0;
-      if (tIdx < preTokens.length && (/^ORD[-\d]+/i.test(preTokens[tIdx]) || /^\d{4,8}$/.test(preTokens[tIdx]))) {
-        rec["Order ID"] = preTokens[tIdx];
-        tIdx++;
+      let orderId = "";
+      let store = "";
+      let name = "";
+      const addressParts = [];
+
+      for (let t = 0; t < preTokens.length; t++) {
+        const token = preTokens[t].trim();
+        if (!token) continue;
+
+        if (!rec["Type"] && /^(?:Parcel|Express|Normal|Document|Fragile)$/i.test(token)) {
+          rec["Type"] = token;
+        } else if (!orderId && /^(?:#?\d{3,8}(?:\s*[a-zA-Z])?|ORD[-\w]+)$/i.test(token)) {
+          orderId = token;
+        } else if (!store && (/store|commerce|deen|outlet|mart|shop|enterprise|hub/i.test(token) || (orderId && !name && preTokens.length - t >= 3))) {
+          store = token;
+        } else if (!name) {
+          name = token;
+        } else {
+          addressParts.push(token);
+        }
       }
-      if (tIdx < preTokens.length && (/store|commerce|deen|outlet/i.test(preTokens[tIdx]) || (preTokens.length - tIdx >= 3))) {
-        rec["Store"] = preTokens[tIdx];
-        tIdx++;
-      }
-      if (tIdx < preTokens.length) {
-        rec["Recipient Name"] = preTokens[tIdx];
-        tIdx++;
-      }
-      if (tIdx < preTokens.length) {
-        rec["Address"] = preTokens.slice(tIdx).join(", ");
-      }
+
+      rec["Order ID"] = orderId;
+      rec["Store"] = store;
+      rec["Recipient Name"] = name;
+      rec["Address"] = addressParts.join(", ");
     } else {
       // Sequential fallback
       if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Order ID"] = lines[i]; i++; }
@@ -138,50 +144,40 @@ function parseStandardRecords(raw) {
       if (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) { rec["Phone"] = lines[i]; i++; }
     }
 
-    // 3. Delivery Status & Date (stops at numbers, updated on, or next consignment)
-    const statusParts = [];
-    while (i < lines.length && !isConsignmentId(lines[i]) && !/^[\d,]+(?:\.\d+)?$/.test(lines[i])) {
-      if (lines[i].toLowerCase().startsWith("updated on")) {
-        rec["Status Updated On"] = parseDate(lines[i]);
-        i++;
-        break;
-      }
-      statusParts.push(lines[i]);
-      i++;
-    }
-    rec["Delivery Status"] = statusParts.join("; ");
-    if (i < lines.length && lines[i].toLowerCase().startsWith("updated on")) {
-      rec["Status Updated On"] = parseDate(lines[i]);
-      i++;
-    }
-
-    // 4. Amounts (COD Amount, Charge, Discount)
-    if (i < lines.length && /^[\d,]+(?:\.\d+)?$/.test(lines[i])) {
-      rec["COD Amount"] = parseAmount(lines[i]);
-      i++;
-    }
-    if (i < lines.length && /^[\d,]+(?:\.\d+)?$/.test(lines[i])) {
-      rec["Charge"] = parseAmount(lines[i]);
-      i++;
-    }
-    if (i < lines.length && /^[\d,]+(?:\.\d+)?$/.test(lines[i])) {
-      rec["Discount"] = parseAmount(lines[i]);
-      i++;
-    }
-
-    // 5. Payment Status
-    if (i < lines.length && /^(?:Paid|Unpaid)$/i.test(lines[i])) {
-      rec["Payment Status"] = lines[i];
-      i++;
-    }
-
-    // 6. Action
+    // 3. Tokens after Phone (Delivery Status, Updated On, Amounts, Payment, Actions)
     const actionLines = [];
     while (i < lines.length && !isConsignmentId(lines[i])) {
-      actionLines.push(lines[i]);
+      const line = lines[i].trim();
+
+      if (line.toLowerCase().startsWith("updated on")) {
+        rec["Status Updated On"] = parseDate(line);
+      } else if (/\b(At Delivery Hub|Paid Return|Urgent Delivery Requested|Waiting for Pickup|In Transit|Returned|Delivered|Hold|Pending|Cancelled)\b/i.test(line)) {
+        rec["Delivery Status"] = rec["Delivery Status"] ? `${rec["Delivery Status"]}; ${line}` : line;
+      } else if (/^COD\b/i.test(line) || (/COD/i.test(line) && /[\d,]+/.test(line))) {
+        rec["COD Amount"] = parseAmount(line);
+      } else if (/^Charge\b/i.test(line) || (/Charge/i.test(line) && /[\d,]+/.test(line))) {
+        rec["Charge"] = parseAmount(line);
+      } else if (/^Discount\b/i.test(line) || (/Discount/i.test(line) && /[\d,]+/.test(line))) {
+        rec["Discount"] = parseAmount(line);
+      } else if (/^(?:Paid|Unpaid)$/i.test(line)) {
+        rec["Payment Status"] = line;
+      } else if (/^[\d,]+(?:\.\d+)?$/.test(line)) {
+        const val = parseAmount(line);
+        if (rec["COD Amount"] === 0) rec["COD Amount"] = val;
+        else if (rec["Charge"] === 0) rec["Charge"] = val;
+        else if (rec["Discount"] === 0) rec["Discount"] = val;
+      } else if (!/^(?:View|POD|Action|View POD|Track)$/i.test(line) && !rec["Delivery Status"]) {
+        rec["Delivery Status"] = line;
+      } else {
+        actionLines.push(line);
+      }
       i++;
     }
-    rec["Action"] = actionLines.join(", ");
+
+    rec["Action"] = actionLines.filter(a => !/^(?:Action)$/i.test(a)).join(", ");
+    if (!rec["Payment Status"]) {
+      rec["Payment Status"] = "Unpaid";
+    }
 
     records.push(rec);
   }
@@ -197,30 +193,35 @@ function lenSafe(arr) {
  * Fuzzy extraction for a single consignment block
  */
 function extractFieldsFuzzy(consId, textBlock) {
-  const orderIdMatch = textBlock.match(/\b(\d{6})\b/);
-  const orderId = orderIdMatch ? orderIdMatch[1] : "";
+  const orderIdMatch = textBlock.match(/\b(ORD[-\w]+|#?\d{3,8}(?:\s*[a-zA-Z])?)\b/i);
+  const orderId = orderIdMatch ? orderIdMatch[1].trim() : "";
 
-  const storeMatch = textBlock.match(/(Deen Commerce|w DEEN WARI OUTLET|c DEEN CUMILLA OUTLET)/i);
-  const store = storeMatch ? storeMatch[1] : "";
+  const typeMatch = textBlock.match(/\b(Parcel|Express|Normal|Document)\b/i);
+  const type = typeMatch ? typeMatch[1] : "Parcel";
 
-  const phoneMatch = textBlock.match(/(01\d{9})/);
-  const phone = phoneMatch ? phoneMatch[1] : "";
+  const storeMatch = textBlock.match(/\b(DEEN\s+[A-Za-z\s]+?OUTLET|Deen Commerce|[A-Za-z0-9\s'-]+?(?:Store|Commerce|Outlet|Mart|Shop))\b/i);
+  let store = storeMatch ? storeMatch[1].trim().replace(/[\r\n]+/g, " ") : "";
+  if (orderId && store.includes(orderId)) store = store.replace(orderId, "").trim();
+  if (store.toLowerCase().startsWith("parcel")) store = store.replace(/^parcel\s*/i, "").trim();
 
-  const codMatch = textBlock.match(/COD\s*[\u09f3৳]?\s*([\d,]+)/i);
+  const phoneMatch = textBlock.match(/(?:(?:\+?880)|0)(1[3-9]\d{8})/);
+  const phone = phoneMatch ? (phoneMatch[0].startsWith("0") ? phoneMatch[0] : "0" + phoneMatch[1]) : "";
+
+  const codMatch = textBlock.match(/COD\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
   const cod = codMatch ? parseFloat(codMatch[1].replace(/,/g, "")) : 0.0;
 
-  const chargeMatch = textBlock.match(/Charge\s*[\u09f3৳]?\s*([\d,.]+)/i);
+  const chargeMatch = textBlock.match(/Charge\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
   const charge = chargeMatch ? parseFloat(chargeMatch[1].replace(/,/g, "")) : 0.0;
 
-  const discountMatch = textBlock.match(/Discount\s*[\u09f3৳]?\s*([\d,]+)/i);
+  const discountMatch = textBlock.match(/Discount\s*[\u09f3৳]?\s*([\d,]+(?:\.\d+)?)/i);
   const discount = discountMatch ? parseFloat(discountMatch[1].replace(/,/g, "")) : 0.0;
 
   let status = "Unpaid";
-  if (textBlock.includes("Paid") && !textBlock.includes("Unpaid")) {
+  if (/\bPaid\b/i.test(textBlock) && !/\bUnpaid\b/i.test(textBlock)) {
     status = "Paid";
   }
 
-  const deliveryMatch = textBlock.match(/(At Delivery Hub|Paid Return|Urgent Delivery Requested|Returned|Delivered|In Transit)/i);
+  const deliveryMatch = textBlock.match(/(At Delivery Hub|Paid Return|Urgent Delivery Requested|Waiting for Pickup|Returned|Delivered|In Transit|Pending|Hold|Cancelled)/i);
   const deliveryStatus = deliveryMatch ? deliveryMatch[1] : "";
 
   const updatedMatch = textBlock.match(/Updated on\s*([\d/]+)/i);
@@ -231,15 +232,21 @@ function extractFieldsFuzzy(consId, textBlock) {
   const ignoreKeywords = [
     "Type:",
     "Parcel",
+    "Normal",
+    "Express",
+    "Document",
     "COD",
     "Charge",
     "Discount",
     "Paid",
     "Unpaid",
     "View POD",
+    "View",
+    "POD",
     "Action",
     "Updated on",
     "Paid At:",
+    deliveryStatus,
     store,
     orderId,
     consId
@@ -248,7 +255,7 @@ function extractFieldsFuzzy(consId, textBlock) {
   for (let line of lines) {
     const cleanLine = line.trim();
     if (!cleanLine) continue;
-    if (/01\d{9}/.test(cleanLine)) continue;
+    if (/(?:(?:\+?880)|0)1[3-9]\d{8}/.test(cleanLine)) continue;
 
     let shouldIgnore = false;
     for (let kw of ignoreKeywords) {
@@ -280,7 +287,7 @@ function extractFieldsFuzzy(consId, textBlock) {
 
   return {
     "Consignment ID": consId,
-    "Type": "",
+    "Type": type,
     "Order ID": orderId,
     "Store": store,
     "Recipient Name": name,

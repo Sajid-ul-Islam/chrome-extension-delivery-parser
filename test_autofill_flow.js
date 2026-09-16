@@ -79,6 +79,45 @@ console.log("  ✅ background.js loaded without syntax errors.");
 require('./popup.js');
 console.log("  ✅ popup.js loaded without syntax errors.");
 
+// 4. Test Pathao Table Column Alignment & Parsing
+console.log("\n▶ Test 4: Testing Pathao Table Column Alignment & Amounts Extraction...");
+eval(fs.readFileSync(path.join(__dirname, 'parser.js'), 'utf8'));
+
+const testRawPathao = `DD160926SVKEEQ
+Parcel
+14782 c
+DEEN CUMILLA OUTLET
+Kamrul Hassan
+Sohidullah Complex, Mawna Chowrasta, Sreepur, Gazipur-1740, , Sreepur, BD-18,
+01729660881
+Pending
+Updated on 16/09/2026
+COD ৳ 725
+Charge ৳ 107.25
+Discount ৳ 10
+Unpaid
+View
+POD`;
+
+const parsedTest = parseDeliveryData(testRawPathao);
+assert(parsedTest && parsedTest.records.length === 1, "Should parse 1 record");
+const rec = parsedTest.records[0];
+
+assert.strictEqual(rec["Consignment ID"], "DD160926SVKEEQ", "Consignment ID mismatch");
+assert.strictEqual(rec["Type"], "Parcel", "Type mismatch");
+assert.strictEqual(rec["Order ID"], "14782 c", "Order ID mismatch");
+assert.strictEqual(rec["Store"], "DEEN CUMILLA OUTLET", "Store mismatch");
+assert.strictEqual(rec["Recipient Name"], "Kamrul Hassan", "Recipient Name mismatch");
+assert(rec["Address"].includes("Sohidullah Complex"), "Address mismatch");
+assert.strictEqual(rec["Phone"], "01729660881", "Phone mismatch");
+assert.strictEqual(rec["Delivery Status"], "Pending", "Delivery Status mismatch");
+assert.strictEqual(rec["Status Updated On"], "16/09/2026", "Date mismatch");
+assert.strictEqual(rec["COD Amount"], 725, "COD Amount mismatch");
+assert.strictEqual(rec["Charge"], 107.25, "Charge mismatch");
+assert.strictEqual(rec["Discount"], 10, "Discount mismatch");
+assert.strictEqual(rec["Payment Status"], "Unpaid", "Payment Status mismatch");
+console.log("  ✅ Pathao table columns, Order ID suffix, Store, and Amounts mapped with 100% precision.");
+
 console.log("\n==================================================");
 console.log("🎉 ALL TESTS PASSED SUCCESSFULLY!");
 console.log("==================================================");
