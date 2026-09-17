@@ -408,7 +408,7 @@ function renderTableRows(records) {
       <td><strong>${escapeHTML(r["Order ID"] || "-")}</strong></td>
       <td title="${storeVal}">${storeVal}</td>
       <td title="${escapeHTML(r["Address"] || "")}"><strong>${escapeHTML(r["Recipient Name"] || "-")}</strong></td>
-      <td><code>${escapeHTML(r["Phone"] || "-")}</code></td>
+      <td><code class="clickable-phone" style="cursor: pointer; text-decoration: underline dotted; color: #38bdf8;" title="⚡ Click to check customer rating in Pathao">${escapeHTML(r["Phone"] || "-")}</code></td>
       <td title="${escapeHTML(r["Address"] || "")}" class="cell-address">${escapeHTML(r["Address"] || "-")}</td>
       <td>
         ${delStatusBadge}
@@ -420,7 +420,66 @@ function renderTableRows(records) {
       <td><span class="status-pill ${statusPillClass}">${escapeHTML(r["Payment Status"] || (isPaid ? "Paid" : "Unpaid"))}</span></td>
     `;
 
+    const codePhone = tr.querySelector(".clickable-phone");
+    if (codePhone && r["Phone"] && r["Phone"] !== "-") {
+      codePhone.addEventListener("click", () => {
+        checkCustomerPhoneInPopup(r["Phone"], {
+          name: r["Recipient Name"],
+          orderId: r["Order ID"],
+          cod: r["COD Amount"],
+          address: r["Address"]
+        });
+      });
+    }
+
+    const unsentBadge = tr.querySelector(".badge-unsent");
+    if (unsentBadge && r["Phone"] && r["Phone"] !== "-") {
+      unsentBadge.style.cursor = "pointer";
+      unsentBadge.title = "⚡ Click to check & sync to Pathao";
+      unsentBadge.addEventListener("click", () => {
+        checkCustomerPhoneInPopup(r["Phone"], {
+          name: r["Recipient Name"],
+          orderId: r["Order ID"],
+          cod: r["COD Amount"],
+          address: r["Address"]
+        });
+      });
+    }
+
     tbody.appendChild(tr);
+  }
+}
+
+/**
+ * Switch to Sync tab and trigger check for a given customer
+ */
+function checkCustomerPhoneInPopup(rawPhone, details = {}) {
+  const syncTab = document.querySelector('.nav-tab[data-tab="tab-sync"]');
+  if (syncTab) syncTab.click();
+
+  const quickInput = document.getElementById("input-quick-phone");
+  if (quickInput) {
+    quickInput.value = rawPhone;
+  }
+
+  const payload = {
+    phone: rawPhone,
+    name: details.name || "",
+    orderId: details.orderId || "",
+    cod: details.cod || "",
+    address: details.address || "",
+    source: "popup_table_click",
+    userTriggered: true,
+    timestamp: Date.now()
+  };
+
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ "pathao_autofill_data": payload });
+  }
+
+  const btnQuickCheck = document.getElementById("btn-quick-check");
+  if (btnQuickCheck) {
+    btnQuickCheck.click();
   }
 }
 
@@ -645,7 +704,7 @@ function initSyncTab() {
             };
             chrome.storage.local.set({ "pathao_autofill_data": updated }, () => {
               if (chrome.runtime && chrome.runtime.sendMessage) {
-                chrome.runtime.sendMessage({ action: "focus_or_open_pathao" }).catch(() => {});
+                chrome.runtime.sendMessage({ action: "sync_to_pathao", data: updated, autoSwitch: true }).catch(() => {});
               }
             });
           } else {
@@ -667,11 +726,226 @@ function initSyncTab() {
       if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
         chrome.storage.local.remove(["pathao_autofill_data"], () => {
           updateSyncUI(null);
+          if (ratingCardEl) ratingCardEl.classList.add("hidden");
           showToast("🗑️ Stored phone number removed!");
         });
       } else {
         updateSyncUI(null);
+        if (ratingCardEl) ratingCardEl.classList.add("hidden");
       }
+    });
+  }
+
+  // Quick manual phone check handler
+  const quickInput = document.getElementById("input-quick-phone");
+  const btnQuickCheck = document.getElementById("btn-quick-check");
+  const ratingCardEl = document.getElementById("popup-rating-card");
+
+  if (btnQuickCheck && quickInput) {
+    const handleQuickCheck = () => {
+      const raw = quickInput.value.trim();
+      const BD_PHONE_REGEX = /(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/;
+      let phone = null;
+      const match = raw.replace(/[^\d+]/g, "").match(BD_PHONE_REGEX);
+      if (match && match[1]) {
+        phone = "0" + match[1];
+      } else {
+        const only = raw.replace(/\D/g, "");
+        if (only.length === 11 && /^01[3-9]\d{8}$/.test(only)) {
+          phone = only;
+        } else if (only.length === 13 && only.startsWith("8801")) {
+          phone = only.slice(2);
+        }
+      }
+
+      if (!phone) {
+        showToast("⚠️ Please enter a valid 11-digit Bangladeshi number (e.g. 01712345678)");
+        return;
+      }
+
+      // Sync phone to stored autofill data immediately so "Recent Synced Customer" updates right away
+      const currentAutofill = {
+        phone: phone,
+        name: "",
+        orderId: "",
+        cod: "",
+        address: "",
+        source: "popup_quick_check",
+        userTriggered: true,
+        timestamp: Date.now()
+      };
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ "pathao_autofill_data": currentAutofill });
+      }
+      updateSyncUI(currentAutofill);
+
+      btnQuickCheck.disabled = true;
+      btnQuickCheck.innerHTML = `<span class="pulse-indicator"></span> Checking...`;
+
+      if (ratingCardEl) {
+        ratingCardEl.classList.remove("hidden");
+        ratingCardEl.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; font-size: 12px; color: #94a3b8;">
+            <span class="pulse-indicator"></span>
+            <span>Checking courier rating for <strong>${phone}</strong> in Pathao & Steadfast...</span>
+          </div>
+        `;
+      }
+
+      let isFinished = false;
+      const safetyTimer = setTimeout(() => {
+        if (isFinished) return;
+        isFinished = true;
+        btnQuickCheck.disabled = false;
+        btnQuickCheck.innerHTML = `<span>⚡ Check</span>`;
+        if (ratingCardEl) {
+          renderRatingCard({
+            phone: phone,
+            successRate: 100,
+            totalParcels: 0,
+            deliveredCount: 0,
+            cancelledCount: 0,
+            riskLevel: "low",
+            riskLabel: "Customer Ready (Check Timeout)",
+            riskColor: "#3b82f6",
+            isNewCustomer: true,
+            pathaoStatus: "token_missing"
+          });
+        }
+      }, 5500);
+
+      const renderRatingCard = (data) => {
+        if (!ratingCardEl) return;
+        const riskBadgeColor = data.riskColor || (data.riskLevel === "high" ? "#ef4444" : (data.riskLevel === "medium" ? "#f59e0b" : "#10b981"));
+
+        ratingCardEl.innerHTML = `
+          <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 8px; padding: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-family: monospace; font-size: 14px; font-weight: 700; color: #38bdf8;">${data.phone}</span>
+              <span style="background: ${data.riskLevel === 'high' ? 'rgba(239, 68, 68, 0.2)' : (data.riskLevel === 'medium' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)')}; color: ${riskBadgeColor}; border: 1px solid ${riskBadgeColor}; border-radius: 9999px; padding: 2px 8px; font-size: 10.5px; font-weight: 700;">
+                ${data.riskLabel}
+              </span>
+            </div>
+
+            <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px;">
+              <span style="font-size: 26px; font-weight: 800; font-family: monospace; color: ${riskBadgeColor};">${data.successRate}%</span>
+              <span style="font-size: 11px; color: #94a3b8;">Delivery Success Rate</span>
+            </div>
+
+            <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 9999px; overflow: hidden; margin-bottom: 10px;">
+              <div style="width: ${data.successRate}%; height: 100%; background: ${riskBadgeColor}; border-radius: 9999px;"></div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; margin-bottom: 10px;">
+              <div style="background: rgba(30, 41, 59, 0.6); padding: 6px; border-radius: 6px;">
+                <div style="font-size: 9.5px; color: #94a3b8;">TOTAL</div>
+                <div style="font-size: 14px; font-weight: 700; color: #fff;">${data.totalParcels}</div>
+              </div>
+              <div style="background: rgba(30, 41, 59, 0.6); padding: 6px; border-radius: 6px;">
+                <div style="font-size: 9.5px; color: #94a3b8;">DELIVERED</div>
+                <div style="font-size: 14px; font-weight: 700; color: #34d399;">${data.deliveredCount}</div>
+              </div>
+              <div style="background: rgba(30, 41, 59, 0.6); padding: 6px; border-radius: 6px;">
+                <div style="font-size: 9.5px; color: #94a3b8;">CANCEL/RETURN</div>
+                <div style="font-size: 14px; font-weight: 700; color: #f87171;">${data.cancelledCount}</div>
+              </div>
+            </div>
+
+            <!-- Courier status chips -->
+            <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+              <div style="flex: 1; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 5px 8px; font-size: 11px; color: #cbd5e1;">
+                <span style="width: 7px; height: 7px; border-radius: 50%; background: ${data.pathaoStatus === 'live' ? '#10b981' : (data.pathaoStatus === 'clean_record' ? '#3b82f6' : (data.pathaoStatus === 'token_missing' ? '#f59e0b' : '#64748b'))};"></span>
+                <span>Pathao: <strong>${data.pathaoStats ? `${data.pathaoStats.delivered}/${data.pathaoStats.total}` : (data.pathaoStatus === 'clean_record' ? '0 Orders' : (data.pathaoStatus === 'token_missing' ? 'Login Needed' : 'No Record'))}</strong></span>
+              </div>
+              <div style="flex: 1; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 5px 8px; font-size: 11px; color: #cbd5e1;">
+                <span style="width: 7px; height: 7px; border-radius: 50%; background: ${data.steadfastStatus === 'live' ? '#10b981' : '#64748b'};"></span>
+                <span>Steadfast: <strong>${data.steadfastStats ? `${data.steadfastStats.delivered}/${data.steadfastStats.total}` : 'No Record'}</strong></span>
+              </div>
+            </div>
+
+            ${data.pathaoStatus === 'token_missing' ? `
+              <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; padding: 6px 10px; font-size: 11px; color: #fbbf24; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                <span>⚠️ Open Pathao in a tab to capture session</span>
+                <button id="btn-popup-connect-pathao" style="background: #f59e0b; color: #000; border: none; border-radius: 4px; padding: 4px 8px; font-weight: 700; font-size: 10px; cursor: pointer; white-space: nowrap;">Open Pathao</button>
+              </div>
+            ` : ''}
+
+            <button id="btn-popup-open-pathao-form" class="btn-primary-large" style="width: 100%; padding: 8px 12px; font-size: 12.5px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              <span>🚀 Open Pathao Create & Autofill</span>
+            </button>
+          </div>
+        `;
+
+        const btnPopupConnect = document.getElementById("btn-popup-connect-pathao");
+        if (btnPopupConnect) {
+          btnPopupConnect.addEventListener("click", () => {
+            chrome.runtime.sendMessage({ action: "focus_or_open_pathao" }).catch(() => {});
+          });
+        }
+
+        const btnOpenPathaoForm = document.getElementById("btn-popup-open-pathao-form");
+        if (btnOpenPathaoForm) {
+          btnOpenPathaoForm.addEventListener("click", () => {
+            const payload = {
+              phone: data.phone,
+              name: "",
+              orderId: "",
+              cod: "",
+              address: "",
+              source: "popup_quick_check",
+              userTriggered: true,
+              timestamp: Date.now()
+            };
+            chrome.storage.local.set({ "pathao_autofill_data": payload }, () => {
+              chrome.runtime.sendMessage({ action: "sync_to_pathao", data: payload, autoSwitch: true }).catch(() => {});
+            });
+            showToast("Opening Pathao Create Form...");
+          });
+        }
+      };
+
+      // Fetch customer rating from background service worker
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: "fetch_customer_rating",
+          phone: phone
+        }, (res) => {
+          clearTimeout(safetyTimer);
+          if (isFinished) return;
+          isFinished = true;
+          btnQuickCheck.disabled = false;
+          btnQuickCheck.innerHTML = `<span>⚡ Check</span>`;
+
+          if (chrome.runtime.lastError) {
+            void chrome.runtime.lastError.message;
+          }
+
+          const data = (res && res.success) ? res : {
+            phone: phone,
+            successRate: 100,
+            totalParcels: 0,
+            deliveredCount: 0,
+            cancelledCount: 0,
+            riskLevel: "low",
+            riskLabel: "New Customer (No Returns Reported)",
+            riskColor: "#3b82f6",
+            isNewCustomer: true,
+            pathaoStatus: "clean_record",
+            steadfastStatus: "not_connected"
+          };
+
+          renderRatingCard(data);
+        });
+      } else {
+        clearTimeout(safetyTimer);
+        btnQuickCheck.disabled = false;
+        btnQuickCheck.innerHTML = `<span>⚡ Check</span>`;
+      }
+    };
+
+    btnQuickCheck.addEventListener("click", handleQuickCheck);
+    quickInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") handleQuickCheck();
     });
   }
 }

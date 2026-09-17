@@ -1,0 +1,881 @@
+/* ==========================================================================
+   DEEN Delivery Parser - Universal Phone Check & Floating Action Pill
+   Applied across all websites (WhatsApp Web, Facebook, CRM, etc.)
+   ========================================================================== */
+
+/* Host element reset to prevent host site styles from interfering */
+#deen-phone-pill-host,
+.deen-phone-pill,
+#deen-universal-toast-container,
+.deen-universal-toast {
+  box-sizing: border-box !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+}
+
+/* --------------------------------------------------------------------------
+   Floating Action Pill (Appears on Phone Highlight / Selection)
+   -------------------------------------------------------------------------- */
+.deen-phone-pill {
+  position: absolute !important;
+  z-index: 2147483647 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 14px !important;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%) !important;
+  color: #ffffff !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  border-radius: 9999px !important;
+  border: 1px solid rgba(99, 102, 241, 0.45) !important;
+  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.5), 0 0 15px rgba(99, 102, 241, 0.35) !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  white-space: nowrap !important;
+  transform-origin: bottom center !important;
+  animation: deenPillSlideUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease !important;
+}
+
+.deen-phone-pill:hover {
+  transform: translateY(-2px) scale(1.03) !important;
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%) !important;
+  border-color: rgba(129, 140, 248, 0.8) !important;
+  box-shadow: 0 14px 30px -4px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.6) !important;
+}
+
+.deen-phone-pill:active {
+  transform: translateY(0) scale(0.98) !important;
+}
+
+.deen-phone-pill-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  color: #ffffff !important;
+  font-size: 12px !important;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5) !important;
+  flex-shrink: 0 !important;
+}
+
+.deen-phone-pill-text {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  color: #f8fafc !important;
+}
+
+.deen-phone-pill-number {
+  color: #38bdf8 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.5px !important;
+}
+
+.deen-phone-pill-arrow {
+  display: inline-block !important;
+  font-size: 11px !important;
+  color: #a5b4fc !important;
+  transition: transform 0.15s ease !important;
+}
+
+.deen-phone-pill:hover .deen-phone-pill-arrow {
+  transform: translateX(2px) !important;
+}
+
+.deen-phone-pill.deen-pill-sent {
+  background: linear-gradient(135deg, #065f46 0%, #047857 100%) !important;
+  border-color: #34d399 !important;
+  box-shadow: 0 0 20px rgba(52, 211, 153, 0.5) !important;
+}
+
+.deen-phone-pill.deen-pill-fading {
+  animation: deenPillFadeOut 0.15s ease forwards !important;
+}
+
+@keyframes deenPillSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes deenPillFadeOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Universal Floating Toast Notifications (Appears on Copy or Trigger)
+   -------------------------------------------------------------------------- */
+#deen-universal-toast-container {
+  position: fixed !important;
+  bottom: 24px !important;
+  right: 24px !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  max-width: 440px !important;
+  pointer-events: none !important;
+}
+
+.deen-universal-toast {
+  pointer-events: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 12px 16px !important;
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(99, 102, 241, 0.35) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.6), 0 0 15px rgba(99, 102, 241, 0.25) !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+  animation: deenToastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  transition: opacity 0.25s ease, transform 0.25s ease !important;
+}
+
+.deen-universal-toast-icon {
+  font-size: 20px !important;
+  flex-shrink: 0 !important;
+  animation: deenPulseGlow 2s infinite !important;
+}
+
+.deen-universal-toast-content {
+  flex: 1 1 auto !important;
+  color: #cbd5e1 !important;
+}
+
+.deen-universal-toast-content strong {
+  color: #38bdf8 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-weight: 700 !important;
+}
+
+.deen-universal-toast-action {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: 6px 12px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  transition: all 0.15s ease !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35) !important;
+  flex-shrink: 0 !important;
+}
+
+.deen-universal-toast-action:hover {
+  background: linear-gradient(135deg, #f87171 0%, #dc2626 100%) !important;
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5) !important;
+  transform: translateY(-1px) !important;
+}
+
+.deen-universal-toast-action:active {
+  transform: translateY(0) !important;
+}
+
+.deen-universal-toast-action.deen-toast-action-secondary {
+  background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%) !important;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35) !important;
+}
+
+.deen-universal-toast-action.deen-toast-action-secondary:hover {
+  background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%) !important;
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.5) !important;
+}
+
+.deen-universal-toast-close {
+  background: transparent !important;
+  border: none !important;
+  color: #94a3b8 !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  padding: 4px !important;
+  margin-left: 2px !important;
+  border-radius: 4px !important;
+  transition: color 0.15s ease !important;
+}
+
+.deen-universal-toast-close:hover {
+  color: #ffffff !important;
+}
+
+.deen-universal-toast.deen-toast-fading {
+  opacity: 0 !important;
+  transform: translateY(10px) scale(0.95) !important;
+}
+
+@keyframes deenToastSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes deenPulseGlow {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.6));
+  }
+  50% {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.9));
+  }
+}
+
+/* --------------------------------------------------------------------------
+   In-Page Customer Rating Mini Modal (Courier Intelligence)
+   -------------------------------------------------------------------------- */
+#deen-rating-modal-backdrop {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+  animation: deenModalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+#deen-rating-modal {
+  width: 100% !important;
+  max-width: 410px !important;
+  background: linear-gradient(155deg, #0f172a 0%, #1e1b4b 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(99, 102, 241, 0.45) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 35px rgba(99, 102, 241, 0.3) !important;
+  overflow: hidden !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  animation: deenModalScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  box-sizing: border-box !important;
+}
+
+.deen-modal-header {
+  padding: 14px 18px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+}
+
+.deen-modal-title-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.deen-modal-badge-icon {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 6px !important;
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 13px !important;
+}
+
+.deen-modal-title {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #f8fafc !important;
+  line-height: 1.2 !important;
+}
+
+.deen-modal-subtitle {
+  font-size: 11px !important;
+  color: #94a3b8 !important;
+  margin-top: 2px !important;
+}
+
+.deen-modal-close-btn {
+  background: transparent !important;
+  border: none !important;
+  color: #94a3b8 !important;
+  font-size: 20px !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  padding: 4px 6px !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
+}
+
+.deen-modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.deen-modal-body {
+  padding: 18px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+}
+
+/* Phone number & Quick Copy Row */
+.deen-modal-phone-card {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  background: rgba(30, 41, 59, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+}
+
+.deen-modal-phone-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: #38bdf8 !important;
+  letter-spacing: 0.8px !important;
+}
+
+.deen-modal-copy-btn {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #cbd5e1 !important;
+  padding: 4px 8px !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.deen-modal-copy-btn:hover {
+  background: rgba(59, 130, 246, 0.3) !important;
+  color: #ffffff !important;
+  border-color: #3b82f6 !important;
+}
+
+/* Main Risk & Success Rate Box */
+.deen-modal-score-box {
+  background: rgba(15, 23, 42, 0.7) !important;
+  border: 1px solid rgba(99, 102, 241, 0.3) !important;
+  border-radius: 12px !important;
+  padding: 14px !important;
+  text-align: center !important;
+  position: relative !important;
+}
+
+.deen-modal-risk-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 4px 12px !important;
+  border-radius: 9999px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  margin-bottom: 10px !important;
+}
+
+.deen-modal-risk-badge.risk-low {
+  background: rgba(16, 185, 129, 0.2) !important;
+  color: #34d399 !important;
+  border: 1px solid rgba(16, 185, 129, 0.4) !important;
+}
+
+.deen-modal-risk-badge.risk-medium {
+  background: rgba(245, 158, 11, 0.2) !important;
+  color: #fbbf24 !important;
+  border: 1px solid rgba(245, 158, 11, 0.4) !important;
+}
+
+.deen-modal-risk-badge.risk-high {
+  background: rgba(239, 68, 68, 0.2) !important;
+  color: #f87171 !important;
+  border: 1px solid rgba(239, 68, 68, 0.45) !important;
+  animation: deenPulseGlow 1.5s infinite !important;
+}
+
+.deen-modal-percent-row {
+  display: flex !important;
+  align-items: baseline !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  margin-bottom: 8px !important;
+}
+
+.deen-modal-percent-val {
+  font-size: 34px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+}
+
+.deen-modal-percent-label {
+  font-size: 12px !important;
+  color: #94a3b8 !important;
+  font-weight: 500 !important;
+}
+
+.deen-modal-progress-bar {
+  width: 100% !important;
+  height: 7px !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 9999px !important;
+  overflow: hidden !important;
+  margin-top: 4px !important;
+}
+
+.deen-modal-progress-fill {
+  height: 100% !important;
+  border-radius: 9999px !important;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* 3-Col Stats Grid */
+.deen-modal-stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 8px !important;
+}
+
+.deen-modal-stat-card {
+  background: rgba(30, 41, 59, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 10px !important;
+  padding: 10px 8px !important;
+  text-align: center !important;
+}
+
+.deen-modal-stat-label {
+  font-size: 10.5px !important;
+  color: #94a3b8 !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  margin-bottom: 4px !important;
+}
+
+.deen-modal-stat-val {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+}
+
+.deen-stat-delivered {
+  color: #34d399 !important;
+}
+
+.deen-stat-cancelled {
+  color: #f87171 !important;
+}
+
+/* Couriers Checked Row */
+.deen-modal-couriers-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.deen-modal-courier-chip {
+  flex: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  background: rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+  padding: 6px 10px !important;
+  font-size: 11px !important;
+  color: #cbd5e1 !important;
+}
+
+.deen-modal-courier-dot {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #34d399 !important;
+}
+
+/* Footer Actions */
+.deen-modal-footer {
+  padding: 12px 18px 16px 18px !important;
+  display: flex !important;
+  gap: 8px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(0, 0, 0, 0.15) !important;
+}
+
+.deen-modal-btn-action {
+  flex: 1 !important;
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: 9px 14px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  transition: all 0.15s ease !important;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35) !important;
+}
+
+.deen-modal-btn-action:hover {
+  background: linear-gradient(135deg, #f87171 0%, #dc2626 100%) !important;
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.5) !important;
+  transform: translateY(-1px) !important;
+}
+
+.deen-modal-btn-close {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #cbd5e1 !important;
+  border-radius: 8px !important;
+  padding: 9px 14px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.deen-modal-btn-close:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+}
+
+/* Skeleton Loading State */
+.deen-modal-skeleton-body {
+  padding: 24px 18px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 14px !important;
+  text-align: center !important;
+}
+
+.deen-spinner-circle {
+  width: 38px !important;
+  height: 38px !important;
+  border: 3px solid rgba(99, 102, 241, 0.2) !important;
+  border-top-color: #6366f1 !important;
+  border-radius: 50% !important;
+  animation: deenSpin 0.75s linear infinite !important;
+}
+
+.deen-skeleton-text {
+  font-size: 13px !important;
+  color: #cbd5e1 !important;
+  font-weight: 500 !important;
+}
+
+@keyframes deenSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes deenModalFadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes deenModalScaleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   In-Page Dockable Sidebar Drawer (Right-Edge Panel)
+   -------------------------------------------------------------------------- */
+#deen-sidebar-dock-tab {
+  position: fixed !important;
+  top: 50% !important;
+  right: 0 !important;
+  transform: translateY(-50%) !important;
+  z-index: 2147483645 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  padding: 8px 12px 8px 14px !important;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(99, 102, 241, 0.5) !important;
+  border-right: none !important;
+  border-top-left-radius: 20px !important;
+  border-bottom-left-radius: 20px !important;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6), 0 0 15px rgba(99, 102, 241, 0.4) !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+}
+
+#deen-sidebar-dock-tab:hover {
+  transform: translateY(-50%) translateX(-4px) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7), 0 0 22px rgba(99, 102, 241, 0.6) !important;
+}
+
+.deen-dock-tab-icon {
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  color: #fff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 11px !important;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6) !important;
+}
+
+#deen-rating-sidebar {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  width: 375px !important;
+  max-width: 92vw !important;
+  height: 100vh !important;
+  z-index: 2147483646 !important;
+  background: #090d16 !important;
+  border-left: 1px solid rgba(99, 102, 241, 0.35) !important;
+  box-shadow: -15px 0 45px rgba(0, 0, 0, 0.8) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-sizing: border-box !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  color: #f8fafc !important;
+  transform: translateX(100%) !important;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  pointer-events: none !important;
+}
+
+#deen-rating-sidebar.open {
+  transform: translateX(0) !important;
+  pointer-events: auto !important;
+}
+
+.deen-sidebar-header {
+  padding: 16px 18px !important;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.deen-sidebar-title-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.deen-sidebar-title {
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+}
+
+.deen-sidebar-subtitle {
+  font-size: 10.5px !important;
+  color: #94a3b8 !important;
+}
+
+.deen-sidebar-close-btn {
+  background: transparent !important;
+  border: none !important;
+  color: #94a3b8 !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  padding: 4px 6px !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
+}
+
+.deen-sidebar-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.deen-sidebar-body {
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  padding: 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  box-sizing: border-box !important;
+}
+
+/* Quick Search in Sidebar */
+.deen-sidebar-search-box {
+  background: rgba(15, 23, 42, 0.8) !important;
+  border: 1px solid rgba(99, 102, 241, 0.25) !important;
+  border-radius: 12px !important;
+  padding: 12px !important;
+}
+
+.deen-sidebar-search-title {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #cbd5e1 !important;
+  margin-bottom: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.deen-sidebar-search-row {
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.deen-sidebar-input {
+  flex: 1 !important;
+  background: rgba(30, 41, 59, 0.7) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  padding: 8px 10px !important;
+  color: #ffffff !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 12.5px !important;
+  outline: none !important;
+}
+
+.deen-sidebar-input:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.4) !important;
+}
+
+.deen-sidebar-btn-check {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: 8px 14px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  transition: all 0.15s ease !important;
+}
+
+.deen-sidebar-btn-check:hover {
+  background: linear-gradient(135deg, #f87171 0%, #dc2626 100%) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Recent Checks Section */
+.deen-sidebar-history-box {
+  background: rgba(15, 23, 42, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 12px !important;
+  padding: 12px !important;
+}
+
+.deen-sidebar-history-title {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #94a3b8 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  margin-bottom: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.deen-sidebar-history-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.deen-sidebar-history-item {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 7px 10px !important;
+  background: rgba(30, 41, 59, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.deen-sidebar-history-item:hover {
+  background: rgba(49, 46, 129, 0.4) !important;
+  border-color: rgba(99, 102, 241, 0.35) !important;
+  transform: translateX(-2px) !important;
+}
+
+.deen-sidebar-history-phone {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 12.5px !important;
+  font-weight: 700 !important;
+  color: #38bdf8 !important;
+}
+
+.deen-sidebar-history-tag {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 2px 6px !important;
+  border-radius: 9999px !important;
+}
+
+.deen-sidebar-footer {
+  padding: 12px 16px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(0, 0, 0, 0.25) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  font-size: 11px !important;
+  color: #64748b !important;
+}
+
+

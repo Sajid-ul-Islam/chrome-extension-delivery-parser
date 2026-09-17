@@ -622,10 +622,142 @@
         }
         sendResponse({ success: ok });
         return false;
+      } else if (request.action === "query_pathao_rating" && request.phone) {
+        // Headless customer rating query in active Pathao session
+        queryPathaoRatingLive(request.phone)
+          .then(data => sendResponse({ success: true, data: data }))
+          .catch(err => sendResponse({ success: false, error: err ? err.message : "query_failed" }));
+        return true; // Keep message channel open for async response
       }
       return false;
     });
   }
+
+  const JWT_REGEX = /eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/;
+
+  function extractPathaoToken() {
+    // 1. Check priority keys in localStorage
+    try {
+      if (typeof localStorage !== "undefined") {
+        const priorityKeys = ["token", "access_token", "accessToken", "auth_token", "pathao_token", "user", "auth", "persist:root"];
+        for (const key of priorityKeys) {
+          const val = localStorage.getItem(key);
+          if (val) {
+            const m = val.match(JWT_REGEX);
+            if (m) return m[0];
+          }
+        }
+        // Scan all localStorage entries
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          const val = localStorage.getItem(key);
+          if (val) {
+            const m = val.match(JWT_REGEX);
+            if (m) return m[0];
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 2. Scan sessionStorage
+    try {
+      if (typeof sessionStorage !== "undefined") {
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          const val = sessionStorage.getItem(key);
+          if (val) {
+            const m = val.match(JWT_REGEX);
+            if (m) return m[0];
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 3. Scan document.cookie
+    try {
+      if (typeof document !== "undefined" && document.cookie) {
+        const m = document.cookie.match(JWT_REGEX);
+        if (m) return m[0];
+      }
+    } catch (e) {}
+
+    return null;
+  }
+
+  function syncPathaoSessionToken(explicitToken) {
+    if (!isExtensionValid()) return;
+    const token = explicitToken || extractPathaoToken();
+    if (token && typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({
+        "pathao_merchant_token": token,
+        "pathao_token_updated": Date.now()
+      });
+    }
+  }
+
+  // Intercept Pathao web client's outgoing API requests to passively capture the latest Bearer token
+  function installPathaoTokenInterceptor() {
+    try {
+      if (typeof window === "undefined" || window.__deenTokenInterceptorInstalled) return;
+      window.__deenTokenInterceptorInstalled = true;
+
+      if (window.fetch) {
+        const origFetch = window.fetch;
+        window.fetch = function (...args) {
+          try {
+            const [resource, config] = args;
+            let authHeader = "";
+            if (config && config.headers) {
+              if (typeof config.headers.get === "function") authHeader = config.headers.get("authorization") || config.headers.get("Authorization");
+              else if (config.headers.Authorization) authHeader = config.headers.Authorization;
+              else if (config.headers.authorization) authHeader = config.headers.authorization;
+            }
+            if (authHeader && typeof authHeader === "string") {
+              const m = authHeader.match(/Bearer\s+([a-zA-Z0-9._-]+)/i);
+              if (m && m[1] && m[1].startsWith("eyJ")) {
+                syncPathaoSessionToken(m[1]);
+              }
+            }
+          } catch (e) {}
+          return origFetch.apply(this, args);
+        };
+      }
+    } catch (e) {}
+  }
+
+  async function queryPathaoRatingLive(phone) {
+    const token = extractPathaoToken();
+    const headers = {
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    };
+    if (token) headers["Authorization"] = "Bearer " + token;
+
+    try {
+      const resp = await fetch("https://merchant.pathao.com/api/v1/user/success", {
+        method: "POST",
+        headers: headers,
+        credentials: "include",
+        body: JSON.stringify({ phone: phone })
+      });
+
+      const json = await resp.json().catch(() => null);
+      if (resp.ok && json) {
+        return json;
+      } else {
+        return {
+          error: true,
+          status: resp.status,
+          details: json || `HTTP ${resp.status}`
+        };
+      }
+    } catch (err) {
+      return { error: true, message: err ? err.message : "fetch_failed" };
+    }
+  }
+
+  installPathaoTokenInterceptor();
+  syncPathaoSessionToken();
 
   // When arriving on page (e.g. after clicking trigger), immediately check for pending autofill
   checkPendingAutofill(0);

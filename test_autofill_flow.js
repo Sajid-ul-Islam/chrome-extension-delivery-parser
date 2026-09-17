@@ -25,27 +25,17 @@ const hasWooCommerceScript = manifest.content_scripts.some(cs =>
   cs.matches.some(m => m.includes("deencommerce.com") || m.includes("wc-orders"))
 );
 assert(hasWooCommerceScript, "Manifest must contain content_script for WooCommerce with woocommerce.js");
-console.log("  ✅ manifest.json is valid and properly configured.");
+
+const hasPhoneCheckScript = manifest.content_scripts.some(cs =>
+  cs.js && cs.js.includes("phone-check.js") &&
+  cs.matches.some(m => m.includes("*://*/*") || m.includes("<all_urls>"))
+);
+assert(hasPhoneCheckScript, "Manifest must contain universal content_script for phone-check.js across all URLs");
+console.log("  ✅ manifest.json is valid and properly configured with universal phone-check script.");
 
 // 2. Test Phone Number Extraction & Normalization
-console.log("\n▶ Test 2: Testing Phone Number Extraction & Normalization...");
-const BD_PHONE_REGEX = /(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/;
-
-function normalizeBDPhone(raw) {
-  if (!raw) return null;
-  const digits = raw.replace(/[^\d+]/g, "");
-  const match = digits.match(BD_PHONE_REGEX);
-  if (match && match[1]) {
-    return "0" + match[1];
-  }
-  const onlyDigits = raw.replace(/\D/g, "");
-  if (onlyDigits.length === 11 && /^01[3-9]\d{8}$/.test(onlyDigits)) {
-    return onlyDigits;
-  } else if (onlyDigits.length === 13 && onlyDigits.startsWith("8801")) {
-    return onlyDigits.slice(2);
-  }
-  return null;
-}
+console.log("\n▶ Test 2: Testing Phone Number Extraction & Normalization (WhatsApp, Facebook, Universal)...");
+const { normalizeBDPhone } = require('./phone-check.js');
 
 const testCases = [
   { input: "01711223344", expected: "01711223344" },
@@ -54,6 +44,10 @@ const testCases = [
   { input: "01300-112233", expected: "01300112233" },
   { input: "(+88) 01555 443322", expected: "01555443322" },
   { input: "Customer: Rahim, Cell: 01611223344, Address: Dhaka", expected: "01611223344" },
+  { input: "+880 1712-345678", expected: "01712345678" }, // WhatsApp Web contact format
+  { input: "+880 1819 223344", expected: "01819223344" }, // WhatsApp Web space-separated format
+  { input: "Order info: send to 01911-223344 immediately", expected: "01911223344" },
+  { input: "WhatsApp msg: call +8801700112233", expected: "01700112233" },
   { input: "Not a phone: 12345678", expected: null },
   { input: "01200000000", expected: null }, // 012 is not valid BD mobile prefix
   { input: "01100000000", expected: null }, // 011 is not valid BD mobile prefix
@@ -63,10 +57,13 @@ for (const tc of testCases) {
   const result = normalizeBDPhone(tc.input);
   assert.strictEqual(result, tc.expected, `Failed on input '${tc.input}': expected '${tc.expected}', got '${result}'`);
 }
-console.log(`  ✅ All ${testCases.length} phone normalization test cases passed!`);
+console.log(`  ✅ All ${testCases.length} universal phone normalization test cases passed!`);
 
-// 3. Test woocommerce.js and content.js file syntax
+// 3. Test woocommerce.js, phone-check.js, and content.js file syntax
 console.log("\n▶ Test 3: Checking JavaScript syntax of content scripts...");
+require('./phone-check.js');
+console.log("  ✅ phone-check.js loaded without syntax errors.");
+
 require('./woocommerce.js');
 console.log("  ✅ woocommerce.js loaded without syntax errors.");
 

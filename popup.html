@@ -75,8 +75,22 @@
     <div id="tab-sync" class="tab-content">
       <div class="sync-panel">
         <div class="sync-banner">
-          <div class="sync-badge">Live Auto-Detect Enabled</div>
-          <p class="sync-desc">When you copy any customer phone number on <strong>WooCommerce</strong> (<code>deencommerce.com/wp-admin/...</code>), the extension automatically populates it into <strong>Pathao's Recipient Details</strong> and triggers Pathao's customer fraud & success rate check!</p>
+          <div class="sync-badge">⚡ Universal Auto-Detect Active</div>
+          <p class="sync-desc">Highlight or copy any phone number on <strong>ANY website</strong> (WhatsApp Web, Facebook, WooCommerce, or CRM) to instantly check customer delivery ratio & fraud rating in <strong>Pathao</strong>!</p>
+        </div>
+
+        <!-- Quick manual phone check input -->
+        <div class="quick-check-box" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+          <div style="font-size: 11px; font-weight: 700; color: #cbd5e1; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+            <span>⚡ Quick Check Any BD Number</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="tel" id="input-quick-phone" placeholder="e.g. 01712345678 or +88017..." style="flex: 1; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 7px 10px; color: #fff; font-family: monospace; font-size: 12.5px;" />
+            <button id="btn-quick-check" class="btn-primary" style="white-space: nowrap; padding: 7px 12px;">
+              <span>⚡ Check</span>
+            </button>
+          </div>
+          <div id="popup-rating-card" class="hidden" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);"></div>
         </div>
 
         <div class="last-synced-card">
@@ -110,18 +124,18 @@
         </div>
 
         <div class="sync-instructions">
-          <div class="instruction-title">💡 How it works:</div>
+          <div class="instruction-title">💡 How it works everywhere:</div>
           <div class="step-item">
             <span class="step-num">1</span>
-            <span>Open your <a href="https://deencommerce.com/wp-admin/admin.php?page=wc-orders&status=wc-processing" target="_blank" style="color: #60a5fa; text-decoration: underline;">WooCommerce Processing Orders</a> page.</span>
+            <span><strong>Highlight Any Number:</strong> On WhatsApp Web, Facebook, or any website, highlight/select a phone number to see the floating <strong>⚡ Pathao Check</strong> pill!</span>
           </div>
           <div class="step-item">
             <span class="step-num">2</span>
-            <span>Highlight & copy any customer phone number with <kbd>Ctrl+C</kbd> or click the <strong>⚡ Pathao</strong> button directly on the table.</span>
+            <span><strong>Copy Any Number:</strong> Press <kbd>Ctrl+C</kbd> on any phone number to trigger the on-screen toast with <strong>👉 Open Pathao</strong>.</span>
           </div>
           <div class="step-item">
             <span class="step-num">3</span>
-            <span>In Pathao, the phone is auto-filled and Pathao's native system instantly detects the customer!</span>
+            <span><strong>Instant Customer Ratio:</strong> In Pathao, recipient details are autofilled and Pathao immediately reveals the customer's delivery ratio & fraud check!</span>
           </div>
         </div>
       </div>

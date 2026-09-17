@@ -8,6 +8,7 @@
 
   // Gracefully suppress "Extension context invalidated" errors on orphaned content script after extension reload
   if (typeof window !== "undefined") {
+    window.__deenWcActive = true;
     window.addEventListener("error", (event) => {
       if (event && event.message && event.message.includes("Extension context invalidated")) {
         event.stopImmediatePropagation();

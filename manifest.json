@@ -25,13 +25,20 @@
     "clipboardWrite",
     "contextMenus",
     "tabs",
-    "notifications"
+    "notifications",
+    "sidePanel",
+    "cookies"
   ],
+  "side_panel": {
+    "default_path": "popup.html"
+  },
   "host_permissions": [
     "https://merchant.pathao.com/*",
     "https://*.pathao.com/*",
     "http://merchant.pathao.com/*",
     "http://*.pathao.com/*",
+    "https://steadfast.com.bd/*",
+    "https://*.steadfast.com.bd/*",
     "*://deencommerce.com/*",
     "*://*.deencommerce.com/*",
     "*://*/*"
@@ -57,6 +64,18 @@
       ],
       "js": ["woocommerce.js"],
       "css": ["woocommerce.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*/*"],
+      "exclude_matches": [
+        "https://merchant.pathao.com/*",
+        "https://*.pathao.com/*",
+        "http://merchant.pathao.com/*",
+        "http://*.pathao.com/*"
+      ],
+      "js": ["phone-check.js"],
+      "css": ["phone-check.css"],
       "run_at": "document_idle"
     }
   ],
