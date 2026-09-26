@@ -19,3 +19,7 @@ dist/
 build/
 *.zip
 *.crx
+
+# Test Artifacts
+temp_chrome_e2e_profile/
+*.log

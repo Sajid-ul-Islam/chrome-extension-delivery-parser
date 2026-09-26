@@ -702,7 +702,6 @@
    * --------------------------------------------------------------------------
    */
   let sidebarEl = null;
-  let sidebarTabEl = null;
 
   function loadRecentHistory(cb) {
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
@@ -945,12 +944,10 @@
 
     if (shouldOpen) {
       sidebarEl.classList.add("open");
-      if (sidebarTabEl) sidebarTabEl.style.display = "none";
       const input = sidebarEl.querySelector("#deen-sidebar-phone-input");
       if (input) setTimeout(() => input.focus(), 150);
     } else {
       sidebarEl.classList.remove("open");
-      if (sidebarTabEl) sidebarTabEl.style.display = "inline-flex";
     }
   }
 
@@ -968,20 +965,12 @@
   }
 
   function initSidebarDrawer() {
-    if (document.getElementById("deen-sidebar-dock-tab") || document.getElementById("deen-rating-sidebar")) {
+    if (document.getElementById("deen-rating-sidebar")) {
       return;
     }
 
-    // 1. Floating Dock Tab on Middle-Right Edge
-    const dockTab = document.createElement("div");
-    dockTab.id = "deen-sidebar-dock-tab";
-    dockTab.title = "⚡ Click to toggle Customer Rating Sidebar";
-    dockTab.innerHTML = `
-      <span class="deen-dock-tab-icon">⚡</span>
-      <span>Rating Check</span>
-    `;
-
-    // 2. Sliding Sidebar Drawer
+    // Sliding Sidebar Drawer (opens on demand from rating modal / toast buttons —
+    // no always-visible floating tab on the page edge)
     const sidebar = document.createElement("div");
     sidebar.id = "deen-rating-sidebar";
     sidebar.innerHTML = `
@@ -1033,15 +1022,8 @@
       </div>
     `;
 
-    document.body.appendChild(dockTab);
     document.body.appendChild(sidebar);
-    sidebarTabEl = dockTab;
     sidebarEl = sidebar;
-
-    // Toggle behavior
-    dockTab.addEventListener("click", () => {
-      toggleSidebar();
-    });
 
     const closeBtn = sidebar.querySelector("#deen-sidebar-btn-close");
     if (closeBtn) {

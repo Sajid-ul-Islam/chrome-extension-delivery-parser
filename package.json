@@ -1,0 +1,9 @@
+{
+  "name": "chrome-extension-delivery-parser",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DEEN Delivery Parser — Chrome extension for Pathao & courier intelligence",
+  "scripts": {
+    "test": "node test_parser.js && node test_autofill_flow.js && node test_popup_pathao_check.js && node test_live_pathao_rating_parsing.js && node test_universal_phone_e2e.js && node e2e_chrome_test.js"
+  }
+}

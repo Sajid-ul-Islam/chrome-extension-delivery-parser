@@ -449,8 +449,20 @@ View Details`;
     process.exitCode = 1;
   } finally {
     try { chromeProcess.kill(); } catch (e) {}
+    // Wait for Chrome to fully exit (Windows keeps file locks until then)
+    try {
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 5000);
+        chromeProcess.once('exit', () => { clearTimeout(timer); resolve(); });
+      });
+    } catch (e) {}
     mockServer.close();
-    try { fs.rmSync(TEMP_USER_DATA, { recursive: true, force: true }); } catch (e) {}
+    // Retry folder removal — lock release can lag behind process exit
+    for (let i = 0; i < 5; i++) {
+      try { fs.rmSync(TEMP_USER_DATA, { recursive: true, force: true }); break; } catch (e) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
   }
 }
 

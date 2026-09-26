@@ -20,7 +20,14 @@ function createMockElement(tag) {
       classes: [],
       add: (c) => el.classList.classes.push(c),
       remove: (c) => { el.classList.classes = el.classList.classes.filter(x => x !== c); },
-      contains: (c) => el.classList.classes.includes(c)
+      contains: (c) => el.classList.classes.includes(c),
+      toggle: (c, force) => {
+        const has = el.classList.classes.includes(c);
+        const shouldAdd = force === undefined ? !has : !!force;
+        if (shouldAdd && !has) el.classList.classes.push(c);
+        if (!shouldAdd && has) el.classList.classes = el.classList.classes.filter(x => x !== c);
+        return shouldAdd;
+      }
     },
     style: {},
     children: [],
@@ -155,6 +162,10 @@ global.chrome = {
         keys.forEach(k => { res[k] = storageStore[k]; });
         if (cb) cb(res);
       }
+    },
+    onChanged: {
+      _listeners: [],
+      addListener: (fn) => { global.chrome.storage.onChanged._listeners.push(fn); }
     }
   }
 };
@@ -239,21 +250,24 @@ setTimeout(() => {
     assert(toastContainer, "Toast container should be created upon copy");
     assert(sentMessages.some(m => m.action === "sync_to_pathao" && m.data.phone === "01811223344" && m.autoSwitch === false),
       "Copy event must sync phone 01811223344 in background with autoSwitch: false");
-    // Test 6: In-Page Dockable Sidebar Drawer verification
-    console.log("\n▶ Test 6: Verifying In-Page Dockable Sidebar Tab and Drawer...");
+    // Test 6: No floating dock tab — sidebar opens only on demand
+    console.log("\n▶ Test 6: Verifying Sidebar Drawer exists WITHOUT a floating dock tab...");
     const dockTab = global.mockDOM.find(e => e.id === "deen-sidebar-dock-tab");
-    assert(dockTab, "Dock tab '#deen-sidebar-dock-tab' must be attached to body");
-    assert(dockTab.innerHTML.includes("Rating Check"), "Dock tab should show 'Rating Check'");
+    assert(!dockTab, "Floating dock tab must NOT be attached to body (removed by design)");
 
     const sidebar = global.mockDOM.find(e => e.id === "deen-rating-sidebar");
     assert(sidebar, "Sidebar drawer '#deen-rating-sidebar' must be attached to body");
     assert(!sidebar.classList.contains("open"), "Sidebar should initially be closed");
 
-    // Click dock tab to open sidebar
-    console.log("  Clicking dock tab to open sidebar drawer...");
-    dockTab._handlers["click"].forEach(h => h({}));
-    assert(sidebar.classList.contains("open"), "Sidebar must have class 'open' after clicking dock tab");
-    console.log("  ✅ Dock tab successfully toggled sidebar drawer open!");
+    // Open the sidebar via the 📌 Sidebar button in the copy toast (Test 5's toast)
+    console.log("  Opening sidebar via toast '📌 Sidebar' button...");
+    const toastButtons = Array.from(toastContainer.children)
+      .flatMap(t => (t.children || []).filter(c => c.className === "deen-universal-toast-action deen-toast-action-secondary"));
+    const sidebarToastBtn = toastButtons.find(b => b.textContent === "📌 Sidebar");
+    assert(sidebarToastBtn, "Copy toast must offer a '📌 Sidebar' button to open the drawer");
+    sidebarToastBtn._handlers["click"].forEach(h => h({}));
+    assert(sidebar.classList.contains("open"), "Sidebar must open from toast '📌 Sidebar' button");
+    console.log("  ✅ No dock tab on page; sidebar drawer opens on demand from toast!");
 
     // Test 7: Manual Phone Search inside Sidebar
     console.log("\n▶ Test 7: Testing Phone Check directly in Sidebar Drawer...");
@@ -287,7 +301,7 @@ setTimeout(() => {
     console.log("  ✅ Sidebar drawer closed cleanly!");
 
     console.log("\n==================================================");
-    console.log("🎉 ALL IN-PAGE RATING, DOCK TAB & SIDEBAR TESTS PASSED!");
+    console.log("🎉 ALL IN-PAGE RATING & SIDEBAR TESTS PASSED!");
     console.log("==================================================");
     process.exit(0);
   }, 100);
