@@ -636,7 +636,26 @@
   const JWT_REGEX = /eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/;
 
   function extractPathaoToken() {
-    // 1. Check priority keys in localStorage
+    // 1. Check window globals (some SPAs expose the token directly)
+    try {
+      if (typeof window !== "undefined") {
+        const globalKeys = [
+          "__PATHAO_TOKEN", "__pathao_token", "_pathao_token", "pathaoToken",
+          "token", "accessToken", "access_token", "authToken", "auth_token",
+          "auth", "userToken", "jwt", "idToken", "credential", "sessionToken"
+        ];
+        for (const k of globalKeys) {
+          const v = window[k];
+          if (typeof v === "string" && v.length > 20) {
+            const m = v.match(JWT_REGEX);
+            if (m) return m[0];
+            if (v.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(v)) return v;
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 2. Check priority keys in localStorage
     try {
       if (typeof localStorage !== "undefined") {
         const priorityKeys = ["token", "access_token", "accessToken", "auth_token", "pathao_token", "user", "auth", "persist:root"];
@@ -645,21 +664,23 @@
           if (val) {
             const m = val.match(JWT_REGEX);
             if (m) return m[0];
+            if (val.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(val)) return val;
           }
         }
-        // Scan all localStorage entries
+        // Scan all localStorage entries for any token-like value
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
           const val = localStorage.getItem(key);
           if (val) {
             const m = val.match(JWT_REGEX);
             if (m) return m[0];
+            if (val.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(val) && val.indexOf(" ") === -1) return val;
           }
         }
       }
     } catch (e) {}
 
-    // 2. Scan sessionStorage
+    // 3. Scan sessionStorage
     try {
       if (typeof sessionStorage !== "undefined") {
         for (let i = 0; i < sessionStorage.length; i++) {
@@ -668,16 +689,25 @@
           if (val) {
             const m = val.match(JWT_REGEX);
             if (m) return m[0];
+            if (val.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(val) && val.indexOf(" ") === -1) return val;
           }
         }
       }
     } catch (e) {}
 
-    // 3. Scan document.cookie
+    // 4. Scan document.cookie (non-HTTP-only cookies)
     try {
       if (typeof document !== "undefined" && document.cookie) {
         const m = document.cookie.match(JWT_REGEX);
         if (m) return m[0];
+        const cookies = document.cookie.split(";");
+        for (const c of cookies) {
+          const eqIdx = c.indexOf("=");
+          if (eqIdx > 0) {
+            const val = c.substring(eqIdx + 1).trim();
+            if (val.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(val)) return val;
+          }
+        }
       }
     } catch (e) {}
 
@@ -701,6 +731,7 @@
       if (typeof window === "undefined" || window.__deenTokenInterceptorInstalled) return;
       window.__deenTokenInterceptorInstalled = true;
 
+      // --- Fetch interception ---
       if (window.fetch) {
         const origFetch = window.fetch;
         window.fetch = function (...args) {
@@ -716,11 +747,71 @@
               const m = authHeader.match(/Bearer\s+([a-zA-Z0-9._-]+)/i);
               if (m && m[1] && m[1].startsWith("eyJ")) {
                 syncPathaoSessionToken(m[1]);
+              } else if (m && m[1] && m[1].length > 20) {
+                syncPathaoSessionToken(m[1]);
               }
             }
           } catch (e) {}
           return origFetch.apply(this, args);
         };
+      }
+
+      // --- XHR interception (catches auth calls Pathao makes via XMLHttpRequest) ---
+      if (window.XMLHttpRequest) {
+        const _origXHRopen = XMLHttpRequest.prototype.open;
+        const _origXHRsetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+        XMLHttpRequest.prototype.open = function (method, url) {
+          this.__deen_method = method;
+          this.__deen_url = url;
+          return _origXHRopen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+          if (typeof name === "string" && typeof value === "string") {
+            const hn = name.toLowerCase();
+            if (hn === "authorization" || hn === "x-auth-token" || hn === "x-access-token" || hn === "x-csrf-token") {
+              let captured = null;
+              const bearerMatch = value.match(/Bearer\s+([a-zA-Z0-9._-]+)/i);
+              if (bearerMatch && bearerMatch[1]) {
+                captured = bearerMatch[1];
+              } else if (value.length > 20) {
+                captured = value;
+              }
+              if (captured) syncPathaoSessionToken(captured);
+            }
+          }
+          return _origXHRsetRequestHeader.apply(this, arguments);
+        };
+      }
+
+      // --- WebSocket interception (catches auth in WS upgrade headers / URL query) ---
+      if (window.WebSocket) {
+        const _origWS = window.WebSocket;
+        window.WebSocket = function (url, protocols) {
+          let captured = null;
+          // 1. Auth token in URL query string (many SPAs send ?token=... or ?auth=...)
+          try {
+            const u = new URL(url, window.location.origin);
+            for (const p of u.searchParams) {
+              const v = u.searchParams.get(p);
+              if (v && (p === "token" || p === "auth" || p === "access_token" || p === "jwt" || p === "bearer" || p.startsWith("x-"))) {
+                if (v.length > 20) captured = v;
+              }
+            }
+          } catch (e) {}
+          // 2. Auth token in the protocols (some pass it as a sub-protocol header)
+          if (!captured && Array.isArray(protocols)) {
+            for (const p of protocols) {
+              if (p && p.length > 20 && /^[a-zA-Z0-9\-_\.]+$/.test(p)) {
+                captured = p;
+                break;
+              }
+            }
+          }
+          if (captured) syncPathaoSessionToken(captured);
+          return new _origWS(url, protocols);
+        };
+        // Preserve any properties the app may depend on
+        if (_origWS.prototype) window.WebSocket.prototype = _origWS.prototype;
       }
     } catch (e) {}
   }
@@ -758,6 +849,18 @@
 
   installPathaoTokenInterceptor();
   syncPathaoSessionToken();
+
+  // Periodic re-sync: Pathao SPAs may store the auth token asynchronously after page load,
+  // so retry over the first minute to catch late-arriving tokens.
+  (function scheduleTokenResync() {
+    let attempts = 0;
+    const maxAttempts = 10;
+    const interval = setInterval(() => {
+      attempts++;
+      syncPathaoSessionToken();
+      if (attempts >= maxAttempts) clearInterval(interval);
+    }, 6000);
+  })();
 
   // When arriving on page (e.g. after clicking trigger), immediately check for pending autofill
   checkPendingAutofill(0);

@@ -170,10 +170,18 @@ async function getPathaoToken() {
 
   // Check chrome.cookies for merchant.pathao.com
   if (typeof chrome !== "undefined" && chrome.cookies) {
-    const candidateNames = ["token", "access_token", "accessToken", "auth_token", "auth"];
+    const candidateNames = [
+      "token", "access_token", "accessToken", "auth_token", "auth",
+      "session_token", "session", "sid", "__session", "refresh_token",
+      "jwt", "id_token", "idToken", "user_token", "api_token"
+    ];
     for (const name of candidateNames) {
       try {
         const c = await new Promise(r => chrome.cookies.get({ url: "https://merchant.pathao.com", name: name }, r));
+        if (c && c.value && c.value.length > 20) return c.value;
+      } catch (e) {}
+      try {
+        const c = await new Promise(r => chrome.cookies.get({ url: "https://www.pathao.com", name: name }, r));
         if (c && c.value && c.value.length > 20) return c.value;
       } catch (e) {}
     }
@@ -182,6 +190,18 @@ async function getPathaoToken() {
       const all = await new Promise(r => chrome.cookies.getAll({ domain: "pathao.com" }, r));
       for (const c of (all || [])) {
         if (c.value && c.value.startsWith("eyJ")) return c.value;
+        if (c.value && c.value.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(c.value)) return c.value;
+      }
+    } catch (e) {}
+    // Broad fallback: scan ALL cookies across every domain for a token-like value
+    try {
+      const allCookies = await new Promise(r => chrome.cookies.getAll({}, r));
+      for (const c of (allCookies || [])) {
+        if (c.value && c.value.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(c.value)) {
+          const name = (c.name || "").toLowerCase();
+          if (name === "preferences" || name === "settings" || name === "theme" || name === "language") continue;
+          return c.value;
+        }
       }
     } catch (e) {}
   }
@@ -338,7 +358,37 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse) {
         const json = await fetchResp.json().catch(() => null);
         if (fetchResp.ok && json) {
           pathaoData = json;
-        } else if (fetchResp.status === 401 || fetchResp.status === 400) {
+        } else if (fetchResp.status === 401) {
+          // 401 may be a race: content script may have just captured the token.
+          // Wait briefly and retry once if a fresh token appeared.
+          await new Promise(r => setTimeout(r, 2000));
+          const refreshedToken = await getPathaoToken();
+          if (refreshedToken && refreshedToken !== token) {
+            const retryHeaders = {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              "Authorization": "Bearer " + refreshedToken
+            };
+            const retryController = new AbortController();
+            const retryTimeout = setTimeout(() => retryController.abort(), 4000);
+            const retryResp = await fetch("https://merchant.pathao.com/api/v1/user/success", {
+              method: "POST",
+              headers: retryHeaders,
+              credentials: "include",
+              signal: retryController.signal,
+              body: JSON.stringify({ phone: cleanPhone })
+            });
+            clearTimeout(retryTimeout);
+            const retryJson = await retryResp.json().catch(() => null);
+            if (retryResp.ok && retryJson) {
+              pathaoData = retryJson;
+            } else {
+              pathaoData = { error: true, status: retryResp.status, details: retryJson || "token_missing" };
+            }
+          } else {
+            pathaoData = { error: true, status: fetchResp.status, details: json || "token_missing" };
+          }
+        } else if (fetchResp.status === 400) {
           pathaoData = { error: true, status: fetchResp.status, details: json || "token_missing" };
         }
       } else {
