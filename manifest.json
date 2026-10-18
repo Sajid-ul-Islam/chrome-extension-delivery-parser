@@ -21,7 +21,6 @@
     "activeTab",
     "scripting",
     "storage",
-    "clipboardRead",
     "clipboardWrite",
     "contextMenus",
     "tabs",
@@ -40,8 +39,7 @@
     "https://steadfast.com.bd/*",
     "https://*.steadfast.com.bd/*",
     "*://deencommerce.com/*",
-    "*://*.deencommerce.com/*",
-    "*://*/*"
+    "*://*.deencommerce.com/*"
   ],
   "content_scripts": [
     {
@@ -62,7 +60,7 @@
         "*://*/wp-admin/admin.php?page=wc-orders*",
         "*://*/wp-admin/post.php?post=*&action=edit*"
       ],
-      "js": ["woocommerce.js"],
+      "js": ["parser.js", "woocommerce.js"],
       "css": ["woocommerce.css"],
       "run_at": "document_idle"
     },

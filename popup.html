@@ -33,6 +33,9 @@
       <button class="nav-tab" data-tab="tab-sync">
         <span>⚡ Pathao Sync</span>
       </button>
+      <button class="nav-tab" data-tab="tab-quickreply">
+        <span>💬 WhatsApp COD</span>
+      </button>
     </nav>
 
     <!-- Tab 1: Current Tab Extractor -->
@@ -136,6 +139,93 @@
           <div class="step-item">
             <span class="step-num">3</span>
             <span><strong>Instant Customer Ratio:</strong> In Pathao, recipient details are autofilled and Pathao immediately reveals the customer's delivery ratio & fraud check!</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: WhatsApp Advance COD Quick Reply Settings -->
+    <div id="tab-quickreply" class="tab-content">
+      <div class="qr-panel" style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="sync-banner" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.25)); border-color: rgba(16, 185, 129, 0.4);">
+          <div class="sync-badge" style="background: #10b981; color: #fff;">💬 WhatsApp Quick Reply & Advance COD</div>
+          <p class="sync-desc">Configure your bKash & Nagad accounts and delivery fees to protect against COD losses with 1-click WhatsApp messages on risky orders.</p>
+        </div>
+
+        <!-- Settings Form -->
+        <div class="qr-settings-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
+          <div style="font-size: 13px; font-weight: 700; color: #f8fafc; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+            <span>⚙️ Merchant Payment & Delivery Settings</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Store Name</label>
+              <input type="text" id="qr-store-name" placeholder="DEEN Commerce" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Inside Dhaka Delivery Fee (৳)</label>
+              <input type="number" id="qr-inside-fee" placeholder="70" value="70" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 12px;" />
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">bKash Number</label>
+              <input type="tel" id="qr-bkash-number" placeholder="01XXXXXXXXX" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #fff; font-family: monospace; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">bKash Type</label>
+              <select id="qr-bkash-type" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; color: #fff; font-size: 12px;">
+                <option value="Personal">Personal (Send Money)</option>
+                <option value="Merchant">Merchant (Payment)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Nagad Number (Optional)</label>
+              <input type="tel" id="qr-nagad-number" placeholder="01XXXXXXXXX" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #fff; font-family: monospace; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Nagad Type</label>
+              <select id="qr-nagad-type" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; color: #fff; font-size: 12px;">
+                <option value="Personal">Personal</option>
+                <option value="Merchant">Merchant</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 14px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Outside Dhaka Delivery Fee (৳)</label>
+              <input type="number" id="qr-outside-fee" placeholder="130" value="130" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 12px;" />
+            </div>
+          </div>
+
+          <button id="btn-save-qr-config" class="btn-primary" style="width: 100%; padding: 8px 12px; font-size: 12.5px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-color: #10b981;">
+            <span>💾 Save WhatsApp Settings</span>
+          </button>
+        </div>
+
+        <!-- Live Template Preview Box -->
+        <div class="qr-preview-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">📝 Live Quick Reply Preview</span>
+            <select id="qr-preview-template-select" style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 8px; color: #fff; font-size: 11px;">
+              <option value="advance_fee_out">Advance Fee (Outside Dhaka - ৳130)</option>
+              <option value="advance_fee_in">Advance Fee (Inside Dhaka - ৳70)</option>
+              <option value="confirm_order">Order Confirmation</option>
+              <option value="high_risk_notice">High Risk Notice</option>
+              <option value="tracking_info">Courier Tracking Notice</option>
+            </select>
+          </div>
+          <textarea id="qr-preview-textarea" rows="6" readonly style="width: 100%; box-sizing: border-box; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #f8fafc; font-size: 11.5px; line-height: 1.5; padding: 8px 10px; font-family: inherit; margin-bottom: 8px;"></textarea>
+          <div style="display: flex; justify-content: flex-end;">
+            <button id="btn-copy-qr-preview" class="btn-secondary" style="font-size: 11px; padding: 5px 12px;">
+              <span>📋 Copy Preview</span>
+            </button>
           </div>
         </div>
       </div>

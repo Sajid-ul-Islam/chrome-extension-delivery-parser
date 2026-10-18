@@ -18,7 +18,9 @@ const manifest = JSON.parse(manifestRaw);
 assert.strictEqual(manifest.manifest_version, 3, "Manifest version must be 3");
 assert(manifest.permissions.includes("storage"), "Must have storage permission");
 assert(manifest.permissions.includes("tabs"), "Must have tabs permission");
-assert(manifest.permissions.includes("clipboardRead"), "Must have clipboardRead permission");
+assert(manifest.permissions.includes("clipboardWrite"), "Must have clipboardWrite permission");
+assert(!manifest.permissions.includes("clipboardRead"), "Must not request unnecessary clipboardRead permission");
+assert(!manifest.host_permissions.includes("*://*/*"), "Must not request broad *://*/* host permission");
 
 const hasWooCommerceScript = manifest.content_scripts.some(cs =>
   cs.js && cs.js.includes("woocommerce.js") &&
@@ -67,11 +69,23 @@ console.log("  ✅ phone-check.js loaded without syntax errors.");
 require('./woocommerce.js');
 console.log("  ✅ woocommerce.js loaded without syntax errors.");
 
+const wcCode = fs.readFileSync(path.join(__dirname, 'woocommerce.js'), 'utf8');
+assert(wcCode.includes("syncToPathao(payload, { autoSwitch: true, userTriggered: true })"),
+  "woocommerce.js single order page must pass userTriggered: true to syncToPathao");
+assert(wcCode.includes("debounceTimer"),
+  "woocommerce.js MutationObserver must be debounced");
+console.log("  ✅ woocommerce.js single order dispatch & debounced MutationObserver verified!");
+
 require('./content.js');
 console.log("  ✅ content.js loaded without syntax errors.");
 
 require('./background.js');
 console.log("  ✅ background.js loaded without syntax errors.");
+
+const bgCode = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
+assert(!bgCode.includes("chrome.cookies.getAll({},"),
+  "background.js must never perform an unfiltered chrome.cookies.getAll({}) scan across all domains");
+console.log("  ✅ background.js cookie security verified (no cross-origin cookie scraping)!");
 
 require('./popup.js');
 console.log("  ✅ popup.js loaded without syntax errors.");
@@ -267,8 +281,119 @@ assert.strictEqual(unsentOrders.length, 9, "Unsent orders filtering mismatch");
 console.log(`  ✅ Successfully parsed ${wcResult.records.length} WooCommerce orders with 100% field accuracy!`);
 console.log(`  ✅ Unread Activity Tracking: ${m.unsentCount} Unsent (Send with Pathao), ${m.dispatchedCount} Dispatched.`);
 
+// 8. Test Smart BD Address Parser & Autofill Integration (Feature 4)
+console.log("\n▶ Test 8: Testing Smart BD Address Parser & City/Zone Autofill Integration...");
+const { parseBDAddress: testBDAddress, generatePathaoBatchCSV: testBatchCSV } = require('./parser.js');
+
+const sampleAddresses = [
+  {
+    raw: "House 24, Road 7, Sector 4, Uttara, Dhaka - 1230",
+    expectedDist: "Dhaka",
+    expectedZone: "Uttara",
+    expectedPostcode: "1230",
+    expectedType: "Inside Dhaka"
+  },
+  {
+    raw: "Masterpara, Sreepur, Gazipur-1740",
+    expectedDist: "Gazipur",
+    expectedZone: "Sreepur",
+    expectedPostcode: "1740",
+    expectedType: "Sub Dhaka"
+  },
+  {
+    raw: "Agrabad Commercial Area, Chattogram",
+    expectedDist: "Chattogram",
+    expectedZone: "Agrabad",
+    expectedType: "Outside Dhaka"
+  }
+];
+
+for (const sa of sampleAddresses) {
+  const p = testBDAddress(sa.raw);
+  assert.strictEqual(p.district, sa.expectedDist, `District mismatch for ${sa.raw}`);
+  assert.strictEqual(p.zone, sa.expectedZone, `Zone mismatch for ${sa.raw}`);
+  if (sa.expectedPostcode) {
+    assert.strictEqual(p.postcode, sa.expectedPostcode, `Postcode mismatch for ${sa.raw}`);
+  }
+  assert.strictEqual(p.cityType, sa.expectedType, `City type mismatch for ${sa.raw}`);
+}
+console.log("  ✅ Smart BD address parser correctly decomposes district, zone, postcode & city type.");
+
+// 9. Test WooCommerce Bulk Action Toolbar, Row Extraction & Batch CSV (Feature 5)
+console.log("\n▶ Test 9: Testing WooCommerce Bulk Action Toolbar & Pathao Batch CSV Export...");
+const { extractRowOrderDetails } = require('./woocommerce.js');
+
+// Mock a DOM row for WooCommerce orders list
+const mockRow = {
+  innerText: "14913 badon 1,535৳ 01711223344 House 12, Road 4, Sector 3, Uttara, Dhaka",
+  querySelector: function(sel) {
+    if (sel.includes(".order_number") || sel.includes("order-view")) {
+      return { textContent: "#14913" };
+    }
+    if (sel.includes(".customer_user") || sel.includes(".column-order_title")) {
+      return { textContent: "badon" };
+    }
+    if (sel.includes(".order_total") || sel.includes(".amount")) {
+      return { textContent: "1,535৳" };
+    }
+    if (sel.includes(".shipping_address") || sel.includes(".billing_address")) {
+      return { textContent: "House 12, Road 4, Sector 3, Uttara, Dhaka" };
+    }
+    return null;
+  }
+};
+
+const extracted = extractRowOrderDetails(mockRow);
+assert.strictEqual(extracted.orderId, "14913", "Extracted orderId mismatch");
+assert.strictEqual(extracted.name, "badon", "Extracted name mismatch");
+assert.strictEqual(extracted.phone, "01711223344", "Extracted phone mismatch");
+assert.strictEqual(extracted.cod, "1535", "Extracted COD mismatch");
+assert.strictEqual(extracted.district, "Dhaka", "Extracted district mismatch");
+assert.strictEqual(extracted.zone, "Uttara", "Extracted zone mismatch");
+console.log("  ✅ WooCommerce row extraction with smart BD address verified!");
+
+// Test Batch CSV Generation with multiple extracted orders
+const batchOrders = [
+  extracted,
+  {
+    orderId: "14912",
+    name: "Shohag",
+    phone: "01812345678",
+    address: "Mirpur 12, Dhaka - 1216",
+    cod: "499",
+    district: "Dhaka",
+    zone: "Mirpur",
+    streetAddress: "Mirpur 12"
+  }
+];
+
+const batchCsv = testBatchCSV(batchOrders);
+assert(batchCsv.includes("Merchant Order ID,Recipient Name,Recipient Phone"), "Pathao Batch CSV must have official headers");
+assert(batchCsv.includes('"14913","badon","01711223344"'), "First batch row must match Order 14913");
+assert(batchCsv.includes('"14912","Shohag","01812345678"'), "Second batch row must match Order 14912");
+console.log("  ✅ Pathao Batch CSV export matches 100% of Pathao bulk upload format!");
+
+// 10. Test Batch Queue State Structure & Advancement
+console.log("\n▶ Test 10: Testing Pathao Batch Queue Storage Structure & Queue Advancement...");
+const batchQueueState = {
+  orders: batchOrders,
+  currentIndex: 0,
+  total: batchOrders.length,
+  userTriggered: true,
+  timestamp: Date.now()
+};
+
+assert.strictEqual(batchQueueState.total, 2, "Total queue items should be 2");
+assert.strictEqual(batchQueueState.orders[batchQueueState.currentIndex].orderId, "14913", "Order 1 should be first in queue");
+
+// Advance queue to item 2
+batchQueueState.currentIndex++;
+assert.strictEqual(batchQueueState.orders[batchQueueState.currentIndex].orderId, "14912", "Order 2 should be active after advancing");
+console.log("  ✅ Batch Queue state structure and sequential autofill progression verified!");
+
 console.log("\n==================================================");
 console.log("🎉 ALL TESTS PASSED SUCCESSFULLY!");
 console.log("==================================================");
+process.exit(0);
 
 

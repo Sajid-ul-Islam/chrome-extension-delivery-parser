@@ -23,6 +23,7 @@ if (typeof document !== "undefined") {
     initActionHandlers();
     checkPendingStorage();
     initSyncTab();
+    initQuickReplyTab();
   });
 }
 
@@ -948,5 +949,163 @@ function initSyncTab() {
       if (e.key === "Enter") handleQuickCheck();
     });
   }
+}
+
+/**
+ * Tab 4: WhatsApp Advance COD Quick Reply Controller
+ */
+function initQuickReplyTab() {
+  const storeInput = document.getElementById("qr-store-name");
+  const bkashInput = document.getElementById("qr-bkash-number");
+  const bkashTypeSelect = document.getElementById("qr-bkash-type");
+  const nagadInput = document.getElementById("qr-nagad-number");
+  const nagadTypeSelect = document.getElementById("qr-nagad-type");
+  const insideFeeInput = document.getElementById("qr-inside-fee");
+  const outsideFeeInput = document.getElementById("qr-outside-fee");
+  const btnSave = document.getElementById("btn-save-qr-config");
+  const templateSelect = document.getElementById("qr-preview-template-select");
+  const previewTextarea = document.getElementById("qr-preview-textarea");
+  const btnCopyPreview = document.getElementById("btn-copy-qr-preview");
+
+  if (!btnSave) return;
+
+  const DEFAULT_CONFIG = {
+    storeName: "DEEN Commerce",
+    bkashNumber: "01XXXXXXXXX",
+    bkashType: "Personal",
+    nagadNumber: "",
+    nagadType: "Personal",
+    insideDhakaFee: 70,
+    outsideDhakaFee: 130,
+    customNote: ""
+  };
+
+  const getFormConfig = () => ({
+    storeName: (storeInput && storeInput.value ? storeInput.value.trim() : "") || "DEEN Commerce",
+    bkashNumber: (bkashInput && bkashInput.value ? bkashInput.value.trim() : ""),
+    bkashType: (bkashTypeSelect && bkashTypeSelect.value) || "Personal",
+    nagadNumber: (nagadInput && nagadInput.value ? nagadInput.value.trim() : ""),
+    nagadType: (nagadTypeSelect && nagadTypeSelect.value) || "Personal",
+    insideDhakaFee: Number(insideFeeInput && insideFeeInput.value) || 70,
+    outsideDhakaFee: Number(outsideFeeInput && outsideFeeInput.value) || 130,
+    customNote: ""
+  });
+
+  const updatePreview = () => {
+    if (!previewTextarea) return;
+    const currentCfg = getFormConfig();
+    const selVal = templateSelect ? templateSelect.value : "advance_fee_out";
+
+    let tplKey = "advance_fee";
+    let isOut = true;
+    let fee = currentCfg.outsideDhakaFee;
+
+    if (selVal === "advance_fee_in") {
+      tplKey = "advance_fee";
+      isOut = false;
+      fee = currentCfg.insideDhakaFee;
+    } else if (selVal === "confirm_order") {
+      tplKey = "confirm_order";
+      fee = undefined;
+    } else if (selVal === "high_risk_notice") {
+      tplKey = "high_risk_notice";
+      fee = currentCfg.outsideDhakaFee;
+    } else if (selVal === "tracking_info") {
+      tplKey = "tracking_info";
+      fee = undefined;
+    }
+
+    let genReply = typeof generateQuickReply === "function" ? generateQuickReply : null;
+    if (!genReply && typeof require !== "undefined") {
+      try { genReply = require("./parser.js").generateQuickReply; } catch (e) {}
+    }
+
+    const sampleParams = {
+      name: "রহিম আহমেদ",
+      phone: "01712345678",
+      orderId: "1055",
+      cod: "1,850",
+      fee: fee,
+      isOutsideDhaka: isOut,
+      trackingId: "DD240915ABC101"
+    };
+
+    if (genReply) {
+      previewTextarea.value = genReply(tplKey, sampleParams, currentCfg);
+    }
+  };
+
+  // 1. Load saved config
+  const storageArea = (typeof chrome !== "undefined" && chrome.storage && (chrome.storage.sync || chrome.storage.local)) || null;
+  if (storageArea) {
+    storageArea.get(["deen_quick_reply_config"], (res) => {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.lastError) {
+        void chrome.runtime.lastError.message;
+      }
+      const cfg = Object.assign({}, DEFAULT_CONFIG, (res && res.deen_quick_reply_config) || {});
+      if (storeInput) storeInput.value = cfg.storeName || "";
+      if (bkashInput) bkashInput.value = cfg.bkashNumber || "";
+      if (bkashTypeSelect) bkashTypeSelect.value = cfg.bkashType || "Personal";
+      if (nagadInput) nagadInput.value = cfg.nagadNumber || "";
+      if (nagadTypeSelect) nagadTypeSelect.value = cfg.nagadType || "Personal";
+      if (insideFeeInput) insideFeeInput.value = cfg.insideDhakaFee || 70;
+      if (outsideFeeInput) outsideFeeInput.value = cfg.outsideDhakaFee || 130;
+      updatePreview();
+    });
+  } else {
+    updatePreview();
+  }
+
+  // 2. Event listeners for preview updating on typing
+  [storeInput, bkashInput, bkashTypeSelect, nagadInput, nagadTypeSelect, insideFeeInput, outsideFeeInput].forEach(el => {
+    if (el) {
+      el.addEventListener("input", updatePreview);
+      el.addEventListener("change", updatePreview);
+    }
+  });
+  if (templateSelect) {
+    templateSelect.addEventListener("change", updatePreview);
+  }
+
+  // 3. Save button handler
+  btnSave.addEventListener("click", () => {
+    const configToSave = getFormConfig();
+    if (typeof chrome !== "undefined" && chrome.storage) {
+      const syncStorage = chrome.storage.sync;
+      const localStorage = chrome.storage.local;
+      if (syncStorage) {
+        syncStorage.set({ "deen_quick_reply_config": configToSave }, () => {
+          if (chrome.runtime && chrome.runtime.lastError) void chrome.runtime.lastError.message;
+        });
+      }
+      if (localStorage) {
+        localStorage.set({ "deen_quick_reply_config": configToSave });
+      }
+    }
+    showToast("✓ WhatsApp Quick Reply settings saved!");
+    btnSave.innerHTML = "<span>✓ Saved Successfully!</span>";
+    setTimeout(() => {
+      if (btnSave) btnSave.innerHTML = "<span>💾 Save WhatsApp Settings</span>";
+    }, 1500);
+  });
+
+  // 4. Copy preview button handler
+  if (btnCopyPreview) {
+    btnCopyPreview.addEventListener("click", () => {
+      if (previewTextarea && previewTextarea.value && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(previewTextarea.value).then(() => {
+          showToast("📋 Preview template copied to clipboard!");
+          btnCopyPreview.textContent = "✓ Copied!";
+          setTimeout(() => { if (btnCopyPreview) btnCopyPreview.textContent = "📋 Copy Preview"; }, 1500);
+        });
+      }
+    });
+  }
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    initQuickReplyTab
+  };
 }
 

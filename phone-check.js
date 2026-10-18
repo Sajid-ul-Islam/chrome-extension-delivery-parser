@@ -9,6 +9,18 @@
 
   // Prevent double-injection
   if (typeof window !== "undefined" && window.__deenPhoneCheckInjected) {
+    if (typeof module !== "undefined" && module.exports) {
+      module.exports = {
+        normalizeBDPhone,
+        escapeHTML,
+        DEFAULT_QUICK_REPLY_CONFIG,
+        calculateDeliveryFee,
+        buildWhatsAppDeepLink,
+        generateQuickReply,
+        getQuickReplyConfig,
+        injectWhatsAppMessage
+      };
+    }
     return;
   }
   if (typeof window !== "undefined") {
@@ -83,9 +95,293 @@
     return null;
   }
 
+  function escapeHTML(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  /**
+   * --------------------------------------------------------------------------
+   * WhatsApp Advance COD Quick Reply Configuration & Generator
+   * --------------------------------------------------------------------------
+   */
+  const DEFAULT_QUICK_REPLY_CONFIG = {
+    storeName: "DEEN Commerce",
+    bkashNumber: "01XXXXXXXXX",
+    bkashType: "Personal", // Personal | Merchant
+    nagadNumber: "",
+    nagadType: "Personal", // Personal | Merchant
+    insideDhakaFee: 70,
+    outsideDhakaFee: 130,
+    customNote: ""
+  };
+
+  function calculateDeliveryFee(params, config) {
+    if (params && params.fee !== undefined && params.fee !== null && params.fee !== "") {
+      const num = Number(params.fee);
+      if (!isNaN(num) && num > 0) return num;
+    }
+    const cfg = config || DEFAULT_QUICK_REPLY_CONFIG;
+    const insideFee = Number(cfg.insideDhakaFee) || 70;
+    const outsideFee = Number(cfg.outsideDhakaFee) || 130;
+
+    if (params && typeof params.isOutsideDhaka === "boolean") {
+      return params.isOutsideDhaka ? outsideFee : insideFee;
+    }
+
+    const addr = (params && (params.address || params.district || params.city || "")) .toLowerCase();
+    if (!addr) {
+      return outsideFee;
+    }
+
+    const isDhaka = addr.includes("dhaka") || addr.includes("ঢাকা") ||
+                    addr.includes("uttara") || addr.includes("mirpur") ||
+                    addr.includes("dhanmondi") || addr.includes("gulshan") ||
+                    addr.includes("banani") || addr.includes("mohammadpur") ||
+                    addr.includes("motijheel") || addr.includes("badda");
+    const isSubDhaka = addr.includes("savar") || addr.includes("সাভার") ||
+                       addr.includes("gazipur") || addr.includes("গাজীপুর") ||
+                       addr.includes("narayanganj") || addr.includes("নারায়ণগঞ্জ") ||
+                       addr.includes("keraniganj") || addr.includes("কেরানীগঞ্জ");
+
+    if (isDhaka && !isSubDhaka) {
+      return insideFee;
+    }
+    return outsideFee;
+  }
+
+  function buildWhatsAppDeepLink(phone, messageText) {
+    if (!phone) return "";
+    let digits = String(phone).replace(/\D/g, "");
+    let cleanPhone = digits;
+    if (digits.startsWith("01") && digits.length === 11) {
+      cleanPhone = "88" + digits;
+    } else if (digits.startsWith("1") && digits.length === 10) {
+      cleanPhone = "880" + digits;
+    } else if (!digits.startsWith("88") && digits.length === 11) {
+      cleanPhone = "88" + digits;
+    }
+    const encodedText = encodeURIComponent(messageText || "");
+    return `https://wa.me/${cleanPhone}?text=${encodedText}`;
+  }
+
+  function generateQuickReply(templateKey, params, customConfig) {
+    const p = params || {};
+    const cfg = Object.assign({}, DEFAULT_QUICK_REPLY_CONFIG, customConfig || {});
+    const store = cfg.storeName || "DEEN Commerce";
+    const fee = calculateDeliveryFee(p, cfg);
+    const nameGreeting = p.name && p.name.trim() ? ` ${p.name.trim()}` : "";
+    const orderNum = p.orderId ? String(p.orderId).trim().replace(/^#/, "") : "";
+    const orderRef = orderNum ? ` (অর্ডার #${orderNum})` : "";
+    const codVal = p.cod !== undefined && p.cod !== null && p.cod !== "" ? String(p.cod).trim() : "";
+
+    let paymentLines = [];
+    if (cfg.bkashNumber) {
+      paymentLines.push(`• বিকাশ (${cfg.bkashType || "Personal"}): ${cfg.bkashNumber}`);
+    }
+    if (cfg.nagadNumber) {
+      paymentLines.push(`• নগদ (${cfg.nagadType || "Personal"}): ${cfg.nagadNumber}`);
+    }
+    if (paymentLines.length === 0) {
+      paymentLines.push(`• বিকাশ/নগদ: ${cfg.bkashNumber || "01XXXXXXXXX"}`);
+    }
+    const paymentBlock = paymentLines.join("\n");
+
+    switch (templateKey) {
+      case "order_details_confirm":
+      case "ask_confirm": {
+        let itemsListText = "";
+        if (p.items && Array.isArray(p.items) && p.items.length > 0) {
+          itemsListText = "\n🛍️ অর্ডারকৃত পণ্য:\n" + p.items.map(it => {
+            const itName = it.name || it.title || "পণ্য";
+            const itQty = it.qty || it.quantity || 1;
+            const up = it.unitPrice ? ` (প্রতি পিস ৳${it.unitPrice})` : "";
+            const itPrice = it.total ? ` - ৳${it.total}` : (it.price ? ` - ৳${it.price}` : "");
+            return `• ${itName} (পরিমাণ: ${itQty})${up}${itPrice}`;
+          }).join("\n");
+        }
+        const addrText = p.address ? `\n📍 ডেলিভারি ঠিকানা: ${p.address}` : "";
+        const phoneText = p.phone ? `\n📞 ফোন নম্বর: ${p.phone}` : "";
+        const codText = codVal ? `\n💰 মোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
+        let advText = "";
+        if (p.requestAdvance || p.isOutsideDhaka) {
+          advText = `\n\nকুরিয়ার সার্ভিস শর্ত অনুযায়ী ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রযোজ্য। বিকাশ (${cfg.bkashType || "Personal"}): ${cfg.bkashNumber || ""}`;
+        }
+
+        return `আসসালামু আলাইকুম${nameGreeting}!
+${store} থেকে আপনার অর্ডারটি${orderRef} কনফার্ম করার জন্য বিস্তারিত নিচে দেওয়া হলো:${itemsListText}${addrText}${phoneText}${codText}${advText}
+
+অর্ডারটি কনফার্ম করার জন্য অনুগ্রহ করে 'হ্যাঁ' বা 'কনফার্ম' লিখে রিপ্লাই দিন। কোনো পরিবর্তন থাকলে আমাদের জানান। ধন্যবাদ!
+— ${store} (deencommerce.com)`;
+      }
+
+      case "confirm_order": {
+        const codLine = codVal ? `\nমোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
+        return `আসসালামু আলাইকুম${nameGreeting}!
+${store} থেকে আপনার অর্ডারটি${orderRef} সফলভাবে কনফার্ম করা হয়েছে।${codLine}
+
+পার্সেলটি দ্রুত প্রস্তুত করে কুরিয়ারে হস্তান্তর করা হবে। কোনো জিজ্ঞাসা থাকলে আমাদের জানাতে পারেন। আপনার অর্ডারের জন্য ধন্যবাদ!`;
+      }
+
+      case "high_risk_notice": {
+        return `আসসালামু আলাইকুম${nameGreeting}!
+কুরিয়ার সার্ভিস পলিসি অনুযায়ী${orderRef} ক্যাশ-অন-ডেলিভারিতে পার্সেল পাঠানোর পূর্বে ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রদান করা বাধ্যতামূলক।
+
+পেমেন্ট মাধ্যম:
+${paymentBlock}
+
+টাকা পাঠিয়ে অনুগ্রহ করে TrxID বা লাস্ট ২ ডিজিট মেসেজ করুন। অগ্রিম ডেলিভারি চার্জ প্রাপ্তির পর পার্সেল বুকিং কনফার্ম করা হবে। ধন্যবাদ! - ${store}`;
+      }
+
+      case "tracking_info": {
+        const tracking = p.trackingId || orderNum || "";
+        const codLine = codVal ? `\nক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
+        return `আসসালামু আলাইকুম${nameGreeting}!
+${store} থেকে আপনার পার্সেলটি কুরিয়ার সার্ভিসে হস্তান্তর করা হয়েছে।
+${tracking ? `ট্র্যাকিং আইডি: ${tracking}` : ""}${codLine}
+
+কুরিয়ার রাইডারের কল রিসিভ করে পার্সেলটি গ্রহণ করার জন্য অনুরোধ করা হলো। ধন্যবাদ!`;
+      }
+
+      case "advance_fee":
+      default: {
+        return `আসসালামু আলাইকুম${nameGreeting}!
+${store} থেকে আপনার অর্ডারটি${orderRef} কনফার্ম করার জন্য কুরিয়ার ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রদান করতে হবে। অবশিষ্ট মূল্য (COD) পার্সেল রিসিভ করার সময় পরিশোধ করবেন।
+
+পেমেন্ট মাধ্যম:
+${paymentBlock}
+
+টাকা পাঠিয়ে অনুগ্রহ করে লাস্ট ২ ডিজিট বা ট্রানজেকশন আইডি (TrxID) জানান। পেমেন্ট কনফার্ম হলেই পার্সেলটি দ্রুত পাঠিয়ে দেওয়া হবে। ধন্যবাদ!`;
+      }
+    }
+  }
+
+  function getQuickReplyConfig(callback) {
+    const fallback = Object.assign({}, DEFAULT_QUICK_REPLY_CONFIG);
+    if (typeof chrome !== "undefined" && chrome.storage) {
+      const storageArea = chrome.storage.sync || chrome.storage.local;
+      storageArea.get(["deen_quick_reply_config"], (result) => {
+        if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.lastError) {
+          void chrome.runtime.lastError.message;
+        }
+        const saved = result && result.deen_quick_reply_config;
+        if (typeof callback === "function") {
+          callback(Object.assign({}, fallback, saved || {}));
+        }
+      });
+    } else {
+      try {
+        if (typeof localStorage !== "undefined") {
+          const stored = localStorage.getItem("deen_quick_reply_config");
+          if (typeof callback === "function") {
+            callback(stored ? Object.assign({}, fallback, JSON.parse(stored)) : fallback);
+          }
+          return;
+        }
+      } catch (e) {}
+      if (typeof callback === "function") {
+        callback(fallback);
+      }
+    }
+  }
+
+  /**
+   * Universal WhatsApp Message Injector:
+   * 1. If on WhatsApp Web (web.whatsapp.com), injects text directly into active chat box
+   * 2. Automatically copies message to clipboard as universal reliable fallback
+   * 3. If not on WhatsApp Web and phone is provided, opens wa.me deep link in new tab
+   */
+  function injectWhatsAppMessage(text, options) {
+    const opts = options || {};
+    const phone = opts.phone || "";
+    let injected = false;
+    let copied = false;
+    let openedUrl = "";
+
+    // Copy to clipboard
+    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        navigator.clipboard.writeText(text).catch(() => {});
+        copied = true;
+      } catch (e) {}
+    }
+
+    const isWhatsApp = typeof window !== "undefined" && window.location &&
+      window.location.hostname && window.location.hostname.includes("web.whatsapp.com");
+
+    let chatInput = null;
+    if (typeof document !== "undefined") {
+      chatInput = document.querySelector('footer div[contenteditable="true"]') ||
+                  document.querySelector('div[contenteditable="true"][role="textbox"]') ||
+                  document.querySelector('div[data-tab="10"][contenteditable="true"]') ||
+                  document.querySelector('div[data-lexical-editor="true"][contenteditable="true"]') ||
+                  document.querySelector('div[title="Type a message"][contenteditable="true"]') ||
+                  document.querySelector('div[aria-placeholder="Type a message"]');
+    }
+
+    if (chatInput) {
+      try {
+        chatInput.focus();
+        if (typeof document !== "undefined" && document.execCommand) {
+          injected = document.execCommand('insertText', false, text);
+        }
+        if (!injected) {
+          chatInput.textContent = text;
+          if (typeof InputEvent !== "undefined") {
+            chatInput.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+          } else if (typeof Event !== "undefined") {
+            chatInput.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          if (typeof Event !== "undefined") {
+            chatInput.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          injected = true;
+        }
+      } catch (err) {
+        // Fallback to clipboard
+      }
+    }
+
+    // Feedback notifications
+    try {
+      if (typeof showUniversalToast === "function" && typeof document !== "undefined" && typeof document.getElementById === "function") {
+        if (injected) {
+          showUniversalToast("💬 Quick reply inserted into active WhatsApp chat!");
+        } else if (phone && opts.openChat !== false) {
+          showUniversalToast(`📋 Quick reply copied & opening WhatsApp chat for <strong>${escapeHTML(phone)}</strong>!`);
+        } else {
+          showUniversalToast("📋 Quick reply copied to clipboard!");
+        }
+      }
+    } catch (toastErr) {}
+
+    if (!injected && phone && opts.openChat !== false) {
+      openedUrl = buildWhatsAppDeepLink(phone, text);
+      if (typeof window !== "undefined" && window.open && !isWhatsApp) {
+        window.open(openedUrl, "_blank");
+      }
+    }
+
+    return { injected, copied, openedUrl, text };
+  }
+
   // Export for testing in Node.js
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { normalizeBDPhone };
+    module.exports = {
+      normalizeBDPhone,
+      escapeHTML,
+      DEFAULT_QUICK_REPLY_CONFIG,
+      calculateDeliveryFee,
+      buildWhatsAppDeepLink,
+      generateQuickReply,
+      getQuickReplyConfig,
+      injectWhatsAppMessage
+    };
   }
 
   // Stop here if running in Node.js environment without DOM
@@ -255,7 +551,7 @@
       </div>
       <div class="deen-modal-skeleton-body">
         <div class="deen-spinner-circle"></div>
-        <div class="deen-skeleton-text">Analyzing customer delivery records for <strong>${phone}</strong> across courier networks...</div>
+        <div class="deen-skeleton-text">Analyzing customer delivery records for <strong>${escapeHTML(phone)}</strong> across courier networks...</div>
       </div>
     `;
 
@@ -321,6 +617,9 @@
   function renderRatingModalContent(modal, data) {
     const riskClass = data.riskLevel === "high" ? "risk-high" : (data.riskLevel === "medium" ? "risk-medium" : "risk-low");
     const progressColor = data.riskColor || (data.riskLevel === "high" ? "#ef4444" : (data.riskLevel === "medium" ? "#f59e0b" : "#10b981"));
+    const safeCustomerName = escapeHTML(data.customerName || (data.pathaoStats && data.pathaoStats.name) || "");
+    const safePhone = escapeHTML(data.phone || "");
+    const safeRiskLabel = escapeHTML(data.riskLabel || "");
 
     modal.innerHTML = `
       <div class="deen-modal-header">
@@ -338,8 +637,8 @@
         <!-- Phone & Copy -->
         <div class="deen-modal-phone-card">
           <div>
-            <span style="font-size: 11px; color: #94a3b8; display: block;">${data.customerName ? `Customer: <strong style="color:#f8fafc">${data.customerName}</strong>` : 'Recipient Number'}</span>
-            <span class="deen-modal-phone-text">${data.phone}</span>
+            <span style="font-size: 11px; color: #94a3b8; display: block;">${safeCustomerName ? `Customer: <strong style="color:#f8fafc">${safeCustomerName}</strong>` : 'Recipient Number'}</span>
+            <span class="deen-modal-phone-text">${safePhone}</span>
           </div>
           <button class="deen-modal-copy-btn" id="deen-modal-btn-copy" title="Copy Number">📋 Copy</button>
         </div>
@@ -348,16 +647,16 @@
         <div class="deen-modal-score-box">
           <div class="deen-modal-risk-badge ${riskClass}">
             <span>●</span>
-            <span>${data.riskLabel}</span>
+            <span>${safeRiskLabel}</span>
           </div>
 
           <div class="deen-modal-percent-row">
-            <span class="deen-modal-percent-val" style="color: ${progressColor};">${data.successRate}%</span>
+            <span class="deen-modal-percent-val" style="color: ${progressColor};">${Number(data.successRate) || 0}%</span>
             <span class="deen-modal-percent-label">Delivery Rate</span>
           </div>
 
           <div class="deen-modal-progress-bar">
-            <div class="deen-modal-progress-fill" style="width: ${data.successRate}%; background: ${progressColor};"></div>
+            <div class="deen-modal-progress-fill" style="width: ${Number(data.successRate) || 0}%; background: ${progressColor};"></div>
           </div>
         </div>
 
@@ -395,6 +694,32 @@
             <button id="deen-modal-btn-connect-pathao" style="background: #f59e0b; color: #000; border: none; border-radius: 4px; padding: 4px 8px; font-weight: 700; font-size: 10px; cursor: pointer; white-space: nowrap;">Open Pathao</button>
           </div>
         ` : ''}
+
+        <!-- WhatsApp Quick Reply Section -->
+        <div class="deen-modal-qr-section">
+          <div class="deen-modal-qr-header">
+            <span class="deen-modal-qr-icon">💬</span>
+            <span class="deen-modal-qr-title">WhatsApp Quick Reply & Advance COD</span>
+          </div>
+
+          ${(data.riskLevel === 'high' || (data.successRate !== undefined && Number(data.successRate) < 70)) ? `
+            <div class="deen-modal-qr-alert">
+              <span>⚠️ <strong>High Return Risk (${data.successRate}%):</strong> Collect courier delivery charge in advance via bKash/Nagad before shipping!</span>
+            </div>
+          ` : ''}
+
+          <div class="deen-modal-qr-grid">
+            <button class="deen-modal-qr-btn deen-qr-advance" id="deen-modal-btn-qr-advance" title="1-click Advance Delivery Fee Request">
+              <span>💰 Advance Fee</span>
+            </button>
+            <button class="deen-modal-qr-btn deen-qr-confirm" id="deen-modal-btn-qr-confirm" title="1-click Order Confirmation">
+              <span>✅ Confirm Order</span>
+            </button>
+            <button class="deen-modal-qr-btn deen-qr-risk" id="deen-modal-btn-qr-risk" title="1-click Strict Risk Notice">
+              <span>⚠️ Risk Notice</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Footer Actions -->
@@ -413,6 +738,55 @@
 
     const btnDone = modal.querySelector("#deen-modal-btn-done");
     if (btnDone) btnDone.addEventListener("click", removeRatingModal);
+
+    // WhatsApp Quick Reply button handlers
+    const btnQrAdvance = modal.querySelector("#deen-modal-btn-qr-advance");
+    if (btnQrAdvance) {
+      btnQrAdvance.addEventListener("click", () => {
+        getQuickReplyConfig((config) => {
+          const fee = (data.riskLevel === "high") ? config.outsideDhakaFee : undefined;
+          const msg = generateQuickReply("advance_fee", {
+            name: data.customerName,
+            phone: data.phone,
+            fee: fee
+          }, config);
+          injectWhatsAppMessage(msg, { phone: data.phone, openChat: true });
+          btnQrAdvance.innerHTML = "<span>✓ Done!</span>";
+          setTimeout(() => { if (btnQrAdvance) btnQrAdvance.innerHTML = "<span>💰 Advance Fee</span>"; }, 1500);
+        });
+      });
+    }
+
+    const btnQrConfirm = modal.querySelector("#deen-modal-btn-qr-confirm");
+    if (btnQrConfirm) {
+      btnQrConfirm.addEventListener("click", () => {
+        getQuickReplyConfig((config) => {
+          const msg = generateQuickReply("confirm_order", {
+            name: data.customerName,
+            phone: data.phone
+          }, config);
+          injectWhatsAppMessage(msg, { phone: data.phone, openChat: true });
+          btnQrConfirm.innerHTML = "<span>✓ Done!</span>";
+          setTimeout(() => { if (btnQrConfirm) btnQrConfirm.innerHTML = "<span>✅ Confirm Order</span>"; }, 1500);
+        });
+      });
+    }
+
+    const btnQrRisk = modal.querySelector("#deen-modal-btn-qr-risk");
+    if (btnQrRisk) {
+      btnQrRisk.addEventListener("click", () => {
+        getQuickReplyConfig((config) => {
+          const msg = generateQuickReply("high_risk_notice", {
+            name: data.customerName,
+            phone: data.phone,
+            fee: config.outsideDhakaFee
+          }, config);
+          injectWhatsAppMessage(msg, { phone: data.phone, openChat: true });
+          btnQrRisk.innerHTML = "<span>✓ Done!</span>";
+          setTimeout(() => { if (btnQrRisk) btnQrRisk.innerHTML = "<span>⚠️ Risk Notice</span>"; }, 1500);
+        });
+      });
+    }
 
     const btnConnectPathao = modal.querySelector("#deen-modal-btn-connect-pathao");
     if (btnConnectPathao) {
@@ -779,14 +1153,17 @@
   function renderSidebarActiveCard(container, data) {
     const riskClass = data.riskLevel === "high" ? "risk-high" : (data.riskLevel === "medium" ? "risk-medium" : "risk-low");
     const progressColor = data.riskColor || (data.riskLevel === "high" ? "#ef4444" : (data.riskLevel === "medium" ? "#f59e0b" : "#10b981"));
+    const safeCustomerName = escapeHTML(data.customerName || (data.pathaoStats && data.pathaoStats.name) || "");
+    const safePhone = escapeHTML(data.phone || "");
+    const safeRiskLabel = escapeHTML(data.riskLabel || "");
 
     container.innerHTML = `
       <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 14px; padding: 14px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
         <!-- Phone & Copy -->
         <div class="deen-modal-phone-card" style="margin-bottom: 12px;">
           <div>
-            <span style="font-size: 10.5px; color: #94a3b8; display: block;">Recipient</span>
-            <span class="deen-modal-phone-text" style="font-size: 15px;">${data.phone}</span>
+            <span style="font-size: 10.5px; color: #94a3b8; display: block;">${safeCustomerName ? `Customer: <strong style="color:#f8fafc">${safeCustomerName}</strong>` : 'Recipient'}</span>
+            <span class="deen-modal-phone-text" style="font-size: 15px;">${safePhone}</span>
           </div>
           <button class="deen-modal-copy-btn" id="deen-sidebar-btn-copy" title="Copy Number">📋 Copy</button>
         </div>
@@ -795,16 +1172,16 @@
         <div class="deen-modal-score-box" style="margin-bottom: 12px; padding: 12px;">
           <div class="deen-modal-risk-badge ${riskClass}" style="font-size: 11px; padding: 3px 10px;">
             <span>●</span>
-            <span>${data.riskLabel}</span>
+            <span>${safeRiskLabel}</span>
           </div>
 
           <div class="deen-modal-percent-row" style="margin-bottom: 6px;">
-            <span class="deen-modal-percent-val" style="color: ${progressColor}; font-size: 30px;">${data.successRate}%</span>
+            <span class="deen-modal-percent-val" style="color: ${progressColor}; font-size: 30px;">${Number(data.successRate) || 0}%</span>
             <span class="deen-modal-percent-label" style="font-size: 11px;">Success Rate</span>
           </div>
 
           <div class="deen-modal-progress-bar" style="height: 6px;">
-            <div class="deen-modal-progress-fill" style="width: ${data.successRate}%; background: ${progressColor};"></div>
+            <div class="deen-modal-progress-fill" style="width: ${Number(data.successRate) || 0}%; background: ${progressColor};"></div>
           </div>
         </div>
 
@@ -843,12 +1220,111 @@
           </div>
         ` : ''}
 
+        <!-- WhatsApp Quick Reply in Sidebar -->
+        <div class="deen-sidebar-qr-box" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 10px; padding: 10px; margin-bottom: 12px;">
+          <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <span>💬 WhatsApp Quick Reply</span>
+            ${data.riskLevel === 'high' ? '<span style="color:#ef4444; font-size:9.5px; background:rgba(239,68,68,0.2); padding:1px 6px; border-radius:4px; font-weight:600;">⚠️ Advance Advised</span>' : ''}
+          </div>
+
+          <div class="deen-sidebar-qr-tabs" style="display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap;">
+            <button class="deen-sidebar-qr-tab active" id="deen-sb-tab-advance-out" style="flex: 1; min-width: 70px; background: rgba(99, 102, 241, 0.3); border: 1px solid #6366f1; color: #fff; border-radius: 4px; padding: 4px 6px; font-size: 10px; font-weight: 600; cursor: pointer;">💰 Adv ৳130</button>
+            <button class="deen-sidebar-qr-tab" id="deen-sb-tab-advance-in" style="flex: 1; min-width: 70px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: #94a3b8; border-radius: 4px; padding: 4px 6px; font-size: 10px; font-weight: 600; cursor: pointer;">💰 Adv ৳70</button>
+            <button class="deen-sidebar-qr-tab" id="deen-sb-tab-confirm" style="flex: 1; min-width: 60px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: #94a3b8; border-radius: 4px; padding: 4px 6px; font-size: 10px; font-weight: 600; cursor: pointer;">✅ Confirm</button>
+            <button class="deen-sidebar-qr-tab" id="deen-sb-tab-risk" style="flex: 1; min-width: 50px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: #94a3b8; border-radius: 4px; padding: 4px 6px; font-size: 10px; font-weight: 600; cursor: pointer;">⚠️ Risk</button>
+          </div>
+
+          <textarea id="deen-sidebar-qr-preview" style="width: 100%; box-sizing: border-box; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #f8fafc; font-size: 11px; line-height: 1.4; padding: 6px 8px; resize: vertical; min-height: 70px; font-family: inherit; margin-bottom: 8px;"></textarea>
+
+          <div style="display: flex; gap: 6px;">
+            <button id="deen-sidebar-btn-qr-send" style="flex: 1; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; border: none; border-radius: 6px; padding: 6px 10px; font-weight: 700; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+              <span>💬 Send to WhatsApp</span>
+            </button>
+            <button id="deen-sidebar-btn-qr-copy" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 10px; font-weight: 600; font-size: 11px; cursor: pointer;">
+              <span>📋 Copy</span>
+            </button>
+          </div>
+        </div>
+
         <!-- 1-Click Pathao Dispatch -->
         <button class="deen-modal-btn-action" id="deen-sidebar-btn-open-pathao" style="width: 100%; padding: 8px 12px; font-size: 12px;">
           <span>🚀 Open Pathao Create</span>
         </button>
       </div>
     `;
+
+    // WhatsApp Quick Reply in Sidebar listeners
+    const qrPreview = container.querySelector("#deen-sidebar-qr-preview");
+    const tabAdvOut = container.querySelector("#deen-sb-tab-advance-out");
+    const tabAdvIn = container.querySelector("#deen-sb-tab-advance-in");
+    const tabConfirm = container.querySelector("#deen-sb-tab-confirm");
+    const tabRisk = container.querySelector("#deen-sb-tab-risk");
+    const allTabs = [tabAdvOut, tabAdvIn, tabConfirm, tabRisk].filter(Boolean);
+
+    let activeKey = (data.riskLevel === "high") ? "high_risk_notice" : "advance_fee";
+    let activeFee = (data.riskLevel === "high") ? undefined : 130;
+
+    const updatePreview = () => {
+      if (!qrPreview) return;
+      getQuickReplyConfig((config) => {
+        const msg = generateQuickReply(activeKey, {
+          name: data.customerName,
+          phone: data.phone,
+          fee: activeFee
+        }, config);
+        qrPreview.value = msg;
+      });
+    };
+
+    const activateTab = (btn, key, fee) => {
+      allTabs.forEach(t => {
+        t.style.background = "rgba(255, 255, 255, 0.05)";
+        t.style.borderColor = "rgba(255, 255, 255, 0.12)";
+        t.style.color = "#94a3b8";
+      });
+      if (btn) {
+        btn.style.background = "rgba(99, 102, 241, 0.3)";
+        btn.style.borderColor = "#6366f1";
+        btn.style.color = "#fff";
+      }
+      activeKey = key;
+      activeFee = fee;
+      updatePreview();
+    };
+
+    if (tabAdvOut) tabAdvOut.addEventListener("click", () => activateTab(tabAdvOut, "advance_fee", 130));
+    if (tabAdvIn) tabAdvIn.addEventListener("click", () => activateTab(tabAdvIn, "advance_fee", 70));
+    if (tabConfirm) tabConfirm.addEventListener("click", () => activateTab(tabConfirm, "confirm_order", undefined));
+    if (tabRisk) tabRisk.addEventListener("click", () => activateTab(tabRisk, "high_risk_notice", 130));
+
+    // Initialize preview
+    updatePreview();
+
+    // Send & Copy handlers
+    const btnQrSend = container.querySelector("#deen-sidebar-btn-qr-send");
+    if (btnQrSend) {
+      btnQrSend.addEventListener("click", () => {
+        const textToSend = (qrPreview && qrPreview.value) ? qrPreview.value : "";
+        if (textToSend) {
+          injectWhatsAppMessage(textToSend, { phone: data.phone, openChat: true });
+          btnQrSend.innerHTML = "<span>✓ Sent!</span>";
+          setTimeout(() => { if (btnQrSend) btnQrSend.innerHTML = "<span>💬 Send to WhatsApp</span>"; }, 1500);
+        }
+      });
+    }
+
+    const btnQrCopy = container.querySelector("#deen-sidebar-btn-qr-copy");
+    if (btnQrCopy) {
+      btnQrCopy.addEventListener("click", () => {
+        const textToCopy = (qrPreview && qrPreview.value) ? qrPreview.value : "";
+        if (textToCopy && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(textToCopy).then(() => {
+            btnQrCopy.textContent = "✓ Copied!";
+            setTimeout(() => { if (btnQrCopy) btnQrCopy.textContent = "📋 Copy"; }, 1500);
+          });
+        }
+      });
+    }
 
     const copyBtn = container.querySelector("#deen-sidebar-btn-copy");
     if (copyBtn) {
@@ -886,7 +1362,7 @@
     cardContainer.innerHTML = `
       <div class="deen-modal-skeleton-body" style="padding: 20px 8px;">
         <div class="deen-spinner-circle" style="width: 28px; height: 28px;"></div>
-        <div class="deen-skeleton-text" style="font-size: 12px;">Analyzing courier records for <strong>${phone}</strong>...</div>
+        <div class="deen-skeleton-text" style="font-size: 12px;">Analyzing courier records for <strong>${escapeHTML(phone)}</strong>...</div>
       </div>
     `;
 

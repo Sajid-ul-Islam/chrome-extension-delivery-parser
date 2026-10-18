@@ -466,12 +466,25 @@
     return null;
   }
 
+  function escapeHTML(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function findPathaoRecipientFields() {
     return {
       phone: findRecipientPhoneInput(),
       name: document.querySelector("input[id*='recipient_name'], input[name*='recipient_name'], input[id*='customer_name'], input[name*='customer_name'], input[placeholder*='Recipient Name' i], input[placeholder*='Customer Name' i], input[placeholder*='গ্রহীতার নাম' i]"),
       address: document.querySelector("textarea[id*='recipient_address'], textarea[name*='recipient_address'], textarea[id*='address'], textarea[name*='address'], textarea[placeholder*='address' i], textarea[placeholder*='ঠিকানা' i], input[id*='recipient_address']"),
-      cod: document.querySelector("input[id*='amount_to_collect'], input[name*='amount_to_collect'], input[id*='cod'], input[name*='cod'], input[placeholder*='Amount' i], input[placeholder*='টাকা' i]")
+      cod: document.querySelector("input[id*='amount_to_collect'], input[name*='amount_to_collect'], input[id*='cod'], input[name*='cod'], input[placeholder*='Amount' i], input[placeholder*='টাকা' i]"),
+      citySelect: document.querySelector("input#city_id, [id*='city'] input, .ant-select[id*='city'] input, [data-testid*='city'] input, input[placeholder*='City' i], input[placeholder*='শহর' i]"),
+      zoneSelect: document.querySelector("input#zone_id, [id*='zone'] input, .ant-select[id*='zone'] input, [data-testid*='zone'] input, input[placeholder*='Zone' i], input[placeholder*='থানা' i]"),
+      areaSelect: document.querySelector("input#area_id, [id*='area'] input, .ant-select[id*='area'] input, [data-testid*='area'] input, input[placeholder*='Area' i]")
     };
   }
 
@@ -481,6 +494,98 @@
     setTimeout(() => {
       el.classList.remove("deen-highlight-pulse");
     }, 4000);
+  }
+
+  function trySelectAntdOption(inputEl, searchValue) {
+    if (!inputEl || !searchValue) return false;
+    try {
+      inputEl.focus();
+      setReactInputValue(inputEl, searchValue, true);
+      inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+      inputEl.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown" }));
+
+      setTimeout(() => {
+        const options = Array.from(document.querySelectorAll(".ant-select-item-option-content, .ant-select-dropdown [role='option'], .ant-select-item-option"));
+        for (const opt of options) {
+          if ((opt.textContent || "").trim().toLowerCase().includes(searchValue.toLowerCase())) {
+            opt.click();
+            break;
+          }
+        }
+      }, 250);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function renderAddressHelperPill(details) {
+    if (typeof document === "undefined") return;
+    let pill = document.getElementById("deen-address-helper-pill");
+    if (!pill) {
+      pill = document.createElement("div");
+      pill.id = "deen-address-helper-pill";
+      pill.className = "deen-address-helper-pill";
+      const formContainer = document.querySelector("form.ant-form, .recipient-form, .order-create-form, .ant-card-body") || document.body;
+      formContainer.prepend(pill);
+    }
+
+    const city = details.city || "Dhaka";
+    const zone = details.zone || "";
+    const postcode = details.postcode ? ` - ${details.postcode}` : "";
+
+    pill.innerHTML = `
+      <div class="deen-pill-header">
+        <span class="deen-pill-icon">📍</span>
+        <span class="deen-pill-title">Smart BD Address</span>
+        <span class="deen-pill-location"><strong>${escapeHTML(city)}</strong>${zone ? ' > <strong>' + escapeHTML(zone) + '</strong>' : ''}${escapeHTML(postcode)}</span>
+      </div>
+      <div class="deen-pill-actions">
+        <button type="button" class="deen-chip-btn" id="deen-copy-city-btn" title="Click to fill/copy City">City: ${escapeHTML(city)}</button>
+        ${zone ? `<button type="button" class="deen-chip-btn" id="deen-copy-zone-btn" title="Click to fill/copy Zone">Zone: ${escapeHTML(zone)}</button>` : ''}
+        <button type="button" class="deen-chip-btn" id="deen-copy-street-btn" title="Copy Street Address">Copy Street</button>
+        <button type="button" class="deen-pill-close" id="deen-pill-close-btn">&times;</button>
+      </div>
+    `;
+
+    const copyCityBtn = pill.querySelector("#deen-copy-city-btn");
+    if (copyCityBtn) {
+      copyCityBtn.addEventListener("click", () => {
+        const fields = findPathaoRecipientFields();
+        if (fields.citySelect) trySelectAntdOption(fields.citySelect, city);
+        copyToClipboardText(city, "City copied!");
+      });
+    }
+
+    const copyZoneBtn = pill.querySelector("#deen-copy-zone-btn");
+    if (copyZoneBtn) {
+      copyZoneBtn.addEventListener("click", () => {
+        const fields = findPathaoRecipientFields();
+        if (fields.zoneSelect) trySelectAntdOption(fields.zoneSelect, zone);
+        copyToClipboardText(zone, "Zone copied!");
+      });
+    }
+
+    const copyStreetBtn = pill.querySelector("#deen-copy-street-btn");
+    if (copyStreetBtn) {
+      copyStreetBtn.addEventListener("click", () => {
+        copyToClipboardText(details.address || "", "Street address copied!");
+      });
+    }
+
+    const closeBtn = pill.querySelector("#deen-pill-close-btn");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => pill.remove());
+    }
+  }
+
+  function copyToClipboardText(text, successMsg) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(`📋 ${successMsg}`);
+      }).catch(() => {});
+    }
   }
 
   function autofillRecipientDetails(data) {
@@ -494,18 +599,193 @@
 
     const fields = findPathaoRecipientFields();
 
-    // 1. Fill COD first if provided
+    // 1. Smart BD Address parsing
+    let parsedAddr = null;
+    if (data.address) {
+      if (typeof parseBDAddress === "function") {
+        parsedAddr = parseBDAddress(data.address);
+      } else {
+        parsedAddr = {
+          district: data.district || "Dhaka",
+          zone: data.zone || "",
+          area: data.area || "",
+          postcode: data.postcode || "",
+          streetAddress: data.address
+        };
+      }
+    }
+
+    // 2. Fill Name if available
+    if (data.name && fields.name) {
+      setReactInputValue(fields.name, data.name, true);
+      highlightField(fields.name);
+    }
+
+    // 3. Fill Address (Cleaned Street Address preferred)
+    const addressToFill = (parsedAddr && parsedAddr.streetAddress) ? parsedAddr.streetAddress : (data.address || "");
+    if (addressToFill && fields.address) {
+      setReactInputValue(fields.address, addressToFill, true);
+      highlightField(fields.address);
+    }
+
+    // 4. Fill COD if provided
     if (data.cod && fields.cod) {
       setReactInputValue(fields.cod, data.cod, false);
       highlightField(fields.cod);
     }
 
-    // 2. MAIN: Enter phone number into Recipient's Phone ("Enter phone number") field & trigger popup
+    // 5. Select City and Zone
+    const targetCity = (parsedAddr && parsedAddr.district) || data.district || "Dhaka";
+    const targetZone = (parsedAddr && parsedAddr.zone) || data.zone || "";
+
+    if (fields.citySelect && targetCity) {
+      trySelectAntdOption(fields.citySelect, targetCity);
+    }
+    if (fields.zoneSelect && targetZone) {
+      setTimeout(() => {
+        const freshFields = findPathaoRecipientFields();
+        if (freshFields.zoneSelect) trySelectAntdOption(freshFields.zoneSelect, targetZone);
+      }, 400);
+    }
+
+    // 6. Inject Smart Address Helper Pill
+    renderAddressHelperPill({
+      city: targetCity,
+      zone: targetZone,
+      postcode: parsedAddr ? parsedAddr.postcode : "",
+      address: addressToFill,
+      customerName: data.name,
+      orderId: data.orderId
+    });
+
+    // 7. MAIN: Enter phone number into Recipient's Phone ("Enter phone number") field & trigger popup
     triggerSearchPopup(phoneInput, data.phone);
     highlightField(phoneInput);
 
-    showToast(`⚡ Phone ${data.phone} entered in Recipient's Phone!`);
+    const locInfo = targetCity ? ` (${targetCity}${targetZone ? ' > ' + targetZone : ''})` : "";
+    showToast(`⚡ Recipient ${data.phone}${locInfo} filled!`);
     return true;
+  }
+
+  /**
+   * Batch Order Queue Banner & Navigation
+   */
+  function removeBatchBanner() {
+    const existing = document.getElementById("deen-batch-dispatch-banner");
+    if (existing) existing.remove();
+  }
+
+  function renderBatchBanner(queue) {
+    if (typeof document === "undefined" || !document.body) return;
+    let banner = document.getElementById("deen-batch-dispatch-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "deen-batch-dispatch-banner";
+      banner.className = "deen-batch-banner";
+      document.body.prepend(banner);
+    }
+
+    const { orders, currentIndex, total } = queue;
+    const isFinished = currentIndex >= orders.length;
+    const currOrder = orders[currentIndex] || {};
+
+    if (isFinished) {
+      banner.innerHTML = `
+        <div class="deen-batch-banner-content">
+          <span class="deen-batch-badge">🎉 Batch Complete</span>
+          <span class="deen-batch-desc">All <strong>${total}</strong> orders processed!</span>
+        </div>
+        <div class="deen-batch-banner-actions">
+          <button type="button" class="deen-batch-btn deen-btn-finish" id="deen-batch-finish-btn">Done / Clear</button>
+        </div>
+      `;
+
+      const finishBtn = banner.querySelector("#deen-batch-finish-btn");
+      if (finishBtn) {
+        finishBtn.addEventListener("click", () => {
+          chrome.storage.local.remove(["pathao_batch_queue"]);
+          removeBatchBanner();
+        });
+      }
+      return;
+    }
+
+    const orderNum = currentIndex + 1;
+    const orderDisplay = currOrder.orderId ? `#${currOrder.orderId}` : `Order ${orderNum}`;
+    const nameDisplay = currOrder.name ? ` (${currOrder.name})` : "";
+    const phoneDisplay = currOrder.phone ? ` - ${currOrder.phone}` : "";
+    const codDisplay = currOrder.cod ? ` [৳${currOrder.cod}]` : "";
+
+    banner.innerHTML = `
+      <div class="deen-batch-banner-content">
+        <span class="deen-batch-badge">📦 Batch Order ${orderNum} of ${total}</span>
+        <span class="deen-batch-order-info"><strong>${orderDisplay}</strong>${nameDisplay}${phoneDisplay}${codDisplay}</span>
+      </div>
+      <div class="deen-batch-banner-actions">
+        <button type="button" class="deen-batch-btn deen-btn-fill" id="deen-batch-fill-curr-btn" title="Autofill this order into Pathao recipient form">
+          ⚡ Fill This Order
+        </button>
+        <button type="button" class="deen-batch-btn deen-btn-next" id="deen-batch-next-btn" title="Fill and advance to next order">
+          ⏭️ Next (${Math.min(orderNum + 1, total)}/${total})
+        </button>
+        <button type="button" class="deen-batch-btn deen-btn-close" id="deen-batch-exit-btn" title="Exit Batch Mode">&times;</button>
+      </div>
+    `;
+
+    const fillBtn = banner.querySelector("#deen-batch-fill-curr-btn");
+    if (fillBtn) {
+      fillBtn.addEventListener("click", () => {
+        autofillRecipientDetails({
+          ...currOrder,
+          userTriggered: true
+        });
+        fillBtn.textContent = "✅ Filled!";
+        setTimeout(() => { if (fillBtn) fillBtn.textContent = "⚡ Fill This Order"; }, 1500);
+      });
+    }
+
+    const nextBtn = banner.querySelector("#deen-batch-next-btn");
+    if (nextBtn) {
+      nextBtn.addEventListener("click", () => {
+        const nextIdx = currentIndex + 1;
+        const updatedQueue = { ...queue, currentIndex: nextIdx };
+        chrome.storage.local.set({ pathao_batch_queue: updatedQueue }, () => {
+          if (nextIdx < orders.length) {
+            autofillRecipientDetails({
+              ...orders[nextIdx],
+              userTriggered: true
+            });
+          }
+          renderBatchBanner(updatedQueue);
+        });
+      });
+    }
+
+    const exitBtn = banner.querySelector("#deen-batch-exit-btn");
+    if (exitBtn) {
+      exitBtn.addEventListener("click", () => {
+        if (confirm("Exit batch order dispatch mode?")) {
+          chrome.storage.local.remove(["pathao_batch_queue"]);
+          removeBatchBanner();
+        }
+      });
+    }
+  }
+
+  function checkBatchQueue() {
+    if (!isExtensionValid()) return;
+    if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
+
+    chrome.storage.local.get(["pathao_batch_queue"], (res) => {
+      if (!isExtensionValid()) return;
+      const queue = res ? res.pathao_batch_queue : null;
+      if (!queue || !Array.isArray(queue.orders) || queue.orders.length === 0) {
+        removeBatchBanner();
+        return;
+      }
+
+      renderBatchBanner(queue);
+    });
   }
 
   /**
@@ -548,6 +828,8 @@
         }
       }
     });
+
+    checkBatchQueue();
   }
 
   // Observe dynamic form appearance for Pathao SPA page changes
@@ -585,9 +867,14 @@
   // Listen for storage changes from explicit user triggers
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === "local" && changes.pathao_autofill_data && changes.pathao_autofill_data.newValue) {
-        if (changes.pathao_autofill_data.newValue.userTriggered === true) {
-          checkPendingAutofill(0);
+      if (areaName === "local") {
+        if (changes.pathao_autofill_data && changes.pathao_autofill_data.newValue) {
+          if (changes.pathao_autofill_data.newValue.userTriggered === true) {
+            checkPendingAutofill(0);
+          }
+        }
+        if (changes.pathao_batch_queue) {
+          checkBatchQueue();
         }
       }
     });
@@ -860,6 +1147,9 @@
       syncPathaoSessionToken();
       if (attempts >= maxAttempts) clearInterval(interval);
     }, 6000);
+    if (interval && typeof interval.unref === "function") {
+      interval.unref();
+    }
   })();
 
   // When arriving on page (e.g. after clicking trigger), immediately check for pending autofill

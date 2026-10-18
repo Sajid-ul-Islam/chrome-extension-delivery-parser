@@ -39,9 +39,16 @@ function getConsignmentId(value) {
   return m ? m[1] : value.trim();
 }
 
+function bengaliToAsciiDigits(str) {
+  if (!str) return "";
+  const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return String(str).replace(/[০-৯]/g, d => bengaliDigits.indexOf(d));
+}
+
 function parseAmount(line) {
   if (!line) return 0.0;
-  const m = line.match(/([\d,]+(?:\.\d+)?)/);
+  const ascii = bengaliToAsciiDigits(String(line));
+  const m = ascii.match(/([\d,]+(?:\.\d+)?)/);
   if (!m) return 0.0;
   const num = parseFloat(m[1].replace(/,/g, ""));
   return isNaN(num) ? 0.0 : num;
@@ -799,6 +806,1107 @@ function escapeXML(str) {
     .replace(/'/g, "&apos;");
 }
 
+/**
+ * 64 Bangladesh Districts with aliases and Bengali transliterations
+ */
+const BD_DISTRICTS = [
+  { name: "Dhaka", aliases: ["dhaka", "dacca", "ঢাকা"] },
+  { name: "Gazipur", aliases: ["gazipur", "গাজীপুর"] },
+  { name: "Narayanganj", aliases: ["narayanganj", "narayangonj", "নারায়ণগঞ্জ"] },
+  { name: "Tangail", aliases: ["tangail", "টাঙ্গাইল"] },
+  { name: "Narsingdi", aliases: ["narsingdi", "narshingdi", "নরসিংদী"] },
+  { name: "Munshiganj", aliases: ["munshiganj", "munshigonj", "মুন্সিগঞ্জ", "মুন্সীগঞ্জ"] },
+  { name: "Manikganj", aliases: ["manikganj", "manikgonj", "মানিকগঞ্জ"] },
+  { name: "Faridpur", aliases: ["faridpur", "ফরিদপুর"] },
+  { name: "Gopalganj", aliases: ["gopalganj", "gopalgonj", "গোপালগঞ্জ"] },
+  { name: "Madaripur", aliases: ["madaripur", "মাদারীপুর"] },
+  { name: "Rajbari", aliases: ["rajbari", "রাজবাড়ী", "রাজবাড়ি"] },
+  { name: "Shariatpur", aliases: ["shariatpur", "শরীয়তপুর"] },
+  { name: "Kishoreganj", aliases: ["kishoreganj", "kishoregonj", "কিশোরগঞ্জ"] },
+  { name: "Chattogram", aliases: ["chattogram", "chittagong", "ctg", "চট্টগ্রাম"] },
+  { name: "Cox's Bazar", aliases: ["cox's bazar", "coxs bazar", "coxsbazar", "কক্সবাজার"] },
+  { name: "Cumilla", aliases: ["cumilla", "comilla", "কুমিল্লা"] },
+  { name: "Feni", aliases: ["feni", "ফেনী"] },
+  { name: "Brahmanbaria", aliases: ["brahmanbaria", "b.baria", "bbaria", "ব্রাহ্মণবাড়িয়া"] },
+  { name: "Noakhali", aliases: ["noakhali", "নোয়াখালী"] },
+  { name: "Chandpur", aliases: ["chandpur", "চাঁদপুর"] },
+  { name: "Lakshmipur", aliases: ["lakshmipur", "laxmipur", "লক্ষ্মীপুর"] },
+  { name: "Rangamati", aliases: ["rangamati", "রাঙ্গামাটি"] },
+  { name: "Khagrachhari", aliases: ["khagrachhari", "khagrachari", "খাগড়াছড়ি"] },
+  { name: "Bandarban", aliases: ["bandarban", "বান্দরবান"] },
+  { name: "Sylhet", aliases: ["sylhet", "সিলেট"] },
+  { name: "Moulvibazar", aliases: ["moulvibazar", "maulvibazar", "মৌলভীবাজার"] },
+  { name: "Habiganj", aliases: ["habiganj", "habigonj", "হবিগঞ্জ"] },
+  { name: "Sunamganj", aliases: ["sunamganj", "sunamgonj", "সুনামগঞ্জ"] },
+  { name: "Rajshahi", aliases: ["rajshahi", "রাজশাহী"] },
+  { name: "Bogura", aliases: ["bogura", "bogra", "বগুড়া"] },
+  { name: "Pabna", aliases: ["pabna", "পাবনা"] },
+  { name: "Sirajganj", aliases: ["sirajganj", "sirajgonj", "সিরাজগঞ্জ"] },
+  { name: "Naogaon", aliases: ["naogaon", "নওগাঁ"] },
+  { name: "Natore", aliases: ["natore", "নাটোর"] },
+  { name: "Joypurhat", aliases: ["joypurhat", "জয়পুরহাট"] },
+  { name: "Chapainawabganj", aliases: ["chapainawabganj", "chapai nawabganj", "চাঁপাইনবাবগঞ্জ"] },
+  { name: "Khulna", aliases: ["khulna", "খুলনা"] },
+  { name: "Jashore", aliases: ["jashore", "jessore", "যশোর"] },
+  { name: "Kushtia", aliases: ["kushtia", "কুষ্টিয়া"] },
+  { name: "Jhenaidah", aliases: ["jhenaidah", "jhenaidha", "ঝিনাইদহ"] },
+  { name: "Satkhira", aliases: ["satkhira", "সাতক্ষীরা"] },
+  { name: "Bagerhat", aliases: ["bagerhat", "বাগেরহাট"] },
+  { name: "Chuadanga", aliases: ["chuadanga", "চুয়াডাঙ্গা"] },
+  { name: "Magura", aliases: ["magura", "মাগুরা"] },
+  { name: "Meherpur", aliases: ["meherpur", "মেহেরপুর"] },
+  { name: "Narail", aliases: ["narail", "নড়াইল"] },
+  { name: "Barishal", aliases: ["barishal", "barisal", "বরিশাল"] },
+  { name: "Bhola", aliases: ["bhola", "ভোলা"] },
+  { name: "Patuakhali", aliases: ["patuakhali", "পটুয়াখালী"] },
+  { name: "Pirojpur", aliases: ["pirojpur", "পিরোজপুর"] },
+  { name: "Barguna", aliases: ["barguna", "বরগুনা"] },
+  { name: "Jhalokathi", aliases: ["jhalokathi", "jhalakati", "ঝালকাঠি"] },
+  { name: "Rangpur", aliases: ["rangpur", "রংপুর"] },
+  { name: "Dinajpur", aliases: ["dinajpur", "দিনাজপুর"] },
+  { name: "Gaibandha", aliases: ["gaibandha", "গাইবান্ধা"] },
+  { name: "Kurigram", aliases: ["kurigram", "কুড়িগ্রাম"] },
+  { name: "Lalmonirhat", aliases: ["lalmonirhat", "লালমনিরহাট"] },
+  { name: "Nilphamari", aliases: ["nilphamari", "নীলফামারী"] },
+  { name: "Panchagarh", aliases: ["panchagarh", "পঞ্চগড়"] },
+  { name: "Thakurgaon", aliases: ["thakurgaon", "ঠাকুরগাঁও"] },
+  { name: "Mymensingh", aliases: ["mymensingh", "ময়মনসিংহ"] },
+  { name: "Jamalpur", aliases: ["jamalpur", "জামালপুর"] },
+  { name: "Netrokona", aliases: ["netrokona", "netrakona", "নেত্রকোণা", "নেত্রকোনা"] },
+  { name: "Sherpur", aliases: ["sherpur", "শেরপুর"] }
+];
+
+/**
+ * Common Thanas / Zones in Dhaka City
+ */
+/**
+ * Common Thanas / Zones in Dhaka City with aliases & Bengali transliterations
+ */
+const DHAKA_ZONES = [
+  { name: "Uttara", aliases: ["uttara", "উত্তরা"] },
+  { name: "Mirpur", aliases: ["mirpur", "মিরপুর"] },
+  { name: "Dhanmondi", aliases: ["dhanmondi", "ধানমন্ডি", "ধানমণ্ডি"] },
+  { name: "Gulshan", aliases: ["gulshan", "গুলশান"] },
+  { name: "Banani", aliases: ["banani", "বনানী"] },
+  { name: "Mohammadpur", aliases: ["mohammadpur", "মোহাম্মদপুর"] },
+  { name: "Badda", aliases: ["badda", "বাড্ডা"] },
+  { name: "Motijheel", aliases: ["motijheel", "মতিঝিল"] },
+  { name: "Tejgaon", aliases: ["tejgaon", "তেজগাঁও"] },
+  { name: "Khilgaon", aliases: ["khilgaon", "খিলগাঁও"] },
+  { name: "Malibagh", aliases: ["malibagh", "মালিবাগ"] },
+  { name: "Moghbazar", aliases: ["moghbazar", "মগবাজার"] },
+  { name: "Rampura", aliases: ["rampura", "রামপুরা"] },
+  { name: "Banasree", aliases: ["banasree", "বনশ্রী"] },
+  { name: "Basabo", aliases: ["basabo", "বাসাবো"] },
+  { name: "Jatrabari", aliases: ["jatrabari", "যাত্রাবাড়ী", "যাত্রাবাড়ি"] },
+  { name: "Wari", aliases: ["wari", "ওয়ারী", "ওয়ারি"] },
+  { name: "Lalbagh", aliases: ["lalbagh", "লালবাগ"] },
+  { name: "Kotwali", aliases: ["kotwali", "কোতোয়ালী", "কোতোয়ালি"] },
+  { name: "Chaukbazar", aliases: ["chaukbazar", "চকবাজার"] },
+  { name: "Sutrapur", aliases: ["sutrapur", "সূত্রাপুর"] },
+  { name: "Gandaria", aliases: ["gandaria", "গেন্ডারিয়া"] },
+  { name: "Hazaribagh", aliases: ["hazaribagh", "হাজারীবাগ"] },
+  { name: "Kamrangirchar", aliases: ["kamrangirchar", "কামরাঙ্গীরচর"] },
+  { name: "New Market", aliases: ["new market", "নিউ মার্কেট"] },
+  { name: "Shahbagh", aliases: ["shahbagh", "শাহবাগ"] },
+  { name: "Paltan", aliases: ["paltan", "পল্টন"] },
+  { name: "Ramna", aliases: ["ramna", "রমনা"] },
+  { name: "Elephant Road", aliases: ["elephant road", "এলিফ্যান্ট রোড"] },
+  { name: "Panthapath", aliases: ["panthapath", "পান্থপথ"] },
+  { name: "Farmgate", aliases: ["farmgate", "ফার্মগেট"] },
+  { name: "Agargaon", aliases: ["agargaon", "আগারগাঁও"] },
+  { name: "Sherebangla Nagar", aliases: ["sherebangla nagar", "শেরেবাংলা নগর"] },
+  { name: "Kafrul", aliases: ["kafrul", "কাফরুল"] },
+  { name: "Cantonment", aliases: ["cantonment", "সেনানিবাস"] },
+  { name: "Mohakhali", aliases: ["mohakhali", "মহাখালী"] },
+  { name: "Baridhara", aliases: ["baridhara", "বারিধারা"] },
+  { name: "Bashundhara", aliases: ["bashundhara", "বসুন্ধরা"] },
+  { name: "Khilkhet", aliases: ["khilkhet", "খিলক্ষেত"] },
+  { name: "Dakshinkhan", aliases: ["dakshinkhan", "দক্ষিণখান"] },
+  { name: "Uttar Khan", aliases: ["uttar khan", "উত্তরখান"] },
+  { name: "Turag", aliases: ["turag", "তুরাগ"] },
+  { name: "Demra", aliases: ["demra", "ডেমরা"] },
+  { name: "Shyampur", aliases: ["shyampur", "শ্যামপুর"] },
+  { name: "Adabor", aliases: ["adabor", "আদাবর"] },
+  { name: "Kalyanpur", aliases: ["kalyanpur", "কল্যাণপুর"] },
+  { name: "Gabtoli", aliases: ["gabtoli", "গাবতলী"] },
+  { name: "Savar", aliases: ["savar", "সাভার"] },
+  { name: "Ashulia", aliases: ["ashulia", "আশুলিয়া"] },
+  { name: "Dhamrai", aliases: ["dhamrai", "ধামরাই"] },
+  { name: "Keraniganj", aliases: ["keraniganj", "কেরানীগঞ্জ"] },
+  { name: "Tongi", aliases: ["tongi", "টঙ্গী", "টঙ্গি"] }
+];
+
+/**
+ * Prominent Zones in Other Major Hubs
+ */
+const OTHER_CITY_ZONES = {
+  "Chattogram": ["Agrabad", "Nasirabad", "Halishahar", "Panchlaish", "Kotwali", "Khulshi", "Chandgaon", "Bakalia", "Pahartali", "Patenga", "Muradpur", "GEC", "Bayazid", "Hathazari", "Sitakunda", "Chawkbazar"],
+  "Gazipur": ["Tongi", "Gazipur Sadar", "Sreepur", "Kaliakair", "Kapasia", "Kaliganj", "Konabari", "Board Bazar", "Chandona"],
+  "Narayanganj": ["Narayanganj Sadar", "Fatullah", "Siddhirganj", "Bandar", "Rupganj", "Araihazar", "Sonargaon", "Kanchpur"],
+  "Sylhet": ["Zindabazar", "Amberkhana", "Shibganj", "Upashahar", "Kadamtoli", "Subidbazar", "Sylhet Sadar", "South Surma", "Kumarpara", "Lamabazar"],
+  "Rajshahi": ["Boalia", "Motihar", "Rajpara", "Shah Makhdum", "Rajshahi Sadar", "Kazla"],
+  "Bogura": ["Bogura Sadar", "Sherpur", "Shajahanpur", "Thanthania", "Joleshworitola"],
+  "Khulna": ["Khulna Sadar", "Sonadanga", "Khalishpur", "Daulatpur", "Khan Jahan Ali", "Boyra"],
+  "Cumilla": ["Cumilla Sadar", "Kandirpar", "Badurtala", "Kotwali", "Tomsom Bridge", "Shashangachha", "EPZ"],
+  "Barishal": ["Barishal Sadar", "Natullabad", "Rupatali", "Band Road"],
+  "Rangpur": ["Rangpur Sadar", "Jahaj Company", "Modern More", "Dhap"],
+  "Mymensingh": ["Mymensingh Sadar", "Ganginarpar", "Charpara", "Town Hall"]
+};
+
+/**
+ * Smart Bangladesh Address Parser
+ * Decomposes unstructured BD addresses into District, Zone, Area, Postcode, and Clean Street.
+ */
+function parseBDAddress(rawAddress) {
+  if (!rawAddress || typeof rawAddress !== "string") {
+    return {
+      raw: "",
+      district: "Dhaka",
+      zone: "Dhaka Sadar",
+      area: "",
+      postcode: "",
+      streetAddress: "",
+      cityType: "Inside Dhaka"
+    };
+  }
+
+  const clean = rawAddress.trim().replace(/[\r\n\t]+/g, " ");
+
+  // 1. Extract Postcode (4 digits, e.g. "1216", "1740", "1230")
+  let postcode = "";
+  const pcMatch = clean.match(/(?:postal\s*code|post\s*code|postcode|zip)?\s*[-:,]?\s*\b([1-9]\d{3})\b/i);
+  if (pcMatch) {
+    const matchedVal = pcMatch[1];
+    const fullMatchIdx = pcMatch.index;
+    const prevChars = clean.substring(Math.max(0, fullMatchIdx - 4), fullMatchIdx);
+    if (!/01\d$/.test(prevChars)) {
+      postcode = matchedVal;
+    }
+  }
+
+  // 2. Identify District
+  let matchedDistrict = "";
+  for (const d of BD_DISTRICTS) {
+    for (const alias of d.aliases) {
+      const regex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
+      if (regex.test(clean)) {
+        matchedDistrict = d.name;
+        break;
+      }
+    }
+    if (matchedDistrict) break;
+  }
+
+  // 3. Identify Zone / Thana
+  let matchedZone = "";
+
+  // If district is Dhaka or unknown, check Dhaka zones
+  if (!matchedDistrict || matchedDistrict === "Dhaka") {
+    for (const z of DHAKA_ZONES) {
+      const zName = typeof z === "string" ? z : z.name;
+      const aliases = typeof z === "string" ? [z] : z.aliases;
+      let found = false;
+      for (const alias of aliases) {
+        const zRegex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
+        if (zRegex.test(clean)) {
+          matchedZone = zName;
+          found = true;
+          if (!matchedDistrict) {
+            if (["Savar", "Ashulia", "Dhamrai", "Keraniganj"].includes(zName)) {
+              matchedDistrict = "Dhaka";
+            } else if (zName === "Tongi") {
+              matchedDistrict = "Gazipur";
+            } else {
+              matchedDistrict = "Dhaka";
+            }
+          }
+          break;
+        }
+      }
+      if (found) break;
+    }
+  }
+
+  // Check specific zones for known districts or other cities
+  if (!matchedZone) {
+    const targetDist = matchedDistrict || "";
+    if (OTHER_CITY_ZONES[targetDist]) {
+      for (const z of OTHER_CITY_ZONES[targetDist]) {
+        const zName = typeof z === "string" ? z : z.name;
+        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+        let found = false;
+        for (const alias of aliases) {
+          const zRegex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
+          if (zRegex.test(clean)) {
+            matchedZone = zName;
+            found = true;
+            break;
+          }
+        }
+        if (found) break;
+      }
+    } else {
+      // Scan all other city zones if district was not matched yet
+      for (const [distName, zones] of Object.entries(OTHER_CITY_ZONES)) {
+        for (const z of zones) {
+          const zName = typeof z === "string" ? z : z.name;
+          const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+          let found = false;
+          for (const alias of aliases) {
+            const zRegex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
+            if (zRegex.test(clean)) {
+              matchedZone = zName;
+              if (!matchedDistrict) matchedDistrict = distName;
+              found = true;
+              break;
+            }
+          }
+          if (found) break;
+        }
+        if (matchedZone) break;
+      }
+    }
+  }
+
+  // Check for "<Word> Sadar"
+  if (!matchedZone) {
+    const sadarMatch = clean.match(/([a-zA-Z]+)\s+Sadar\b/i);
+    if (sadarMatch) {
+      matchedZone = `${sadarMatch[1]} Sadar`;
+      if (!matchedDistrict) {
+        const dObj = BD_DISTRICTS.find(d => d.name.toLowerCase() === sadarMatch[1].toLowerCase());
+        if (dObj) matchedDistrict = dObj.name;
+      }
+    }
+  }
+
+  // Check token preceding district (e.g. "Sreepur, Gazipur")
+  if (!matchedZone && matchedDistrict) {
+    const parts = clean.split(/[,;\n]+/).map(p => p.trim()).filter(Boolean);
+    const dIdx = parts.findIndex(p => new RegExp(`\\b${matchedDistrict}\\b`, "i").test(p));
+    if (dIdx > 0) {
+      const prev = parts[dIdx - 1];
+      if (prev.length <= 30 && !/^(road|house|flat|plot|block|holding)/i.test(prev)) {
+        matchedZone = prev;
+      }
+    }
+  }
+
+  // Fallbacks
+  if (!matchedDistrict) {
+    matchedDistrict = "Dhaka";
+  }
+  if (!matchedZone) {
+    matchedZone = matchedDistrict === "Dhaka" ? "Dhaka Sadar" : `${matchedDistrict} Sadar`;
+  }
+
+  // 4. Identify Area / Sub-area (Sector, Block, Ward have highest priority)
+  let matchedArea = "";
+  const priorityAreaMatch = clean.match(/\b(Sector\s*[-#]?\s*\d+|Block\s*[-#]?\s*[A-Z0-9]+|Ward\s*[-#]?\s*\d+)\b/i);
+  if (priorityAreaMatch) {
+    matchedArea = priorityAreaMatch[1];
+  } else {
+    const fallbackAreaMatch = clean.match(/\b(Road\s*[-#]?\s*\d+|Mirpur\s*[-#]?\s*\d+|Uttara\s*[-#]?\s*\d+|Dhanmondi\s*[-#]?\s*\d+)\b/i);
+    if (fallbackAreaMatch) {
+      matchedArea = fallbackAreaMatch[1];
+    }
+  }
+
+  // 5. Clean Street Address: Remove trailing district/postcode/zone repetitions
+  let streetAddress = clean;
+  if (postcode) {
+    streetAddress = streetAddress.replace(new RegExp(`[-:,]?\\s*${postcode}\\b`, "g"), "");
+  }
+  streetAddress = streetAddress
+    .replace(new RegExp(`[,;\\s]+${matchedDistrict}\\b.*$`, "i"), "")
+    .trim();
+
+  // Also remove trailing zone if it is at the very end of streetAddress
+  if (matchedZone) {
+    const escapedZone = matchedZone.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    streetAddress = streetAddress
+      .replace(new RegExp(`[,;\\s]+${escapedZone}\\b$`, "i"), "")
+      .trim();
+  }
+
+  streetAddress = streetAddress.replace(/^[,;\\s]+|[,;\\s]+$/g, "");
+
+  if (!streetAddress || streetAddress.length < 3) {
+    streetAddress = clean;
+  }
+
+  // 6. Compute City Type (Inside Dhaka, Sub Dhaka, Outside Dhaka)
+  let cityType = "Outside Dhaka";
+  const subDhakaZones = ["Savar", "Ashulia", "Dhamrai", "Keraniganj", "Tongi"];
+  if (matchedDistrict === "Dhaka") {
+    if (subDhakaZones.some(s => matchedZone.toLowerCase().includes(s.toLowerCase()))) {
+      cityType = "Sub Dhaka";
+    } else {
+      cityType = "Inside Dhaka";
+    }
+  } else if (matchedDistrict === "Gazipur" || matchedDistrict === "Narayanganj") {
+    cityType = "Sub Dhaka";
+  } else {
+    cityType = "Outside Dhaka";
+  }
+
+  return {
+    raw: clean,
+    district: matchedDistrict,
+    zone: matchedZone,
+    area: matchedArea,
+    postcode: postcode,
+    streetAddress: streetAddress,
+    cityType: cityType
+  };
+}
+
+/**
+ * Generate Pathao Bulk Upload CSV string
+ */
+function generatePathaoBatchCSV(orders) {
+  if (!orders || !Array.isArray(orders) || orders.length === 0) {
+    return "";
+  }
+
+  const headers = [
+    "Merchant Order ID",
+    "Recipient Name",
+    "Recipient Phone",
+    "Recipient Address",
+    "Recipient City",
+    "Recipient Zone",
+    "Recipient Area",
+    "Amount to Collect",
+    "Item Type",
+    "Item Quantity",
+    "Special Instruction"
+  ];
+
+  const escapeCSV = (val) => {
+    if (val === undefined || val === null) return '""';
+    const s = String(val).replace(/"/g, '""');
+    return `"${s}"`;
+  };
+
+  const rows = [headers.join(",")];
+
+  for (const order of orders) {
+    const rawAddr = order.address || order["Address"] || "";
+    const parsed = parseBDAddress(rawAddr);
+
+    const orderId = order.orderId || order["Order ID"] || "";
+    const name = order.name || order["Recipient Name"] || "";
+    const phone = order.phone || order["Phone"] || "";
+    const street = parsed.streetAddress || rawAddr;
+    const city = order.city || parsed.district;
+    const zone = order.zone || parsed.zone;
+    const area = order.area || parsed.area || "";
+    const cod = order.cod !== undefined && order.cod !== "" ? order.cod : (order["COD Amount"] !== undefined ? order["COD Amount"] : 0);
+    const itemType = order.type || order["Type"] === "Exchange" ? "Exchange" : "Parcel";
+    const quantity = 1;
+    const instruction = orderId ? `Order #${orderId}` : "";
+
+    rows.push([
+      escapeCSV(orderId),
+      escapeCSV(name),
+      escapeCSV(phone),
+      escapeCSV(street),
+      escapeCSV(city),
+      escapeCSV(zone),
+      escapeCSV(area),
+      escapeCSV(cod),
+      escapeCSV(itemType),
+      escapeCSV(quantity),
+      escapeCSV(instruction)
+    ].join(","));
+  }
+
+  return rows.join("\r\n");
+}
+
+/**
+ * Export Pathao Bulk CSV with 1-click download trigger
+ */
+function exportPathaoBatchCSV(orders, filename) {
+  const csvContent = generatePathaoBatchCSV(orders);
+  if (!csvContent) return "";
+
+  const fname = filename || `Pathao_Bulk_Orders_${new Date().toISOString().slice(0, 10)}.csv`;
+
+  if (typeof document !== "undefined" && typeof URL !== "undefined") {
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", fname);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  return csvContent;
+}
+
+/**
+ * --------------------------------------------------------------------------
+ * WhatsApp Advance COD Quick Reply Engine & Templates
+ * --------------------------------------------------------------------------
+ */
+const DEFAULT_QUICK_REPLY_CONFIG = {
+  storeName: "DEEN Commerce",
+  bkashNumber: "01XXXXXXXXX",
+  bkashType: "Personal", // Personal | Merchant
+  nagadNumber: "",
+  nagadType: "Personal", // Personal | Merchant
+  insideDhakaFee: 70,
+  outsideDhakaFee: 130,
+  customNote: ""
+};
+
+function isInvalidCustomerName(name) {
+  if (!name || typeof name !== "string") return true;
+  const trimmed = name.trim().toLowerCase();
+  return !trimmed ||
+         trimmed === "email" ||
+         trimmed === "guest" ||
+         trimmed === "customer" ||
+         trimmed === "n/a" ||
+         trimmed === "user" ||
+         trimmed === "billing" ||
+         trimmed === "shipping" ||
+         trimmed === "billing details" ||
+         trimmed === "shipping details" ||
+         trimmed === "phone" ||
+         trimmed.includes("@") ||
+         /^(?:email|guest|customer|বিলিং|নাম|গ্রাহক|শিপিং)$/i.test(trimmed);
+}
+
+function parseWooCommerceAddressBlock(source) {
+  if (!source) return { name: "", phone: "", address: "", paymentMethod: "" };
+
+  let rawText = "";
+  if (typeof source === "string") {
+    rawText = source;
+  } else if (source.innerText) {
+    rawText = source.innerText;
+  } else if (source.textContent) {
+    rawText = source.textContent;
+  }
+
+  let phone = "";
+  let digits = rawText.match(/(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/);
+  if (digits && digits[1]) {
+    phone = "0" + digits[1];
+  }
+
+  let name = "";
+  let paymentMethod = "";
+  const cleanTokens = [];
+  let addressStarted = false;
+
+  const rawLines = rawText.includes("\n")
+    ? rawText.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean)
+    : rawText.split(",").map(l => l.trim()).filter(Boolean);
+
+  for (let i = 0; i < rawLines.length; i++) {
+    let line = rawLines[i].trim();
+    if (!line) continue;
+
+    if (/^(?:Billing details|Billing|Shipping details|Shipping|বিলিং ডিটেইলস|বিলিং|শিপিং details|শিপিং)[:\s-]*$/i.test(line)) {
+      continue;
+    }
+    if (/^(?:Phone|Tel|Telephone|Mobile|ফোন|মোবাইল)[:\s-]*$/i.test(line)) {
+      continue;
+    }
+    if (/^(?:Email|E-mail|ইমেইল)[:\s-]*$/i.test(line) || /@/.test(line)) {
+      continue;
+    }
+    if (/^(?:Payment via|Payment method|পেমেন্ট মাধ্যম|পেমেন্ট)[:\s-]*$/i.test(line)) {
+      continue;
+    }
+    if (/^(?:Cash on delivery|COD|bKash|Nagad|Rocket|পেমেন্ট|ক্যাশ অন ডেলিভারি)$/i.test(line) ||
+        /^Payment via/i.test(line)) {
+      paymentMethod = line;
+      continue;
+    }
+
+    if (line.match(/(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/) && line.replace(/[^\d+]/g, "").length >= 10) {
+      continue;
+    }
+
+    // Strip inline prefix/suffix noise
+    line = line.replace(/^(?:Billing details|Shipping details|Payment via|Phone|Email)[:\s,]*/gi, "").trim();
+    line = line.replace(/[,:\s]+(?:Payment via|Cash on delivery|Phone|Email).*$/gi, "").trim();
+    if (!line) continue;
+
+    const isAddressKeyword = /^(?:Road|House|Block|Sector|Village|Holding|Flat|Apt|Post|PO|Thana|District|Dist|বাসস্ট্যান্ড|স্টেশন|পোস্ট|পোঃ|সদর|থানা|উপজেলা|জেলা|গ্রাম|রোড|বাসা|বাড়ি)/i.test(line);
+    const isDistrictOrZone = /^(?:Dhaka|Chattogram|Chittagong|Sylhet|Khulna|Rajshahi|Barishal|Rangpur|Mymensingh|Gazipur|Narayanganj|Bagerhat|Cumilla|Comilla|Bogura|Bogra|Uttara|Mirpur|Banani|Gulshan|Dhanmondi|Mohammadpur)/i.test(line);
+    const hasNumberDigits = /\d{3,}/.test(line) || /^\d+$/.test(line);
+
+    if (isAddressKeyword || isDistrictOrZone || hasNumberDigits) {
+      addressStarted = true;
+    }
+
+    // Name can only be captured before any address lines start, and must not be invalid
+    if (!name && !addressStarted && !isInvalidCustomerName(line)) {
+      name = line;
+      continue;
+    }
+
+    addressStarted = true;
+    cleanTokens.push(line);
+  }
+
+  return {
+    name: name,
+    phone: phone,
+    address: cleanTokens.join(", "),
+    paymentMethod: paymentMethod
+  };
+}
+
+/**
+ * Clean unescaped HTML entities in strings
+ */
+function cleanHtmlEntities(str) {
+  if (!str || typeof str !== "string") return "";
+  return str
+    .replace(/&times;/gi, "×")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#039;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#2547;/gi, "৳")
+    .trim();
+}
+
+/**
+ * Filter out WooCommerce admin metadata, action buttons, or standalone size rows
+ */
+function isExcludedMetaOrButtonRow(row, itemName) {
+  if (row) {
+    if (typeof row.closest === "function") {
+      if (row.closest("table.wc-order-item-meta, table.display_meta, table.meta, .item-meta, .display_meta, .meta_items, tfoot")) {
+        return true;
+      }
+    }
+    if (typeof row.querySelector === "function") {
+      if (row.querySelector(".add_order_item_meta, .add-order-item-meta, button[class*='add_order_item']")) {
+        return true;
+      }
+    }
+  }
+  if (itemName) {
+    const clean = itemName.trim();
+    if (/^(?:Add meta|Add item|Add fee|Add shipping|Apply coupon|Refund|Tax|Shipping|Fee|Subtotal|Total|Custom meta)$/i.test(clean)) {
+      return true;
+    }
+    if (/^(?:XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|\d{1,3})$/i.test(clean)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Extract item name combined with size / variation attributes
+ * Never strips size, color, or variation from product descriptions
+ */
+function extractItemNameWithSize(nameEl, context) {
+  if (!nameEl) return "";
+
+  // If passed a plain string or primitive
+  if (typeof nameEl === "string") {
+    let str = cleanHtmlEntities(nameEl.trim());
+    if (!str) return "";
+
+    let extraSize = "";
+    if (context && typeof context === "object") {
+      extraSize = (context.size || context.variation || context.attribute || context.variant || "").toString().trim();
+    }
+
+    if (str.includes("\n")) {
+      const lines = str.split("\n").map(l => cleanHtmlEntities(l.trim())).filter(Boolean);
+      let title = lines[0].replace(/^[-•*]\s*/, "").trim();
+      title = title.replace(/\s*(?:&times;|×|x|\*)\s*\d+$/i, "").trim();
+      const vars = [];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (/^(?:SKU|ID|Price|Qty|৳|BDT|Cost):?/i.test(line)) continue;
+        if (/^(?:Add meta|Add item|button)$/i.test(line)) continue;
+        if (/(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[\s:]*([^\n\r]+)/i.test(line)) {
+          vars.push(line);
+        } else if (/^(?:XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|[2-5][0-9])$/i.test(line)) {
+          vars.push(`Size: ${line.toUpperCase()}`);
+        } else if (line.length < 30 && !/^\d+$/.test(line) && !/^(?:Refund|Shipping|Tax)/i.test(line)) {
+          vars.push(line);
+        }
+      }
+      if (extraSize && !vars.some(v => v.toLowerCase().includes(extraSize.toLowerCase()))) {
+        vars.push(extraSize.startsWith("Size:") ? extraSize : `Size: ${extraSize}`);
+      }
+      if (vars.length > 0) {
+        const vStr = vars.join(", ");
+        if (!title.toLowerCase().includes(vStr.toLowerCase())) {
+          return `${title} (${vStr})`;
+        }
+      }
+      return title;
+    }
+
+    str = str.replace(/\s*(?:&times;|×|x|\*)\s*\d+$/i, "").trim();
+    str = str.replace(/^[-•*]\s*/, "").trim();
+
+    if (extraSize) {
+      const cleanSize = extraSize.replace(/^size[:\s]*/i, "").trim();
+      if (!str.toLowerCase().includes(cleanSize.toLowerCase())) {
+        return `${str} (Size: ${cleanSize})`;
+      }
+    }
+    return str;
+  }
+
+  // If nameEl is a DOM Element or context is a DOM Element
+  const el = nameEl;
+  const ctx = (context && typeof context.querySelectorAll === "function") ? context : el;
+
+  let title = "";
+  if (typeof el.querySelector === "function") {
+    const titleNode = el.querySelector(".wc-order-item-name, a.wc-order-item-name, a, strong, .product-name");
+    if (titleNode) {
+      title = (titleNode.textContent || titleNode.innerText || "").trim();
+    }
+  }
+  if (!title) {
+    const raw = (el.innerText || el.textContent || "").trim();
+    title = raw.split("\n")[0].trim();
+  }
+  title = cleanHtmlEntities(title);
+  title = title.replace(/\s*(?:&times;|×|x|\*)\s*\d+$/i, "").trim();
+  title = title.replace(/^[-•*]\s*/, "").trim();
+  if (!title) return "";
+
+  const vars = [];
+
+  if (typeof ctx.querySelectorAll === "function") {
+    // 1. Meta list: .wc-order-item-meta li
+    const metas = ctx.querySelectorAll(".wc-order-item-meta li, .item-meta li");
+    metas.forEach(li => {
+      const lblEl = li.querySelector ? li.querySelector(".wc-item-meta-label, strong") : null;
+      const lbl = lblEl ? (lblEl.textContent || lblEl.innerText || "").replace(/:$/, "").trim() : "";
+      let val = (li.textContent || li.innerText || "").trim();
+      if (lbl && val.includes(lbl)) {
+        val = val.replace(lbl, "").replace(/^[:\s-]+/, "").trim();
+      }
+      if (/^(?:SKU|ID|Cost|Vendor|দাম|আইডি)/i.test(lbl)) return;
+      if (val && !/^(?:SKU|ID):/i.test(val)) {
+        if (lbl) {
+          vars.push(`${lbl}: ${val}`);
+        } else {
+          vars.push(val);
+        }
+      }
+    });
+
+    // 2. dl.variation
+    const dls = ctx.querySelectorAll("dl.variation");
+    dls.forEach(dl => {
+      const dts = dl.querySelectorAll ? dl.querySelectorAll("dt") : [];
+      const dds = dl.querySelectorAll ? dl.querySelectorAll("dd") : [];
+      for (let i = 0; i < Math.min(dts.length, dds.length); i++) {
+        const dt = (dts[i].textContent || "").replace(/:$/, "").trim();
+        const dd = (dds[i].textContent || "").trim();
+        if (/^(?:SKU|ID|Cost)/i.test(dt)) continue;
+        if (dd) {
+          vars.push(`${dt}: ${dd}`);
+        }
+      }
+    });
+
+    // 3. .wc-order-item-variation
+    const varNodes = ctx.querySelectorAll(".wc-order-item-variation, .variation, .order-item-variation");
+    varNodes.forEach(vn => {
+      const vt = (vn.textContent || vn.innerText || "").trim();
+      if (vt && !/^(?:SKU|ID):/i.test(vt) && !vars.some(v => v.includes(vt))) {
+        vars.push(vt.replace(/^[:\s-]+/, "").trim());
+      }
+    });
+
+    // 4. WooCommerce Order Preview meta tables (e.g. table.wc-order-item-meta, table.display_meta)
+    const metaRows = ctx.querySelectorAll("table.wc-order-item-meta tr, table.display_meta tr");
+    metaRows.forEach(tr => {
+      const th = tr.querySelector("th");
+      const td = tr.querySelector("td");
+      if (th && td) {
+        const k = (th.textContent || "").replace(/:$/, "").trim();
+        const v = (td.textContent || "").trim();
+        if (k && v && !/^(?:SKU|ID|Cost)/i.test(k)) {
+          vars.push(`${k}: ${v}`);
+        }
+      }
+    });
+  }
+
+  // 5. Secondary text lines in el
+  const fullText = (el.innerText || el.textContent || "").trim();
+  if (fullText.includes("\n")) {
+    const lines = fullText.split("\n").map(l => cleanHtmlEntities(l.trim())).filter(Boolean);
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^(?:SKU|ID|Price|Qty|৳|BDT|Cost):?/i.test(line)) continue;
+      if (/^(?:Add meta|Add item|button)$/i.test(line)) continue;
+      if (/(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[\s:]*([^\n\r]+)/i.test(line)) {
+        if (!vars.some(v => v.toLowerCase() === line.toLowerCase())) {
+          vars.push(line);
+        }
+      } else if (/^(?:XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|[2-5][0-9])$/i.test(line)) {
+        const sizeStr = `Size: ${line.toUpperCase()}`;
+        if (!vars.some(v => v.toLowerCase().includes(line.toLowerCase()))) {
+          vars.push(sizeStr);
+        }
+      }
+    }
+  }
+
+  // Filter variations already included in title
+  const cleanVars = vars.filter((v, idx, arr) => {
+    if (!v) return false;
+    const lowerV = v.toLowerCase();
+    if (title.toLowerCase().includes(lowerV)) return false;
+    const valOnly = lowerV.replace(/^[^:]+:\s*/, "");
+    if (valOnly && title.toLowerCase().includes(valOnly)) return false;
+    return arr.findIndex(x => x.toLowerCase() === lowerV) === idx;
+  });
+
+  if (cleanVars.length > 0) {
+    const combined = cleanVars.join(", ");
+    if (combined.startsWith("(") && combined.endsWith(")")) {
+      return `${title} ${combined}`;
+    }
+    return `${title} (${combined})`;
+  }
+
+  return title;
+}
+
+/**
+ * Normalize and clean customer, delivery, and ordered product details
+ */
+function normalizeCustomerAndOrderData(rawDetails) {
+  const d = Object.assign({}, rawDetails || {});
+  
+  // Check if d.address has noise like "Billing details" or if name is invalid
+  let rawAddr = (d.address || "").trim();
+  let parsedBlock = null;
+  if (isInvalidCustomerName(d.name) || /Billing details|Payment via|Cash on delivery/i.test(rawAddr)) {
+    parsedBlock = parseWooCommerceAddressBlock(rawAddr);
+  }
+
+  // 1. Phone number
+  let digits = String(d.phone || "").replace(/\D/g, "");
+  let cleanPhone = "";
+  if (digits.length === 11 && digits.startsWith("01")) {
+    cleanPhone = digits;
+  } else if (digits.length === 13 && digits.startsWith("8801")) {
+    cleanPhone = digits.slice(2);
+  } else if (digits.length === 10 && digits.startsWith("1")) {
+    cleanPhone = "0" + digits;
+  } else if (d.phone) {
+    const m = String(d.phone).match(/0?1[3-9]\d{8}/);
+    if (m) cleanPhone = m[0].startsWith("0") ? m[0] : "0" + m[0];
+  }
+  if (!cleanPhone && parsedBlock && parsedBlock.phone) {
+    cleanPhone = parsedBlock.phone;
+  }
+
+  // 2. Customer Name (proper casing and clean)
+  let name = (d.name || "").trim().replace(/\s+/g, " ");
+  if (isInvalidCustomerName(name) && parsedBlock && parsedBlock.name) {
+    name = parsedBlock.name;
+  }
+  name = name.replace(/^(?:Customer|Name|বিলিং|গ্রাহক|নাম)[:\s-]*/i, "").trim();
+  name = name.replace(/(?:\+?880|0)?1[3-9]\d{8}/g, "").replace(/\S+@\S+\.\S+/g, "").trim();
+  if (name) {
+    if (name === name.toUpperCase() || name === name.toLowerCase()) {
+      name = name.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+    }
+  }
+
+  // 3. Address
+  let address = parsedBlock && parsedBlock.address ? parsedBlock.address : rawAddr;
+  address = address.replace(/^(?:Billing details|Shipping details|Payment via|Phone|Email)[:\s,]*/gi, "")
+                   .replace(/[,:\s]+(?:Payment via|Cash on delivery|Phone|Email).*$/gi, "")
+                   .replace(/\s+/g, " ")
+                   .replace(/^,\s*|,\s*$/g, "")
+                   .trim();
+  let parsed = { district: "", zone: "", streetAddress: address };
+  if (address && typeof parseBDAddress === "function") {
+    parsed = parseBDAddress(address);
+  }
+  const district = parsed.district || d.district || "";
+  const zone = parsed.zone || d.zone || "";
+
+  // 4. Products & Unit Prices
+  const items = [];
+  let subtotalCalc = 0;
+  if (Array.isArray(d.items) && d.items.length > 0) {
+    d.items.forEach(it => {
+      let rawName = extractItemNameWithSize(it.name || it.title || "", it);
+      if (!rawName) return;
+      if (isExcludedMetaOrButtonRow(null, rawName)) return;
+
+      const qtyVal = parseInt(bengaliToAsciiDigits(String(it.qty || it.quantity || "1")), 10) || 1;
+      let totalNum = 0;
+      if (it.total !== undefined && it.total !== null && it.total !== "") {
+        const numMatch = bengaliToAsciiDigits(String(it.total)).replace(/,/g, "").match(/[\d.]+/);
+        if (numMatch) totalNum = Math.round(parseFloat(numMatch[0]));
+      }
+
+      let unitPrice = 0;
+      if (it.unitPrice || it.price) {
+        const upMatch = bengaliToAsciiDigits(String(it.unitPrice || it.price)).replace(/,/g, "").match(/[\d.]+/);
+        if (upMatch) unitPrice = Math.round(parseFloat(upMatch[0]));
+      }
+      if (!unitPrice && totalNum > 0 && qtyVal > 0) {
+        unitPrice = Math.round(totalNum / qtyVal);
+      }
+      if (!totalNum && unitPrice > 0 && qtyVal > 0) {
+        totalNum = unitPrice * qtyVal;
+      }
+
+      subtotalCalc += totalNum;
+
+      items.push({
+        name: rawName,
+        qty: qtyVal,
+        unitPrice: unitPrice > 0 ? unitPrice.toString() : "",
+        total: totalNum > 0 ? totalNum.toString() : ""
+      });
+    });
+  }
+
+  // 5. Total COD
+  let cod = "";
+  if (d.cod !== undefined && d.cod !== null && d.cod !== "") {
+    let cleanCod = bengaliToAsciiDigits(String(d.cod)).replace(/^[৳BDT\s:Tk\.?]+/i, "").trim();
+    cleanCod = cleanCod.replace(/\.00$/, "");
+    if (cleanCod !== "0") cod = cleanCod;
+  }
+  if (!cod && subtotalCalc > 0) {
+    cod = subtotalCalc.toString();
+  }
+  if (!cod && d.cod !== undefined && d.cod !== null && d.cod !== "") {
+    cod = String(d.cod).trim();
+  }
+
+  const isOutside = (district && !district.toLowerCase().includes("dhaka")) ||
+                    (address && !address.toLowerCase().includes("dhaka"));
+
+  // Auto-resolve single item price if total was missing but COD is known
+  if (items.length === 1 && (!items[0].total || items[0].total === "0" || !items[0].unitPrice)) {
+    const codNum = Number(cod);
+    if (codNum > 0) {
+      const estDelivery = isOutside ? (Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 130) : (Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 70);
+      const resolvedTotal = (codNum > estDelivery && estDelivery > 0) ? (codNum - estDelivery) : codNum;
+      if (!items[0].total || items[0].total === "0") {
+        items[0].total = resolvedTotal.toString();
+      }
+      if (!items[0].unitPrice || items[0].unitPrice === "0") {
+        items[0].unitPrice = Math.round(resolvedTotal / (items[0].qty || 1)).toString();
+      }
+      if (subtotalCalc === 0) {
+        subtotalCalc = resolvedTotal;
+      }
+    }
+  }
+
+  let finalSubtotal = subtotalCalc > 0 ? subtotalCalc.toString() : "";
+  if (!finalSubtotal || finalSubtotal === "0") {
+    if (items.length === 1 && items[0].total && Number(items[0].total) > 0) {
+      finalSubtotal = items[0].total;
+    } else if (cod && cod !== "0") {
+      finalSubtotal = cod;
+    } else {
+      finalSubtotal = "0";
+    }
+  }
+  const finalCod = cod && cod !== "0" ? cod : (finalSubtotal !== "0" ? finalSubtotal : "0");
+
+  return Object.assign({}, d, {
+    orderId: (d.orderId || "").toString().trim().replace(/^#/, ""),
+    name: name || (d.name ? d.name.trim() : "Customer"),
+    phone: cleanPhone || d.phone || "",
+    address: address,
+    district: district,
+    zone: zone,
+    items: items,
+    subtotal: finalSubtotal,
+    cod: finalCod,
+    isOutsideDhaka: isOutside
+  });
+}
+
+/**
+ * Calculate appropriate delivery fee based on address, district, or explicit parameters
+ */
+function calculateDeliveryFee(params, config) {
+  if (params && params.fee !== undefined && params.fee !== null && params.fee !== "") {
+    const num = Number(params.fee);
+    if (!isNaN(num) && num > 0) return num;
+  }
+  const cfg = config || DEFAULT_QUICK_REPLY_CONFIG;
+  const insideFee = Number(cfg.insideDhakaFee) || 70;
+  const outsideFee = Number(cfg.outsideDhakaFee) || 130;
+
+  if (params && typeof params.isOutsideDhaka === "boolean") {
+    return params.isOutsideDhaka ? outsideFee : insideFee;
+  }
+
+  const addr = (params && (params.address || params.district || params.city || "")) .toLowerCase();
+  if (!addr) {
+    return outsideFee; // Default to outside Dhaka standard for merchant financial security
+  }
+
+  // Check if inside Dhaka city
+  const isDhaka = addr.includes("dhaka") || addr.includes("ঢাকা") ||
+                  addr.includes("uttara") || addr.includes("mirpur") ||
+                  addr.includes("dhanmondi") || addr.includes("gulshan") ||
+                  addr.includes("banani") || addr.includes("mohammadpur") ||
+                  addr.includes("motijheel") || addr.includes("badda");
+  const isSubDhaka = addr.includes("savar") || addr.includes("সাভার") ||
+                     addr.includes("gazipur") || addr.includes("গাজীপুর") ||
+                     addr.includes("narayanganj") || addr.includes("নারায়ণগঞ্জ") ||
+                     addr.includes("keraniganj") || addr.includes("কেরানীগঞ্জ");
+
+  if (isDhaka && !isSubDhaka) {
+    return insideFee;
+  }
+  return outsideFee;
+}
+
+/**
+ * Build a valid WhatsApp wa.me deep link with country code 880
+ */
+function buildWhatsAppDeepLink(phone, messageText) {
+  if (!phone) return "";
+  let digits = String(phone).replace(/\D/g, "");
+  let cleanPhone = digits;
+  if (digits.startsWith("01") && digits.length === 11) {
+    cleanPhone = "88" + digits;
+  } else if (digits.startsWith("1") && digits.length === 10) {
+    cleanPhone = "880" + digits;
+  } else if (!digits.startsWith("88") && digits.length === 11) {
+    cleanPhone = "88" + digits;
+  }
+  const encodedText = encodeURIComponent(messageText || "");
+  return `https://wa.me/${cleanPhone}?text=${encodedText}`;
+}
+
+/**
+ * Generate formatted WhatsApp message based on template key
+ * Supported templates:
+ * - 'advance_fee': Request advance delivery charge via bKash/Nagad before dispatching COD
+ * - 'confirm_order': Friendly order confirmation with COD total & order reference
+ * - 'high_risk_notice': Strict advance requirement for high return risk or low delivery rate customer
+ * - 'tracking_info': Parcel dispatch and courier tracking notice
+ */
+function generateQuickReply(templateKey, params, customConfig) {
+  const p = normalizeCustomerAndOrderData(params);
+  const cfg = Object.assign({}, DEFAULT_QUICK_REPLY_CONFIG, customConfig || {});
+  const store = cfg.storeName || "DEEN Commerce";
+  const fee = calculateDeliveryFee(p, cfg);
+  const nameGreeting = p.name && p.name.trim() ? ` ${p.name.trim()}` : "";
+  const orderNum = p.orderId ? String(p.orderId).trim().replace(/^#/, "") : "";
+  const orderRef = orderNum ? ` (অর্ডার #${orderNum})` : "";
+  const codVal = p.cod !== undefined && p.cod !== null && p.cod !== "" ? String(p.cod).trim() : "";
+
+  // Payment methods breakdown
+  let paymentLines = [];
+  if (cfg.bkashNumber) {
+    paymentLines.push(`• বিকাশ (${cfg.bkashType || "Personal"}): ${cfg.bkashNumber}`);
+  }
+  if (cfg.nagadNumber) {
+    paymentLines.push(`• নগদ (${cfg.nagadType || "Personal"}): ${cfg.nagadNumber}`);
+  }
+  if (paymentLines.length === 0) {
+    paymentLines.push(`• বিকাশ/নগদ: ${cfg.bkashNumber || "01XXXXXXXXX"}`);
+  }
+  const paymentBlock = paymentLines.join("\n");
+
+  switch (templateKey) {
+    case "order_details_confirm":
+    case "ask_confirm": {
+      let itemsListText = "";
+      if (p.items && Array.isArray(p.items) && p.items.length > 0) {
+        itemsListText = "\n🛍️ অর্ডারকৃত পণ্য:\n" + p.items.map(it => {
+          const itName = it.name || it.title || "পণ্য";
+          const itQty = it.qty || it.quantity || 1;
+          const up = it.unitPrice ? ` (প্রতি পিস ৳${it.unitPrice})` : "";
+          const itPrice = it.total ? ` - ৳${it.total}` : (it.price ? ` - ৳${it.price}` : "");
+          return `• ${itName} (পরিমাণ: ${itQty})${up}${itPrice}`;
+        }).join("\n");
+      }
+      const addrText = p.address ? `\n📍 ডেলিভারি ঠিকানা: ${p.address}` : "";
+      const phoneText = p.phone ? `\n📞 ফোন নম্বর: ${p.phone}` : "";
+      const codText = codVal ? `\n💰 মোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
+      let advText = "";
+      if (p.requestAdvance || p.isOutsideDhaka) {
+        advText = `\n\nকুরিয়ার সার্ভিস শর্ত অনুযায়ী ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রযোজ্য। বিকাশ (${cfg.bkashType || "Personal"}): ${cfg.bkashNumber || ""}`;
+      }
+
+      return `আসসালামু আলাইকুম${nameGreeting}!
+${store} থেকে আপনার অর্ডারটি${orderRef} কনফার্ম করার জন্য বিস্তারিত নিচে দেওয়া হলো:${itemsListText}${addrText}${phoneText}${codText}${advText}
+
+অর্ডারটি কনফার্ম করার জন্য অনুগ্রহ করে 'হ্যাঁ' বা 'কনফার্ম' লিখে রিপ্লাই দিন। কোনো পরিবর্তন থাকলে আমাদের জানান। ধন্যবাদ!
+— ${store} (deencommerce.com)`;
+    }
+
+    case "confirm_order": {
+      const codLine = codVal ? `\nমোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
+      return `আসসালামু আলাইকুম${nameGreeting}!
+${store} থেকে আপনার অর্ডারটি${orderRef} সফলভাবে কনফার্ম করা হয়েছে।${codLine}
+
+পার্সেলটি দ্রুত প্রস্তুত করে কুরিয়ারে হস্তান্তর করা হবে। কোনো জিজ্ঞাসা থাকলে আমাদের জানাতে পারেন। আপনার অর্ডারের জন্য ধন্যবাদ!`;
+    }
+
+    case "high_risk_notice": {
+      return `আসসালামু আলাইকুম${nameGreeting}!
+কুরিয়ার সার্ভিস পলিসি অনুযায়ী${orderRef} ক্যাশ-অন-ডেলিভারিতে পার্সেল পাঠানোর পূর্বে ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রদান করা বাধ্যতামূলক।
+
+পেমেন্ট মাধ্যম:
+${paymentBlock}
+
+টাকা পাঠিয়ে অনুগ্রহ করে TrxID বা লাস্ট ২ ডিজিট মেসেজ করুন। অগ্রিম ডেলিভারি চার্জ প্রাপ্তির পর পার্সেল বুকিং কনফার্ম করা হবে। ধন্যবাদ! - ${store}`;
+    }
+
+    case "tracking_info": {
+      const tracking = p.trackingId || orderNum || "";
+      const codLine = codVal ? `\nক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
+      return `আসসালামু আলাইকুম${nameGreeting}!
+${store} থেকে আপনার পার্সেলটি কুরিয়ার সার্ভিসে হস্তান্তর করা হয়েছে।
+${tracking ? `ট্র্যাকিং আইডি: ${tracking}` : ""}${codLine}
+
+কুরিয়ার রাইডারের কল রিসিভ করে পার্সেলটি গ্রহণ করার জন্য অনুরোধ করা হলো। ধন্যবাদ!`;
+    }
+
+    case "advance_fee":
+    default: {
+      return `আসসালামু আলাইকুম${nameGreeting}!
+${store} থেকে আপনার অর্ডারটি${orderRef} কনফার্ম করার জন্য কুরিয়ার ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রদান করতে হবে। অবশিষ্ট মূল্য (COD) পার্সেল রিসিভ করার সময় পরিশোধ করবেন।
+
+পেমেন্ট মাধ্যম:
+${paymentBlock}
+
+টাকা পাঠিয়ে অনুগ্রহ করে লাস্ট ২ ডিজিট বা ট্রানজেকশন আইডি (TrxID) জানান। পেমেন্ট কনফার্ম হলেই পার্সেলটি দ্রুত পাঠিয়ে দেওয়া হবে। ধন্যবাদ!`;
+    }
+  }
+}
+
 // Make functions accessible in content script and popup
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
@@ -816,6 +1924,22 @@ if (typeof module !== "undefined" && module.exports) {
     parseWooCommerceOrders,
     exportToCSV,
     exportToExcelXML,
-    exportToXLSX
+    exportToXLSX,
+    BD_DISTRICTS,
+    DHAKA_ZONES,
+    OTHER_CITY_ZONES,
+    parseBDAddress,
+    generatePathaoBatchCSV,
+    exportPathaoBatchCSV,
+    DEFAULT_QUICK_REPLY_CONFIG,
+    calculateDeliveryFee,
+    buildWhatsAppDeepLink,
+    generateQuickReply,
+    normalizeCustomerAndOrderData,
+    parseWooCommerceAddressBlock,
+    isInvalidCustomerName,
+    extractItemNameWithSize,
+    cleanHtmlEntities,
+    isExcludedMetaOrButtonRow
   };
 }

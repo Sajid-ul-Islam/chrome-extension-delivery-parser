@@ -1,4 +1,5 @@
-const { parseDeliveryData } = require('./parser.js');
+const { parseDeliveryData, parseBDAddress, generatePathaoBatchCSV } = require('./parser.js');
+const assert = require('assert');
 
 const sampleStandard = `Cons. ID
 Order ID
@@ -51,4 +52,111 @@ if (res2.records.length !== 1 || res2.records[0]['Consignment ID'] !== 'DD240915
   process.exit(1);
 }
 
+// =========================================================================
+// Feature 4: Smart BD Address Parser Unit Tests
+// =========================================================================
+console.log('\nTesting parseBDAddress (Smart BD Address Parser)...');
+
+// Case 1: Standard Dhaka address with sector and zone
+const addr1 = parseBDAddress("House 12, Road 4, Sector 3, Uttara, Dhaka");
+assert.strictEqual(addr1.district, "Dhaka", "Case 1 district mismatch");
+assert.strictEqual(addr1.zone, "Uttara", "Case 1 zone mismatch");
+assert.strictEqual(addr1.area, "Sector 3", "Case 1 area mismatch");
+assert.strictEqual(addr1.cityType, "Inside Dhaka", "Case 1 cityType mismatch");
+assert.strictEqual(addr1.streetAddress, "House 12, Road 4, Sector 3", "Case 1 streetAddress mismatch");
+console.log('  ✅ Case 1: Uttara, Dhaka parsed correctly');
+
+// Case 2: Mirpur address with Block, postcode, and hyphenated zone
+const addr2 = parseBDAddress("Flat 4B, Plot 10, Block C, Mirpur-10, Dhaka - 1216");
+assert.strictEqual(addr2.district, "Dhaka", "Case 2 district mismatch");
+assert.strictEqual(addr2.zone, "Mirpur", "Case 2 zone mismatch");
+assert.strictEqual(addr2.postcode, "1216", "Case 2 postcode mismatch");
+assert.strictEqual(addr2.cityType, "Inside Dhaka", "Case 2 cityType mismatch");
+assert.strictEqual(addr2.streetAddress, "Flat 4B, Plot 10, Block C, Mirpur-10", "Case 2 streetAddress mismatch");
+console.log('  ✅ Case 2: Mirpur-10 with postcode 1216 parsed correctly');
+
+// Case 3: Sub-Dhaka / Gazipur address with thana and postal code
+const addr3 = parseBDAddress("Masterpara, Sreepur, Gazipur-1740");
+assert.strictEqual(addr3.district, "Gazipur", "Case 3 district mismatch");
+assert.strictEqual(addr3.zone, "Sreepur", "Case 3 zone mismatch");
+assert.strictEqual(addr3.postcode, "1740", "Case 3 postcode mismatch");
+assert.strictEqual(addr3.cityType, "Sub Dhaka", "Case 3 cityType mismatch");
+assert.strictEqual(addr3.streetAddress, "Masterpara", "Case 3 streetAddress mismatch");
+console.log('  ✅ Case 3: Sreepur, Gazipur-1740 parsed as Sub Dhaka');
+
+// Case 4: Major outside hub (Chattogram Agrabad)
+const addr4 = parseBDAddress("Agrabad C/A, Chattogram");
+assert.strictEqual(addr4.district, "Chattogram", "Case 4 district mismatch");
+assert.strictEqual(addr4.zone, "Agrabad", "Case 4 zone mismatch");
+assert.strictEqual(addr4.cityType, "Outside Dhaka", "Case 4 cityType mismatch");
+console.log('  ✅ Case 4: Agrabad, Chattogram parsed correctly');
+
+// Case 5: Sylhet Zindabazar
+const addr5 = parseBDAddress("Zindabazar, Sylhet");
+assert.strictEqual(addr5.district, "Sylhet", "Case 5 district mismatch");
+assert.strictEqual(addr5.zone, "Zindabazar", "Case 5 zone mismatch");
+assert.strictEqual(addr5.cityType, "Outside Dhaka", "Case 5 cityType mismatch");
+console.log('  ✅ Case 5: Zindabazar, Sylhet parsed correctly');
+
+// Case 6: Cumilla Kandirpar
+const addr6 = parseBDAddress("Kandirpar, Cumilla");
+assert.strictEqual(addr6.district, "Cumilla", "Case 6 district mismatch");
+assert.strictEqual(addr6.zone, "Kandirpar", "Case 6 zone mismatch");
+assert.strictEqual(addr6.cityType, "Outside Dhaka", "Case 6 cityType mismatch");
+console.log('  ✅ Case 6: Kandirpar, Cumilla parsed correctly');
+
+// Case 7: Savar Sub-Dhaka
+const addr7 = parseBDAddress("Savar Bazar, Savar, Dhaka");
+assert.strictEqual(addr7.district, "Dhaka", "Case 7 district mismatch");
+assert.strictEqual(addr7.zone, "Savar", "Case 7 zone mismatch");
+assert.strictEqual(addr7.cityType, "Sub Dhaka", "Case 7 cityType mismatch");
+console.log('  ✅ Case 7: Savar parsed as Sub Dhaka');
+
+// Case 8: Bengali script
+const addr8 = parseBDAddress("বাসা ১২, রোড ৪, উত্তরা, ঢাকা");
+assert.strictEqual(addr8.district, "Dhaka", "Case 8 Bengali district mismatch");
+assert.strictEqual(addr8.zone, "Uttara", "Case 8 Bengali zone mismatch");
+console.log('  ✅ Case 8: Bengali script address parsed correctly');
+
+// =========================================================================
+// Feature 5: Pathao Bulk Batch CSV Generation Tests
+// =========================================================================
+console.log('\nTesting generatePathaoBatchCSV (Feature 5)...');
+
+const mockOrders = [
+  {
+    orderId: "14913",
+    name: "Badon",
+    phone: "01711223344",
+    address: "House 12, Road 4, Sector 3, Uttara, Dhaka",
+    cod: 1535,
+    type: "Parcel"
+  },
+  {
+    orderId: "14912",
+    name: "Shohag",
+    phone: "01812345678",
+    address: "Mirpur 12, Dhaka - 1216",
+    cod: 499,
+    type: "Parcel"
+  },
+  {
+    orderId: "D-14489",
+    name: "Exchange Customer",
+    phone: "01999887766",
+    address: "Masterpara, Sreepur, Gazipur-1740",
+    cod: 1200,
+    type: "Exchange"
+  }
+];
+
+const csvOutput = generatePathaoBatchCSV(mockOrders);
+assert(csvOutput.includes("Merchant Order ID,Recipient Name,Recipient Phone"), "Headers mismatch");
+assert(csvOutput.includes('"14913","Badon","01711223344","House 12, Road 4, Sector 3","Dhaka","Uttara"'), "Row 1 mismatch");
+assert(csvOutput.includes('"14912","Shohag","01812345678","Mirpur 12","Dhaka","Mirpur"'), "Row 2 mismatch");
+assert(csvOutput.includes('"D-14489","Exchange Customer","01999887766","Masterpara","Gazipur","Sreepur"'), "Row 3 mismatch");
+assert(csvOutput.includes('"Exchange"'), "Exchange type preserved in CSV");
+console.log('  ✅ Pathao Batch CSV generated with correct headers and column mappings');
+
 console.log('\n>>> ALL EXTENSION PARSER TESTS PASSED SUCCESSFULLY! <<<');
+

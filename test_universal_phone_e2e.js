@@ -1,6 +1,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const { escapeHTML } = require('./phone-check.js');
 
 console.log("🧪 Running Universal Phone Detection & In-Page Rating E2E Simulation Test...");
 
@@ -299,6 +300,18 @@ setTimeout(() => {
     sidebarCloseBtn._handlers["click"].forEach(h => h({}));
     assert(!sidebar.classList.contains("open"), "Sidebar should be closed after clicking close button");
     console.log("  ✅ Sidebar drawer closed cleanly!");
+
+    // Test 9: Verify XSS Sanitization & HTML Escaping
+    console.log("\n▶ Test 9: Testing XSS Sanitization & HTML Escaping...");
+    const { escapeHTML } = require('./phone-check.js');
+    assert.strictEqual(typeof escapeHTML, "function", "escapeHTML function must be exported");
+    const rawXssPayload = '<img src=x onerror="alert(1)"> "Malicious" & \'Dangerous\'';
+    const escaped = escapeHTML(rawXssPayload);
+    assert(!escaped.includes("<img"), "HTML tags must be escaped");
+    assert(escaped.includes("&lt;img"), "HTML opening brackets must be converted to &lt;");
+    assert(escaped.includes("&quot;"), "Quotes must be converted to &quot;");
+    assert(escaped.includes("&#039;"), "Single quotes must be converted to &#039;");
+    console.log("  ✅ escapeHTML successfully neutralizes script and DOM injection attacks!");
 
     console.log("\n==================================================");
     console.log("🎉 ALL IN-PAGE RATING & SIDEBAR TESTS PASSED!");

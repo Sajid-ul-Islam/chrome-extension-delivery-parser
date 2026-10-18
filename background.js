@@ -193,17 +193,6 @@ async function getPathaoToken() {
         if (c.value && c.value.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(c.value)) return c.value;
       }
     } catch (e) {}
-    // Broad fallback: scan ALL cookies across every domain for a token-like value
-    try {
-      const allCookies = await new Promise(r => chrome.cookies.getAll({}, r));
-      for (const c of (allCookies || [])) {
-        if (c.value && c.value.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(c.value)) {
-          const name = (c.name || "").toLowerCase();
-          if (name === "preferences" || name === "settings" || name === "theme" || name === "language") continue;
-          return c.value;
-        }
-      }
-    } catch (e) {}
   }
 
   return null;
@@ -505,16 +494,19 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse) {
     steadfastStatus: steadfastStatus,
     sources: {
       pathao: {
-        checked: true,
-        successRate: successRate,
-        total: total,
-        delivered: delivered,
-        cancelled: Math.max(0, cancelled)
+        checked: Boolean(pathaoStats),
+        successRate: pathaoStats && pathaoStats.total > 0 ? Math.round((pathaoStats.delivered / pathaoStats.total) * 100) : 100,
+        total: pathaoStats ? pathaoStats.total : 0,
+        delivered: pathaoStats ? pathaoStats.delivered : 0,
+        cancelled: pathaoStats ? pathaoStats.cancelled : 0
       },
       steadfastNetwork: {
-        checked: true,
+        checked: Boolean(steadfastStats),
+        total: steadfastStats ? steadfastStats.total : 0,
+        delivered: steadfastStats ? steadfastStats.delivered : 0,
+        cancelled: steadfastStats ? steadfastStats.cancelled : 0,
         riskScore: riskLevel === "high" ? "High Risk" : (riskLevel === "medium" ? "Moderate" : "Low Risk"),
-        cancellationRatio: total > 0 ? Math.round((cancelled / total) * 100) : 0
+        cancellationRatio: steadfastStats && steadfastStats.total > 0 ? Math.round((steadfastStats.cancelled / steadfastStats.total) * 100) : 0
       }
     }
   };

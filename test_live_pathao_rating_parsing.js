@@ -57,7 +57,24 @@ function parseCourierStats(pathaoData, steadfastData, storeHistory) {
     pathaoStatus: pathaoStatus,
     pathaoStats: pathaoStats,
     steadfastStatus: steadfastStatus,
-    steadfastStats: steadfastStats
+    steadfastStats: steadfastStats,
+    sources: {
+      pathao: {
+        checked: Boolean(pathaoStats),
+        successRate: pathaoStats && pathaoStats.total > 0 ? Math.round((pathaoStats.delivered / pathaoStats.total) * 100) : 100,
+        total: pathaoStats ? pathaoStats.total : 0,
+        delivered: pathaoStats ? pathaoStats.delivered : 0,
+        cancelled: pathaoStats ? pathaoStats.cancelled : 0
+      },
+      steadfastNetwork: {
+        checked: Boolean(steadfastStats),
+        total: steadfastStats ? steadfastStats.total : 0,
+        delivered: steadfastStats ? steadfastStats.delivered : 0,
+        cancelled: steadfastStats ? steadfastStats.cancelled : 0,
+        riskScore: riskLevel === "high" ? "High Risk" : (riskLevel === "medium" ? "Moderate" : "Low Risk"),
+        cancellationRatio: steadfastStats && steadfastStats.total > 0 ? Math.round((steadfastStats.cancelled / steadfastStats.total) * 100) : 0
+      }
+    }
   };
 }
 
@@ -82,6 +99,7 @@ assert.strictEqual(res1.deliveredCount, 16, "Delivered count must be 16");
 assert.strictEqual(res1.cancelledCount, 2, "Cancelled count must be 2");
 assert.strictEqual(res1.successRate, 89, "Success rate must be 89%");
 assert.strictEqual(res1.pathaoStats.name, "Tanvir Rahman", "Customer name should be extracted");
+assert.strictEqual(res1.sources.pathao.total, 18, "Pathao source total must be 18");
 console.log("  ✅ Case 1: Real Pathao API nested response parsed with 100% precision!");
 
 // Case 2: Multi-Courier aggregation with Steadfast
@@ -94,6 +112,8 @@ assert.strictEqual(res2.totalParcels, 30, "Total parcels aggregated across Patha
 assert.strictEqual(res2.deliveredCount, 26, "Delivered count aggregated must be 26");
 assert.strictEqual(res2.cancelledCount, 4, "Cancelled count aggregated must be 4");
 assert.strictEqual(res2.successRate, 87, "Aggregated success rate must be 87%");
+assert.strictEqual(res2.sources.pathao.total, 18, "Pathao source total must isolate Pathao count (18)");
+assert.strictEqual(res2.sources.steadfastNetwork.total, 12, "Steadfast source total must isolate Steadfast count (12)");
 console.log("  ✅ Case 2: Multi-Courier composite aggregation across Pathao & Steadfast verified!");
 
 // Case 3: Token missing
