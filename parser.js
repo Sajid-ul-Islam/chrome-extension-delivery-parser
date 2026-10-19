@@ -1439,8 +1439,12 @@ function extractItemNameWithSize(nameEl, context) {
         const line = lines[i];
         if (/^(?:SKU|ID|Price|Qty|৳|BDT|Cost):?/i.test(line)) continue;
         if (/^(?:Add meta|Add item|button)$/i.test(line)) continue;
-        if (/(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[\s:]*([^\n\r]+)/i.test(line)) {
-          vars.push(line);
+        const varM = line.match(/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]+(\S.*)$/i);
+        if (varM) {
+          const val = varM[1].trim();
+          if (val && !/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(val)) {
+            vars.push(line);
+          }
         } else if (/^(?:XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|[2-5][0-9])$/i.test(line)) {
           vars.push(`Size: ${line.toUpperCase()}`);
         } else if (line.length < 30 && !/^\d+$/.test(line) && !/^(?:Refund|Shipping|Tax)/i.test(line)) {
@@ -1448,14 +1452,23 @@ function extractItemNameWithSize(nameEl, context) {
         }
       }
       if (extraSize && !vars.some(v => v.toLowerCase().includes(extraSize.toLowerCase()))) {
-        vars.push(extraSize.startsWith("Size:") ? extraSize : `Size: ${extraSize}`);
-      }
-      if (vars.length > 0) {
-        const vStr = vars.join(", ");
-        if (!title.toLowerCase().includes(vStr.toLowerCase())) {
-          return `${title} (${vStr})`;
+        const cleanExtra = extraSize.replace(/^size[:\s]*/i, "").trim();
+        if (cleanExtra && !title.toLowerCase().includes(cleanExtra.toLowerCase())) {
+          vars.push(extraSize.startsWith("Size:") ? extraSize : `Size: ${extraSize}`);
         }
       }
+      const cleanVars = vars.filter(v => {
+        const trimmed = v.trim();
+        const valOnly = trimmed.replace(/^[^:]+:\s*/, "").trim();
+        if (!valOnly || /^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(trimmed)) return false;
+        if (title.toLowerCase().includes(trimmed.toLowerCase())) return false;
+        if (title.toLowerCase().includes(valOnly.toLowerCase())) return false;
+        return true;
+      });
+      if (cleanVars.length > 0) {
+        title = `${title} (${cleanVars.join(", ")})`;
+      }
+      title = title.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
       return title;
     }
 
@@ -1545,7 +1558,7 @@ function extractItemNameWithSize(nameEl, context) {
       if (th && td) {
         const k = (th.textContent || "").replace(/:$/, "").trim();
         const v = (td.textContent || "").trim();
-        if (k && v && !/^(?:SKU|ID|Cost)/i.test(k)) {
+        if (k && v && !/^(?:SKU|ID|Cost)/i.test(k) && v.toLowerCase() !== k.toLowerCase()) {
           vars.push(`${k}: ${v}`);
         }
       }
@@ -1560,9 +1573,13 @@ function extractItemNameWithSize(nameEl, context) {
       const line = lines[i];
       if (/^(?:SKU|ID|Price|Qty|৳|BDT|Cost):?/i.test(line)) continue;
       if (/^(?:Add meta|Add item|button)$/i.test(line)) continue;
-      if (/(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[\s:]*([^\n\r]+)/i.test(line)) {
-        if (!vars.some(v => v.toLowerCase() === line.toLowerCase())) {
-          vars.push(line);
+      const varM = line.match(/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]+(\S.*)$/i);
+      if (varM) {
+        const val = varM[1].trim();
+        if (val && !/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(val)) {
+          if (!vars.some(v => v.toLowerCase() === line.toLowerCase())) {
+            vars.push(line);
+          }
         }
       } else if (/^(?:XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|[2-5][0-9])$/i.test(line)) {
         const sizeStr = `Size: ${line.toUpperCase()}`;
@@ -1576,22 +1593,28 @@ function extractItemNameWithSize(nameEl, context) {
   // Filter variations already included in title
   const cleanVars = vars.filter((v, idx, arr) => {
     if (!v) return false;
-    const lowerV = v.toLowerCase();
+    const trimmed = v.trim();
+    const valOnly = trimmed.replace(/^[^:]+:\s*/, "").trim();
+    if (!valOnly || /^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(trimmed)) {
+      return false;
+    }
+    const lowerV = trimmed.toLowerCase();
     if (title.toLowerCase().includes(lowerV)) return false;
-    const valOnly = lowerV.replace(/^[^:]+:\s*/, "");
-    if (valOnly && title.toLowerCase().includes(valOnly)) return false;
+    if (title.toLowerCase().includes(valOnly.toLowerCase())) return false;
     return arr.findIndex(x => x.toLowerCase() === lowerV) === idx;
   });
 
+  let result = title;
   if (cleanVars.length > 0) {
     const combined = cleanVars.join(", ");
     if (combined.startsWith("(") && combined.endsWith(")")) {
-      return `${title} ${combined}`;
+      result = `${title} ${combined}`;
+    } else {
+      result = `${title} (${combined})`;
     }
-    return `${title} (${combined})`;
   }
-
-  return title;
+  result = result.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
+  return result;
 }
 
 /**
@@ -1658,6 +1681,7 @@ function normalizeCustomerAndOrderData(rawDetails) {
     d.items.forEach(it => {
       let rawName = extractItemNameWithSize(it.name || it.title || "", it);
       if (!rawName) return;
+      rawName = rawName.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
       if (isExcludedMetaOrButtonRow(null, rawName)) return;
 
       const qtyVal = parseInt(bengaliToAsciiDigits(String(it.qty || it.quantity || "1")), 10) || 1;

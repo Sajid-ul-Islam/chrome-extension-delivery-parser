@@ -1501,7 +1501,229 @@ console.log("  ✅ Inner '36' metadata table and 'Add meta' buttons completely e
 console.log("  ✅ Unit price ৳1,524, line total ৳1,524, Subtotal ৳1,524, Delivery ৳90, and COD ৳1,614 verified!");
 console.log("  ✅ Canvas confirmed rendering without any '-' or '0' placeholders!");
 
+// -----------------------------------------------------------------------------
+// Test 21: Testing Real WooCommerce Order #18304 (Fix Size in Title, QTY=1, Unit Price ৳1500, COD ৳1590)
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 21: Testing Real WooCommerce Order #18304 (Fixing QTY=1, Unit Price, Total & Removing Dangling '(Size:)')...");
+
+const title18304 = "Calvin Klein Stretch Jeans - Regular Fit - 32";
+
+const innerMetaTd18304 = {
+  tagName: "TD",
+  innerText: "32",
+  textContent: "32",
+  closest: (sel) => sel.includes("meta") ? {} : null
+};
+const innerMetaTh18304 = {
+  tagName: "TH",
+  innerText: "Size:",
+  textContent: "Size:",
+  closest: (sel) => sel.includes("meta") ? {} : null
+};
+const innerMetaTr18304 = {
+  tagName: "TR",
+  children: [innerMetaTh18304, innerMetaTd18304],
+  querySelector: (sub) => {
+    if (sub === "th") return innerMetaTh18304;
+    if (sub === "td") return innerMetaTd18304;
+    return null;
+  },
+  closest: (sel) => sel.includes("meta") ? {} : null
+};
+const innerMetaTable18304 = {
+  tagName: "TABLE",
+  className: "wc-order-item-meta",
+  closest: (sel) => sel.includes("meta") ? {} : null,
+  querySelectorAll: (sel) => sel.includes("tr") ? [innerMetaTr18304] : []
+};
+
+const productCol18304 = {
+  tagName: "TD",
+  className: "wc-order-preview-table__column--product",
+  innerText: `${title18304}\nSize:\n32`,
+  textContent: `${title18304}\nSize:\n32`,
+  querySelector: (sel) => {
+    if (sel.includes("name") || sel.includes("product")) {
+      return { textContent: title18304, innerText: title18304 };
+    }
+    return null;
+  },
+  querySelectorAll: (sel) => sel.includes("wc-order-item-meta") ? [innerMetaTable18304] : [],
+  closest: (sel) => null
+};
+
+const qtyCol18304 = {
+  tagName: "TD",
+  className: "wc-order-preview-table__column--quantity",
+  innerText: "1",
+  textContent: "1",
+  closest: (sel) => null
+};
+
+const taxCol18304 = {
+  tagName: "TD",
+  className: "wc-order-preview-table__column--tax",
+  innerText: "-",
+  textContent: "-",
+  closest: (sel) => null
+};
+
+const totalCol18304 = {
+  tagName: "TD",
+  className: "wc-order-preview-table__column--total",
+  innerText: "৳1,500.00",
+  textContent: "৳1,500.00",
+  querySelector: (sel) => ({ textContent: "৳1,500.00", innerText: "৳1,500.00" }),
+  closest: (sel) => null
+};
+
+const itemRow18304 = {
+  tagName: "TR",
+  className: "wc-order-preview-table__item wc-order-preview-table__item--18304",
+  children: [productCol18304, qtyCol18304, taxCol18304, totalCol18304],
+  querySelector: (sel) => {
+    if (sel.includes("quantity") || sel.includes("qty")) return qtyCol18304;
+    if (sel.includes("total")) return totalCol18304;
+    if (sel.includes("name") || sel.includes("product")) return productCol18304;
+    return null;
+  },
+  querySelectorAll: (sel) => {
+    const list = [];
+    if (sel.includes("quantity") || sel.includes("qty")) list.push(qtyCol18304);
+    if (sel.includes("total")) list.push(totalCol18304);
+    if (sel.includes("meta tr")) list.push(innerMetaTr18304);
+    return list;
+  },
+  closest: (sel) => null
+};
+
+const totalsSection18304 = {
+  tagName: "DIV",
+  className: "wc-order-preview-totals",
+  querySelectorAll: (sel) => {
+    if (sel.includes("tr")) {
+      return [
+        {
+          querySelector: (sub) => sub === "th" ? { textContent: "Items Subtotal:" } : { textContent: "৳1,500.00", innerText: "৳1,500.00" }
+        },
+        {
+          querySelector: (sub) => sub === "th" ? { textContent: "Shipping:" } : { textContent: "৳90.00", innerText: "৳90.00" }
+        },
+        {
+          querySelector: (sub) => sub === "th" ? { textContent: "Total:" } : { textContent: "৳1,590.00", innerText: "৳1,590.00" }
+        }
+      ];
+    }
+    if (sel.includes("amount") || sel.includes("bdi")) {
+      return [
+        { textContent: "৳1,500.00", innerText: "৳1,500.00" },
+        { textContent: "৳90.00", innerText: "৳90.00" },
+        { textContent: "৳1,590.00", innerText: "৳1,590.00" }
+      ];
+    }
+    return [];
+  }
+};
+
+const mockModal18304 = {
+  innerText: "Order #18304\nBilling details\nSaymon Alom\nChandina, Chandina, Cumilla\nPhone: 01608276576",
+  dataset: {},
+  querySelector: (sel) => {
+    if (sel.includes("header") || sel.includes("h1") || sel.includes("order-number")) {
+      return { textContent: "Order #18304", innerText: "Order #18304" };
+    }
+    if (sel.includes("address")) {
+      return {
+        innerText: "Saymon Alom\nChandina, Chandina, Cumilla\nPhone: 01608276576",
+        querySelector: (sub) => sub === "strong" ? { innerText: "Saymon Alom" } : null
+      };
+    }
+    if (sel.includes("totals") || sel.includes("total")) {
+      return totalsSection18304;
+    }
+    return null;
+  },
+  querySelectorAll: (sel) => {
+    if (sel.includes("wc-order-preview-table") || sel.includes("item") || sel.includes("table")) {
+      return [itemRow18304];
+    }
+    return [];
+  }
+};
+
+const extracted18304 = wcIntegration.extractOrderDetailsFromModal(mockModal18304);
+assert.strictEqual(extracted18304.orderId, "18304", "Order ID must be 18304");
+assert.strictEqual(extracted18304.name, "Saymon Alom", "Customer name must be Saymon Alom");
+assert.strictEqual(extracted18304.phone, "01608276576", "Phone must be 01608276576");
+assert.strictEqual(extracted18304.cod, "1590", "Total COD must be 1590 (including shipping 90)");
+assert.strictEqual(extracted18304.items.length, 1, "Must extract exactly 1 item");
+assert.strictEqual(extracted18304.items[0].name, "Calvin Klein Stretch Jeans - Regular Fit - 32", "Product name must NOT contain dangling '(Size:)' or '(Size: 32)'");
+assert(!extracted18304.items[0].name.includes("(Size:)"), "Product title must NEVER contain '(Size:)'");
+assert.strictEqual(extracted18304.items[0].qty, 1, "Quantity must be 1 (NEVER the size '32')");
+assert.strictEqual(extracted18304.items[0].unitPrice, "1500", "Unit price must be 1500 (NEVER 1)");
+assert.strictEqual(extracted18304.items[0].total, "1500", "Line total must be 1500 (NEVER 32)");
+
+// Test normalization for Order #18304
+const normalized18304 = wcIntegration.normalizeCustomerAndOrderData(extracted18304);
+assert.strictEqual(normalized18304.subtotal, "1500", "Normalized subtotal must be 1500 (NEVER 32)");
+assert.strictEqual(normalized18304.cod, "1590", "Normalized COD must be 1590 (NEVER 32)");
+assert.strictEqual(normalized18304.items[0].qty, 1, "Normalized item quantity must be 1");
+assert.strictEqual(normalized18304.items[0].unitPrice, "1500", "Normalized unit price must be 1500");
+assert.strictEqual(normalized18304.items[0].total, "1500", "Normalized total must be 1500");
+
+// Verify canvas rendering of Order #18304
+const drawnTexts21 = [];
+const mockReceiptCanvas21 = {
+  width: 640,
+  height: 600,
+  style: {},
+  getContext: () => ({
+    scale: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    fillText: (text) => drawnTexts21.push(text),
+    measureText: (text) => ({ width: text.length * 8 }),
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    stroke: () => {},
+    fill: () => {},
+    closePath: () => {},
+    quadraticCurveTo: () => {},
+    drawImage: () => {},
+    save: () => {},
+    restore: () => {},
+    arc: () => {},
+    clip: () => {},
+    textAlign: "left"
+  }),
+  toBlob: (cb) => cb({ type: "image/png" }),
+  toDataURL: () => "data:image/png;base64,mock"
+};
+global.document.createElement = (tag) => {
+  if (tag.toLowerCase() === "canvas") return mockReceiptCanvas21;
+  return mockElement(tag);
+};
+
+wcIntegration.renderOrderReceiptCanvas(normalized18304, { storeName: "DEEN Commerce", outsideDhakaFee: 90 });
+assert(drawnTexts21.some(t => t.includes("Calvin Klein Stretch Jeans - Regular Fit - 32")), "Canvas must render product title without (Size:)");
+assert(!drawnTexts21.some(t => t.includes("(Size:)")), "Canvas must NEVER render '(Size:)'");
+assert(drawnTexts21.some(t => t === "x 1"), "Canvas must render quantity 'x 1' (NEVER 'x 32')");
+assert(!drawnTexts21.some(t => t === "x 32"), "Canvas must NEVER render 'x 32'");
+assert(drawnTexts21.some(t => t.includes("৳1500")), "Canvas must render unit price ৳1500 and total ৳1500");
+assert(!drawnTexts21.some(t => t === "৳1"), "Canvas must NEVER render unit price '৳1'");
+assert(!drawnTexts21.some(t => t === "৳32"), "Canvas must NEVER render total '৳32'");
+assert(drawnTexts21.some(t => t.includes("৳1590")), "Canvas must render COD ৳1590 (NEVER ৳32)");
+assert(drawnTexts21.some(t => t.includes("Delivery (Outside Dhaka): ৳90") || t.includes("৳90")), "Canvas must render delivery fee ৳90");
+assert(!drawnTexts21.some(t => t === "-"), "Canvas must NEVER render '-' placeholders");
+
+console.log("  ✅ Order #18304 product title cleanly stripped of dangling '(Size:)'!");
+console.log("  ✅ Quantity correctly captured as 'x 1' (NEVER corrupted by size '32')!");
+console.log("  ✅ Unit price ৳1,500, line total ৳1,500, Subtotal ৳1,500, Delivery ৳90, and COD ৳1,590 verified!");
+console.log("  ✅ Canvas confirmed rendering authentic receipt with DEEN Commerce branding without any corrupted values!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 20 WHATSAPP ADVANCE COD & ORDER CONFIRMATION TESTS PASSED!");
+console.log("🎉 ALL 21 WHATSAPP ADVANCE COD & ORDER CONFIRMATION TESTS PASSED!");
 console.log("==================================================");
+
 

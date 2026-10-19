@@ -127,6 +127,39 @@
     return false;
   }
 
+  function findRowCell(row, selectors) {
+    if (!row) return null;
+    if (typeof row.querySelectorAll === "function") {
+      const candidates = row.querySelectorAll(selectors);
+      if (candidates && candidates.length > 0) {
+        for (let i = 0; i < candidates.length; i++) {
+          const el = candidates[i];
+          if (typeof el.closest === "function") {
+            if (el.closest("table.wc-order-item-meta, table.display_meta, table.meta, .item-meta, .display_meta, .meta_items, tfoot")) {
+              continue;
+            }
+            if (el.closest("tr") !== row && el.closest("table") !== row.closest("table")) {
+              continue;
+            }
+          }
+          return el;
+        }
+      }
+    }
+    if (typeof row.querySelector === "function") {
+      const el = row.querySelector(selectors);
+      if (el) {
+        if (typeof el.closest === "function") {
+          if (el.closest("table.wc-order-item-meta, table.display_meta, table.meta, .item-meta, .display_meta, .meta_items, tfoot")) {
+            return null;
+          }
+        }
+        return el;
+      }
+    }
+    return null;
+  }
+
   // In-memory cache for fetched authoritative order details (prevents repeated network requests)
   const orderDetailsCache = new Map();
 
@@ -246,12 +279,18 @@
             }
           });
         }
-        if (vars.length > 0) {
-          const vStr = vars.join(", ");
-          if (!itemName.toLowerCase().includes(vStr.toLowerCase())) {
-            itemName += ` (${vStr})`;
-          }
+        const cleanVars = vars.filter(v => {
+          const trimmed = v.trim();
+          const valOnly = trimmed.replace(/^[^:]+:\s*/, "").trim();
+          if (!valOnly || /^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(trimmed)) return false;
+          if (itemName.toLowerCase().includes(trimmed.toLowerCase())) return false;
+          if (itemName.toLowerCase().includes(valOnly.toLowerCase())) return false;
+          return true;
+        });
+        if (cleanVars.length > 0) {
+          itemName += ` (${cleanVars.join(", ")})`;
         }
+        itemName = itemName.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
 
         const qty = parseInt(bengaliToAsciiDigits(String(it.quantity || it.qty || "1")), 10) || 1;
         let total = "";
@@ -410,10 +449,15 @@
           }
         });
         const cleanVars = vars.filter(v => {
-          const valOnly = v.replace(/^[^:]+:\s*/, "").toLowerCase();
-          return !itemName.toLowerCase().includes(valOnly);
+          const trimmed = v.trim();
+          const valOnly = trimmed.replace(/^[^:]+:\s*/, "").trim();
+          if (!valOnly || /^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(trimmed)) return false;
+          if (itemName.toLowerCase().includes(trimmed.toLowerCase())) return false;
+          if (itemName.toLowerCase().includes(valOnly.toLowerCase())) return false;
+          return true;
         });
         if (cleanVars.length > 0) itemName += ` (${cleanVars.join(", ")})`;
+        itemName = itemName.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
 
         let qty = 1;
         const qM = rowHtml.match(/class=['"][^'"]*(?:quantity|wc-order-preview-table__column--quantity)[^'"]*['"][\s\S]*?(?:times['"][^>]*>[^<]*<\/small>)?\s*(\d+)/i) ||
@@ -551,9 +595,10 @@
         if (row.querySelector("th") && !row.querySelector("td")) return;
         if (isExcludedMetaOrButtonRow(row)) return;
 
-        const nameEl = row.querySelector(
-          ".wc-order-item-name, td.name a, td.name .view a, td.name, td.column-item, .wc-order-preview-table__column--product, [data-colname='Item'], .product-name, td:first-child"
-        );
+        const nameEl = findRowCell(
+          row,
+          ".wc-order-item-name, td.name a, td.name .view a, td.name, td.column-item, .wc-order-preview-table__column--product, [data-colname='Item'], .product-name"
+        ) || (row.children && row.children[0]);
         if (!nameEl) return;
         const itemName = extractItemNameWithSize(nameEl, row);
         if (!itemName || isExcludedMetaOrButtonRow(row, itemName)) return;
@@ -564,7 +609,8 @@
           const qVal = parseInt(bengaliToAsciiDigits(qtyInput.value), 10);
           if (!isNaN(qVal) && qVal > 0) qty = qVal;
         } else {
-          const qtyEl = row.querySelector(
+          const qtyEl = findRowCell(
+            row,
             ".wc-order-preview-table__column--quantity, td[class*='column--quantity'], .wc-order-item-qty, .quantity .view, td.quantity, td.column-qty, .item-qty"
           );
           if (qtyEl) {
@@ -574,8 +620,9 @@
         }
 
         let lineTotal = "";
-        const totalEl = row.querySelector(
-          ".wc-order-preview-table__column--total, td[class*='column--total'], .line_cost .amount, td.line_cost .view .amount, td.line_cost, .line_total .amount, .wc-order-item-total, td.total, td.column-total, td:last-child"
+        const totalEl = findRowCell(
+          row,
+          ".wc-order-preview-table__column--total, td[class*='column--total'], .line_cost .amount, td.line_cost .view .amount, td.line_cost, .line_total .amount, .wc-order-item-total, td.total, td.column-total"
         );
         if (totalEl) {
           const tm = bengaliToAsciiDigits(totalEl.textContent || totalEl.innerText || "").replace(/,/g, "").match(/[\d.]+/);
@@ -594,8 +641,9 @@
         }
 
         let unitPrice = "";
-        const costEl = row.querySelector(
-          ".wc-order-preview-table__column--cost, td[class*='column--cost'], .item_cost .amount, td.item_cost .view .amount, td.item_cost, .view .amount, bdi"
+        const costEl = findRowCell(
+          row,
+          ".wc-order-preview-table__column--cost, td[class*='column--cost'], .item_cost .amount, td.item_cost .view .amount, td.item_cost, .view .amount"
         );
         if (costEl) {
           const cm = bengaliToAsciiDigits(costEl.textContent || costEl.innerText || "").replace(/,/g, "").match(/[\d.]+/);
@@ -1215,8 +1263,12 @@
           const line = lines[i];
           if (/^(?:SKU|ID|Price|Qty|৳|BDT|Cost):?/i.test(line)) continue;
           if (/^(?:Add meta|Add item|button)$/i.test(line)) continue;
-          if (/(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[\s:]*([^\n\r]+)/i.test(line)) {
-            vars.push(line);
+          const varM = line.match(/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]+(\S.*)$/i);
+          if (varM) {
+            const val = varM[1].trim();
+            if (val && !/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(val)) {
+              vars.push(line);
+            }
           } else if (/^(?:XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|[2-5][0-9])$/i.test(line)) {
             vars.push(`Size: ${line.toUpperCase()}`);
           } else if (line.length < 30 && !/^\d+$/.test(line) && !/^(?:Refund|Shipping|Tax)/i.test(line)) {
@@ -1224,14 +1276,23 @@
           }
         }
         if (extraSize && !vars.some(v => v.toLowerCase().includes(extraSize.toLowerCase()))) {
-          vars.push(extraSize.startsWith("Size:") ? extraSize : `Size: ${extraSize}`);
-        }
-        if (vars.length > 0) {
-          const vStr = vars.join(", ");
-          if (!title.toLowerCase().includes(vStr.toLowerCase())) {
-            return `${title} (${vStr})`;
+          const cleanExtra = extraSize.replace(/^size[:\s]*/i, "").trim();
+          if (cleanExtra && !title.toLowerCase().includes(cleanExtra.toLowerCase())) {
+            vars.push(extraSize.startsWith("Size:") ? extraSize : `Size: ${extraSize}`);
           }
         }
+        const cleanVars = vars.filter(v => {
+          const trimmed = v.trim();
+          const valOnly = trimmed.replace(/^[^:]+:\s*/, "").trim();
+          if (!valOnly || /^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(trimmed)) return false;
+          if (title.toLowerCase().includes(trimmed.toLowerCase())) return false;
+          if (title.toLowerCase().includes(valOnly.toLowerCase())) return false;
+          return true;
+        });
+        if (cleanVars.length > 0) {
+          title = `${title} (${cleanVars.join(", ")})`;
+        }
+        title = title.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
         return title;
       }
       str = str.replace(/\s*(?:&times;|×|x|\*)\s*\d+$/i, "").trim();
@@ -1314,7 +1375,7 @@
         if (th && td) {
           const k = (th.textContent || "").replace(/:$/, "").trim();
           const v = (td.textContent || "").trim();
-          if (k && v && !/^(?:SKU|ID|Cost)/i.test(k)) {
+          if (k && v && !/^(?:SKU|ID|Cost)/i.test(k) && v.toLowerCase() !== k.toLowerCase()) {
             vars.push(`${k}: ${v}`);
           }
         }
@@ -1328,9 +1389,13 @@
         const line = lines[i];
         if (/^(?:SKU|ID|Price|Qty|৳|BDT|Cost):?/i.test(line)) continue;
         if (/^(?:Add meta|Add item|button)$/i.test(line)) continue;
-        if (/(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[\s:]*([^\n\r]+)/i.test(line)) {
-          if (!vars.some(v => v.toLowerCase() === line.toLowerCase())) {
-            vars.push(line);
+        const varM = line.match(/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]+(\S.*)$/i);
+        if (varM) {
+          const val = varM[1].trim();
+          if (val && !/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(val)) {
+            if (!vars.some(v => v.toLowerCase() === line.toLowerCase())) {
+              vars.push(line);
+            }
           }
         } else if (/^(?:XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|[2-5][0-9])$/i.test(line)) {
           const sizeStr = `Size: ${line.toUpperCase()}`;
@@ -1343,22 +1408,28 @@
 
     const cleanVars = vars.filter((v, idx, arr) => {
       if (!v) return false;
-      const lowerV = v.toLowerCase();
+      const trimmed = v.trim();
+      const valOnly = trimmed.replace(/^[^:]+:\s*/, "").trim();
+      if (!valOnly || /^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(trimmed)) {
+        return false;
+      }
+      const lowerV = trimmed.toLowerCase();
       if (title.toLowerCase().includes(lowerV)) return false;
-      const valOnly = lowerV.replace(/^[^:]+:\s*/, "");
-      if (valOnly && title.toLowerCase().includes(valOnly)) return false;
+      if (title.toLowerCase().includes(valOnly.toLowerCase())) return false;
       return arr.findIndex(x => x.toLowerCase() === lowerV) === idx;
     });
 
+    let result = title;
     if (cleanVars.length > 0) {
       const combined = cleanVars.join(", ");
       if (combined.startsWith("(") && combined.endsWith(")")) {
-        return `${title} ${combined}`;
+        result = `${title} ${combined}`;
+      } else {
+        result = `${title} (${combined})`;
       }
-      return `${title} (${combined})`;
     }
-
-    return title;
+    result = result.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
+    return result;
   }
 
   function normalizeCustomerAndOrderData(rawDetails) {
@@ -1405,6 +1476,7 @@
       d.items.forEach(it => {
         let rawName = extractItemNameWithSize(it.name || it.title || "", it);
         if (!rawName) return;
+        rawName = rawName.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
         if (isExcludedMetaOrButtonRow(null, rawName)) return;
 
         const qty = parseInt(it.qty || it.quantity, 10) || 1;
@@ -1637,13 +1709,17 @@
     rowsToProcess.forEach(row => {
       if (row.querySelector("th") && !row.querySelector("td")) return;
       if (isExcludedMetaOrButtonRow(row)) return;
-      const nameEl = row.querySelector(".wc-order-item-name, td.name, td.column-item, .wc-order-preview-table__column--product, .wc-order-preview-table__column--item, .product-name, td:first-child");
+      const nameEl = findRowCell(row, ".wc-order-item-name, td.name a, td.name, td.column-item, .wc-order-preview-table__column--product, .wc-order-preview-table__column--item, .product-name") ||
+                     (row.children && row.children[0]);
       if (!nameEl) return;
       let itemName = extractItemNameWithSize(nameEl, row);
       if (!itemName || isExcludedMetaOrButtonRow(row, itemName)) return;
 
+      const cells = Array.from(row.children || []).filter(el => el.tagName && el.tagName.toUpperCase() === "TD");
+
       let qty = 1;
-      const qtyEl = row.querySelector(".wc-order-item-qty, td.quantity, td.column-qty, .wc-order-preview-table__column--quantity, .item-qty, td:nth-child(2)");
+      const qtyEl = findRowCell(row, ".wc-order-preview-table__column--quantity, td[class*='column--quantity'], .wc-order-item-qty, .quantity .view, td.quantity, td.column-qty, .item-qty") ||
+                    (cells.length >= 3 ? cells[1] : null);
       if (qtyEl) {
         const rawQty = bengaliToAsciiDigits(qtyEl.innerText || qtyEl.textContent || "");
         const qm = rawQty.match(/\d+/);
@@ -1651,7 +1727,8 @@
       }
 
       let total = "";
-      const totalEl = row.querySelector(".wc-order-item-total, td.total, td.column-total, .wc-order-preview-table__column--total, .amount, bdi, td:last-child");
+      const totalEl = findRowCell(row, ".wc-order-preview-table__column--total, td[class*='column--total'], .wc-order-item-total, .line_cost .amount, td.line_cost, td.total, td.column-total") ||
+                      (cells.length >= 4 ? cells[cells.length - 1] : (cells.length === 3 ? cells[2] : null));
       if (totalEl) {
         const rawTot = bengaliToAsciiDigits(totalEl.innerText || totalEl.textContent || "");
         const tm = rawTot.replace(/,/g, "").match(/[\d.]+/);
@@ -1659,7 +1736,7 @@
       }
 
       let unitPrice = "";
-      const unitEl = row.querySelector(".wc-order-item-cost, td.cost, td.column-cost, .item-cost, .unit-price");
+      const unitEl = findRowCell(row, ".wc-order-preview-table__column--cost, td[class*='column--cost'], .wc-order-item-cost, td.item_cost, td.cost, td.column-cost, .item-cost, .unit-price");
       if (unitEl) {
         const rawUnit = bengaliToAsciiDigits(unitEl.innerText || unitEl.textContent || "");
         const um = rawUnit.replace(/,/g, "").match(/[\d.]+/);
@@ -1677,24 +1754,45 @@
 
     // 5. Total COD Amount (with Bengali numeral [০-৯] support)
     let cod = "";
-    const totalEl = modal.querySelector(
-      ".order-preview-totals .order-total, .order-total, .wc-order-preview-total, .wc-order-preview__section--totals, .wc-order-preview-table__column--total"
+    const totalsSec = modal.querySelector(
+      ".wc-order-preview-totals, .order-preview-totals, .order-totals, .wc-order-preview__section--totals"
     );
-    if (totalEl) {
-      const amountEl = (typeof totalEl.querySelector === "function" ? totalEl.querySelector(".amount, bdi") : null) || totalEl;
-      const rawCod = bengaliToAsciiDigits(amountEl.innerText || amountEl.textContent || "");
-      const numMatch = rawCod.replace(/,/g, "").match(/[\d.]+/);
-      if (numMatch) cod = Math.round(parseFloat(numMatch[0])).toString();
-    }
-    if (!cod) {
-      const totalsSec = modal.querySelector(".order-preview-totals, .wc-order-preview-totals, .order-totals");
-      if (totalsSec && typeof totalsSec.querySelectorAll === "function") {
+    if (totalsSec) {
+      const rows = totalsSec.querySelectorAll ? totalsSec.querySelectorAll("tr") : [];
+      for (let r of rows) {
+        const thText = (r.querySelector && r.querySelector("th") ? r.querySelector("th").textContent : "").toLowerCase();
+        if ((thText.includes("total") || thText.includes("মোট") || thText.includes("সর্বমোট")) &&
+            !thText.includes("subtotal") && !thText.includes("উপমোট")) {
+          const amtEl = (r.querySelector ? r.querySelector(".amount, bdi") : null) || r.querySelector("td");
+          if (amtEl) {
+            const raw = bengaliToAsciiDigits(amtEl.textContent || amtEl.innerText || "");
+            const m = raw.replace(/,/g, "").match(/[\d.]+/);
+            if (m && parseFloat(m[0]) > 0) {
+              cod = Math.round(parseFloat(m[0])).toString();
+              break;
+            }
+          }
+        }
+      }
+      if (!cod && typeof totalsSec.querySelectorAll === "function") {
         const allAmts = totalsSec.querySelectorAll(".amount, bdi");
         if (allAmts.length > 0) {
           const lastAmt = allAmts[allAmts.length - 1];
-          const rawCod = bengaliToAsciiDigits(lastAmt.innerText || lastAmt.textContent || "");
-          const numMatch = rawCod.replace(/,/g, "").match(/[\d.]+/);
-          if (numMatch) cod = Math.round(parseFloat(numMatch[0])).toString();
+          const raw = bengaliToAsciiDigits(lastAmt.textContent || lastAmt.innerText || "");
+          const m = raw.replace(/,/g, "").match(/[\d.]+/);
+          if (m && parseFloat(m[0]) > 0) {
+            cod = Math.round(parseFloat(m[0])).toString();
+          }
+        }
+      }
+    }
+    if (!cod) {
+      const singleTotalEl = modal.querySelector(".order-total .amount, .order-total, .wc-order-preview-total .amount, .wc-order-preview-total");
+      if (singleTotalEl) {
+        const raw = bengaliToAsciiDigits(singleTotalEl.textContent || singleTotalEl.innerText || "");
+        const m = raw.replace(/,/g, "").match(/[\d.]+/);
+        if (m && parseFloat(m[0]) > 0) {
+          cod = Math.round(parseFloat(m[0])).toString();
         }
       }
     }
