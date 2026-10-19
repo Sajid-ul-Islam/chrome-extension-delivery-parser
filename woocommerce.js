@@ -2386,6 +2386,26 @@
             </div>` : ""}
           </div>
 
+          <!-- Pathao & Courier Intelligence Rating Banner -->
+          <div class="deen-order-rating-box" id="deen-order-confirm-rating-box" style="margin-top: 10px; background: rgba(15, 23, 42, 0.04); border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 8px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 17px;">🛡️</span>
+              <div>
+                <div style="font-size: 11px; font-weight: 700; color: #334155; display: flex; align-items: center; gap: 6px;">
+                  <span>Pathao Courier Intelligence</span>
+                  <span id="deen-order-rating-grade-tag" style="display: none; background: #dcfce7; color: #15803d; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px;"></span>
+                </div>
+                <div id="deen-order-rating-text" style="font-size: 11.5px; color: #64748b;">⏳ Checking delivery history for ${escapeHTML(details.phone || "")}...</div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div id="deen-order-rating-badge" style="font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 9999px; background: #e2e8f0; color: #64748b; white-space: nowrap;">
+                Checking...
+              </div>
+              <button type="button" id="deen-order-rating-refresh-btn" title="Refresh Courier Rating" style="background: none; border: none; cursor: pointer; font-size: 13px; color: #64748b; padding: 2px 4px;">🔄</button>
+            </div>
+          </div>
+
           <div class="deen-modal-items-section">
             <div class="deen-items-header" style="display: flex; justify-content: space-between; align-items: center;">
               <span>Ordered Products (${items.length})</span>
@@ -2482,6 +2502,72 @@
       }
 
       const textarea = modal.querySelector("#deen-order-msg-text");
+      if (textarea) {
+        textarea.addEventListener("input", () => {
+          textarea.dataset.userEdited = "true";
+        });
+      }
+
+      // Wire up Pathao Customer Intelligence
+      const ratingBox = modal.querySelector("#deen-order-confirm-rating-box");
+      const ratingText = modal.querySelector("#deen-order-rating-text");
+      const ratingBadge = modal.querySelector("#deen-order-rating-badge");
+      const ratingGradeTag = modal.querySelector("#deen-order-rating-grade-tag");
+      const ratingRefreshBtn = modal.querySelector("#deen-order-rating-refresh-btn");
+
+      function updateRatingUI(rating) {
+        if (!rating || !ratingText || !ratingBadge) return;
+        if (rating.ratingGrade && ratingGradeTag) {
+          ratingGradeTag.textContent = `⭐ ${rating.ratingGrade}`;
+          ratingGradeTag.style.display = "inline-block";
+        }
+        if (rating.totalParcels > 0) {
+          ratingText.innerHTML = `<strong>${rating.deliveredCount}/${rating.totalParcels} Delivered (${rating.successRate}%)</strong> • ${rating.cancelledCount} Returns on record`;
+        } else if (rating.isNewCustomer) {
+          ratingText.textContent = "🆕 First-time customer. Clean history (0 returns).";
+        } else {
+          ratingText.textContent = rating.riskLabel || "Customer Ready";
+        }
+        ratingBadge.textContent = rating.riskLabel || `${rating.successRate}% Success`;
+        ratingBadge.style.backgroundColor = rating.riskColor || (rating.riskLevel === "high" ? "#fee2e2" : "#dcfce7");
+        ratingBadge.style.color = rating.riskLevel === "high" ? "#b91c1c" : (rating.riskLevel === "medium" ? "#b45309" : "#15803d");
+
+        // High risk auto-alert and advance fee tab recommendation
+        if (rating.riskLevel === "high" || (rating.successRate !== undefined && Number(rating.successRate) < 70)) {
+          if (ratingBox) {
+            ratingBox.style.background = "#fef2f2";
+            ratingBox.style.borderColor = "#fca5a5";
+          }
+          const advTab = modal.querySelector(".deen-tab-btn[data-tpl='advance_fee']");
+          if (advTab && textarea && !textarea.dataset.userEdited) {
+            tabButtons.forEach(b => b.classList.remove("deen-tab-active"));
+            advTab.classList.add("deen-tab-active");
+            if (genReply) {
+              textarea.value = genReply("advance_fee", {
+                name: details.name,
+                phone: details.phone,
+                orderId: details.orderId,
+                cod: details.cod,
+                address: details.address,
+                items: items,
+                isOutsideDhaka: isOutside
+              }, config);
+            }
+          }
+        }
+      }
+
+      if (details.phone) {
+        fetchCustomerRatingBackground(details.phone, updateRatingUI);
+      }
+
+      if (ratingRefreshBtn) {
+        ratingRefreshBtn.addEventListener("click", () => {
+          if (ratingText) ratingText.textContent = `🔄 Refreshing Pathao rating for ${details.phone}...`;
+          fetchCustomerRatingBackground(details.phone, updateRatingUI, true);
+        });
+      }
+
       const tabButtons = modal.querySelectorAll(".deen-tab-btn");
       tabButtons.forEach(btn => {
         btn.addEventListener("click", () => {
@@ -2568,14 +2654,30 @@
       const count = (d.items && d.items.length) || 0;
       const infoEl = barEl.querySelector(".deen-preview-info");
       if (infoEl) {
+        const ratingHtml = infoEl.dataset.ratingHtml || "";
         const newHtml = `
           ${d.phone ? `Phone: <strong>${escapeHTML(d.phone)}</strong> • ` : ""}
           <strong>${count} item${count === 1 ? '' : 's'}</strong> • COD: <strong>৳${escapeHTML(d.cod || "0")}</strong>
+          ${ratingHtml ? ` • ${ratingHtml}` : ""}
         `.trim();
         // Guard against duplicate DOM writes to eliminate infinite MutationObserver microtask loops
         if (infoEl.dataset.renderedHtml !== newHtml) {
           infoEl.dataset.renderedHtml = newHtml;
           infoEl.innerHTML = newHtml;
+        }
+
+        if (d.phone && !infoEl.dataset.ratingChecked) {
+          infoEl.dataset.ratingChecked = "true";
+          fetchCustomerRatingBackground(d.phone, (rating) => {
+            if (rating) {
+              const grade = rating.ratingGrade ? `⭐ ${rating.ratingGrade} ` : "";
+              const stat = rating.totalParcels > 0 ? `${rating.deliveredCount}/${rating.totalParcels} (${rating.successRate}%)` : (rating.isNewCustomer ? "New" : "Checked");
+              const color = rating.riskLevel === "high" ? "#ef4444" : (rating.riskLevel === "medium" ? "#f59e0b" : "#10b981");
+              infoEl.dataset.ratingHtml = `<span style="color:${color}; font-weight:700;">🛡️ ${grade}${stat}</span>`;
+              infoEl.dataset.renderedHtml = "";
+              renderBarStats(barEl, d);
+            }
+          });
         }
       }
     }
@@ -2954,6 +3056,49 @@
         phoneInput.parentElement.appendChild(waBtn);
       }
     }
+
+    // Inject live customer rating pill on single order page
+    if (!document.getElementById("deen-single-order-rating-pill") && phoneInput.parentElement) {
+      const ratingPill = document.createElement("span");
+      ratingPill.id = "deen-single-order-rating-pill";
+      ratingPill.className = "deen-single-order-rating-pill";
+      ratingPill.innerHTML = `🛡️ Pathao: Checking...`;
+      ratingPill.style.marginLeft = "8px";
+      ratingPill.style.fontSize = "11px";
+      ratingPill.style.fontWeight = "600";
+      ratingPill.style.padding = "4px 8px";
+      ratingPill.style.borderRadius = "4px";
+      ratingPill.style.background = "#f1f5f9";
+      ratingPill.style.color = "#475569";
+      ratingPill.style.display = "inline-flex";
+      ratingPill.style.alignItems = "center";
+      ratingPill.style.gap = "4px";
+      ratingPill.style.verticalAlign = "middle";
+
+      const updatePill = (val) => {
+        const p = normalizeBDPhone(val);
+        if (p) {
+          ratingPill.innerHTML = `🛡️ Pathao: Checking...`;
+          fetchCustomerRatingBackground(p, (rating) => {
+            if (!rating) return;
+            const grade = rating.ratingGrade ? `⭐ ${rating.ratingGrade} • ` : "";
+            const stat = rating.totalParcels > 0 ? `${rating.deliveredCount}/${rating.totalParcels} (${rating.successRate}%)` : (rating.isNewCustomer ? "New Customer" : "Checked");
+            ratingPill.innerHTML = `🛡️ ${grade}${stat}`;
+            ratingPill.style.background = rating.riskLevel === "high" ? "#fee2e2" : (rating.riskLevel === "medium" ? "#fef3c7" : "#dcfce7");
+            ratingPill.style.color = rating.riskLevel === "high" ? "#991b1b" : (rating.riskLevel === "medium" ? "#92400e" : "#166534");
+            ratingPill.title = `Pathao & Courier History: ${rating.deliveredCount} Delivered, ${rating.cancelledCount} Returns • ${rating.riskLabel}`;
+          });
+        } else {
+          ratingPill.innerHTML = `🛡️ No Phone`;
+          ratingPill.style.background = "#f1f5f9";
+          ratingPill.style.color = "#94a3b8";
+        }
+      };
+
+      phoneInput.parentElement.appendChild(ratingPill);
+      updatePill(phoneInput.value);
+      phoneInput.addEventListener("change", () => updatePill(phoneInput.value));
+    }
   }
 
   /**
@@ -3125,7 +3270,7 @@
   /**
    * Helper to fetch customer courier rating from background service worker
    */
-  function fetchCustomerRatingBackground(phone, callback) {
+  function fetchCustomerRatingBackground(phone, callback, forceRefresh = false) {
     if (!phone) {
       if (typeof callback === "function") callback(null);
       return;
@@ -3152,7 +3297,8 @@
       try {
         chrome.runtime.sendMessage({
           action: "fetch_customer_rating",
-          phone: cleanPhone
+          phone: cleanPhone,
+          forceRefresh: Boolean(forceRefresh)
         }, (response) => {
           if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.lastError) {
             void chrome.runtime.lastError.message;
@@ -3257,7 +3403,7 @@
     if (delEl) delEl.textContent = `📦 Delivered: ${data.deliveredCount || 0}`;
     if (canEl) canEl.textContent = `⚠️ Returned: ${data.cancelledCount || 0}`;
     if (srcEl) {
-      srcEl.textContent = data.pathaoStats ? "Pathao Live" : (data.steadfastStats ? "Courier Network" : "Verified");
+      srcEl.textContent = (data.ratingGrade ? `⭐ ${data.ratingGrade} • ` : "") + (data.pathaoStats ? "Pathao Live" : (data.steadfastStats ? "Courier Network" : "Verified"));
     }
 
     if (waBtn) {
@@ -3332,7 +3478,7 @@
           if (refreshBtn) {
             refreshBtn.addEventListener("click", (e) => {
               e.preventDefault();
-              triggerPhoneRatingCheck(phoneInput.value);
+              triggerPhoneRatingCheck(phoneInput.value, true);
             });
           }
 
@@ -3393,7 +3539,7 @@
           });
         }
 
-        const triggerPhoneRatingCheck = (rawPhone) => {
+        const triggerPhoneRatingCheck = (rawPhone, force = false) => {
           if (!rawPhone || !rawPhone.trim()) {
             renderRatingState(ratingCard, {
               phone: "",
@@ -3410,7 +3556,7 @@
           }
           fetchCustomerRatingBackground(rawPhone, (ratingData) => {
             renderRatingState(ratingCard, ratingData);
-          });
+          }, force);
         };
 
         if (!ratingCard.dataset) ratingCard.dataset = {};
@@ -3750,13 +3896,21 @@
               try { observer.disconnect(); } catch (e) {}
             }
           }
-        }, 120);
+        }, 200);
       });
 
       if (document.body && isExtensionValid()) {
         observer.observe(document.body, {
           childList: true,
           subtree: true
+        });
+      }
+
+      if (typeof window !== "undefined") {
+        window.addEventListener("beforeunload", () => {
+          if (observer) {
+            try { observer.disconnect(); } catch (e) {}
+          }
         });
       }
     } catch (obsErr) {

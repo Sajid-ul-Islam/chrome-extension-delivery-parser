@@ -4,6 +4,8 @@
  */
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const {
   DEFAULT_QUICK_REPLY_CONFIG,
   calculateDeliveryFee,
@@ -917,7 +919,6 @@ assert(waConfirmMsg.includes("Executive Panjabi (Size: XL)"), "WhatsApp message 
 assert(waConfirmMsg.includes("৳1450"), "WhatsApp message must contain COD price ৳1450");
 
 // Case 17f: Verify authentic DEEN Commerce brand logo base64
-const fs = require('fs');
 const expectedLogoB64 = "data:image/jpeg;base64," + fs.readFileSync('icons/deen_logo.jpg').toString('base64');
 assert.strictEqual(wcIntegration.DEEN_LOGO_BASE64, expectedLogoB64, "DEEN_LOGO_BASE64 must match authentic icons/deen_logo.jpg byte-for-byte");
 assert.strictEqual(wcIntegration.DEEN_LOGO_BASE64.length, 5755, "DEEN_LOGO_BASE64 must have verified length 5,755 characters");
@@ -2129,9 +2130,44 @@ assert(envLoaded.PATHAO_PASSWORD && envLoaded.PATHAO_PASSWORD.length > 5, "PATHA
 
 console.log("  ✅ Smart Outside Dhaka detection, false-Dhaka ৳50 correction (1500 + 90 = ৳1590), and Hermes API verified!");
 
+// -----------------------------------------------------------------------------
+// Test 26: Cross-Feature Customer Rating Propagation & 10-Minute Caching
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 26: Testing Cross-Feature Rating Propagation, Rating Grade & 10-Minute Caching...");
+
+// Case 26a: Verify background.js contains customerRatingMemoryCache and 10-min TTL logic
+const bgCode26 = fs.readFileSync(path.join(__dirname, "background.js"), "utf8");
+assert(bgCode26.includes("customerRatingMemoryCache = new Map()"), "background.js must initialize customerRatingMemoryCache Map");
+assert(bgCode26.includes("RATING_CACHE_TTL_MS = 10 * 60 * 1000"), "background.js must set 10-minute cache TTL");
+assert(bgCode26.includes("customer_rating_cache"), "background.js must persist customer_rating_cache in chrome.storage.local");
+assert(bgCode26.includes("forceRefresh"), "background.js must support forceRefresh parameter");
+assert(bgCode26.includes("ratingGrade: formattedGrade"), "background.js must return formatted ratingGrade");
+
+// Case 26b: Verify woocommerce.js showOrderConfirmModal contains rating banner
+const wcCode26 = fs.readFileSync(path.join(__dirname, "woocommerce.js"), "utf8");
+assert(wcCode26.includes("deen-order-confirm-rating-box"), "showOrderConfirmModal must include deen-order-confirm-rating-box");
+assert(wcCode26.includes("deen-order-rating-text"), "showOrderConfirmModal must include deen-order-rating-text");
+assert(wcCode26.includes("deen-order-rating-badge"), "showOrderConfirmModal must include deen-order-rating-badge");
+assert(wcCode26.includes("deen-order-rating-refresh-btn"), "showOrderConfirmModal must include deen-order-rating-refresh-btn");
+assert(wcCode26.includes("deen-single-order-rating-pill"), "injectSingleOrderPageButton must inject deen-single-order-rating-pill");
+assert(wcCode26.includes("200"), "woocommerce.js MutationObserver debounce must be 200ms");
+
+// Case 26c: Verify phone-check.js contains ৳90 / ৳50 sidebar advance fees and ratingGrade
+const pcCode26 = fs.readFileSync(path.join(__dirname, "phone-check.js"), "utf8");
+assert(pcCode26.includes("💰 Adv ৳90"), "phone-check.js sidebar drawer must have 💰 Adv ৳90 tab");
+assert(pcCode26.includes("💰 Adv ৳50"), "phone-check.js sidebar drawer must have 💰 Adv ৳50 tab");
+assert(pcCode26.includes("data.ratingGrade"), "phone-check.js must display data.ratingGrade if available");
+
+// Case 26d: Verify popup.js contains ratingGrade display
+const popupCode26 = fs.readFileSync(path.join(__dirname, "popup.js"), "utf8");
+assert(popupCode26.includes("data.ratingGrade"), "popup.js must display data.ratingGrade in courier check card");
+
+console.log("  ✅ Customer rating caching, cross-feature propagation (modal, preview, single order, sidebar, popup), and ratingGrade verified!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 25 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION & HERMES API TESTS PASSED!");
+console.log("🎉 ALL 26 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
 console.log("==================================================");
+
 
 
 

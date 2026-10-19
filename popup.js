@@ -833,6 +833,13 @@ function initSyncTab() {
               <span style="font-size: 11px; color: #94a3b8;">Delivery Success Rate</span>
             </div>
 
+            ${data.ratingGrade ? `
+              <div style="font-size: 11px; font-weight: 700; color: #10b981; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;">
+                <span>⭐</span>
+                <span>Pathao: ${data.ratingGrade}</span>
+              </div>
+            ` : ''}
+
             <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 9999px; overflow: hidden; margin-bottom: 10px;">
               <div style="width: ${data.successRate}%; height: 100%; background: ${riskBadgeColor}; border-radius: 9999px;"></div>
             </div>
@@ -856,7 +863,7 @@ function initSyncTab() {
             <div style="display: flex; gap: 6px; margin-bottom: 10px;">
               <div style="flex: 1; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 5px 8px; font-size: 11px; color: #cbd5e1;">
                 <span style="width: 7px; height: 7px; border-radius: 50%; background: ${data.pathaoStatus === 'live' ? '#10b981' : (data.pathaoStatus === 'clean_record' ? '#3b82f6' : (data.pathaoStatus === 'token_missing' ? '#f59e0b' : '#64748b'))};"></span>
-                <span>Pathao: <strong>${data.pathaoStats ? `${data.pathaoStats.delivered}/${data.pathaoStats.total}` : (data.pathaoStatus === 'clean_record' ? '0 Orders' : (data.pathaoStatus === 'token_missing' ? 'Login Needed' : 'No Record'))}</strong></span>
+                <span>Pathao: <strong>${data.pathaoStats ? `${data.pathaoStats.delivered}/${data.pathaoStats.total}${data.ratingGrade ? ' • ' + data.ratingGrade : ''}` : (data.pathaoStatus === 'clean_record' ? '0 Orders' : (data.pathaoStatus === 'token_missing' ? 'Login Needed' : 'No Record'))}</strong></span>
               </div>
               <div style="flex: 1; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 5px 8px; font-size: 11px; color: #cbd5e1;">
                 <span style="width: 7px; height: 7px; border-radius: 50%; background: ${data.steadfastStatus === 'live' ? '#10b981' : '#64748b'};"></span>

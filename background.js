@@ -149,7 +149,7 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
       }
       sendResponse({ status: "handled" });
     } else if (request && request.action === "fetch_customer_rating" && request.phone) {
-      handleCustomerRatingRequest(request.phone, sendResponse);
+      handleCustomerRatingRequest(request.phone, sendResponse, Boolean(request.forceRefresh));
       return true; // Keep message channel open for async response
     } else {
       sendResponse({ status: "ignored" });
@@ -316,13 +316,38 @@ async function fetchSteadfastRating(cleanPhone) {
   return null;
 }
 
+const customerRatingMemoryCache = new Map();
+const RATING_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
+
 /**
  * Handle background customer rating & courier intelligence lookup
  */
-async function handleCustomerRatingRequest(rawPhone, sendResponse) {
+async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh = false) {
   const digits = (rawPhone || "").replace(/\D/g, "");
   let cleanPhone = digits.length >= 11 ? (digits.startsWith("880") ? digits.slice(2) : digits.slice(-11)) : digits;
   if (!cleanPhone.startsWith("0")) cleanPhone = "0" + cleanPhone;
+
+  // Check 10-minute cache if forceRefresh is not requested
+  if (!forceRefresh) {
+    if (customerRatingMemoryCache.has(cleanPhone)) {
+      const memEntry = customerRatingMemoryCache.get(cleanPhone);
+      if (memEntry && memEntry.timestamp && (Date.now() - memEntry.timestamp < RATING_CACHE_TTL_MS) && memEntry.result) {
+        sendResponse(memEntry.result);
+        return;
+      }
+    }
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      try {
+        const store = await new Promise(r => chrome.storage.local.get(["customer_rating_cache"], r));
+        const storedEntry = store && store.customer_rating_cache && store.customer_rating_cache[cleanPhone];
+        if (storedEntry && storedEntry.timestamp && (Date.now() - storedEntry.timestamp < RATING_CACHE_TTL_MS) && storedEntry.result) {
+          customerRatingMemoryCache.set(cleanPhone, storedEntry);
+          sendResponse(storedEntry.result);
+          return;
+        }
+      } catch (cacheErr) {}
+    }
+  }
 
   let pathaoData = null;
 
@@ -510,8 +535,15 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse) {
   // 5. Parse Pathao stats accurately from all possible response shapes
   let pathaoStats = null;
   let pathaoStatus = "not_connected"; // "live", "clean_record", "token_missing"
+  let pathaoRatingGrade = "";
 
   if (pathaoData && !pathaoData.error) {
+    if (pathaoData.data && pathaoData.data.customer_rating) {
+      pathaoRatingGrade = pathaoData.data.customer_rating;
+    } else if (pathaoData.customer_rating) {
+      pathaoRatingGrade = pathaoData.customer_rating;
+    }
+
     const c = (pathaoData.data && pathaoData.data.customer)
       || pathaoData.customer
       || (pathaoData.data && typeof pathaoData.data === "object" && !Array.isArray(pathaoData.data) ? pathaoData.data : null)
@@ -531,6 +563,11 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse) {
     }
   } else if (pathaoData && (pathaoData.status === "token_missing" || pathaoData.status === 401 || pathaoData.status === 400)) {
     pathaoStatus = "token_missing";
+  }
+
+  const formattedGrade = pathaoRatingGrade ? String(pathaoRatingGrade).replace(/_/g, " ").trim().replace(/\b\w/g, c => c.toUpperCase()) : "";
+  if (pathaoStats) {
+    pathaoStats.ratingGrade = formattedGrade;
   }
 
   // 6. Parse Steadfast stats accurately
@@ -559,7 +596,7 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse) {
     successRate = Math.round((delivered / total) * 100);
     if (successRate >= 80) {
       riskLevel = "low";
-      riskLabel = `Safe Buyer (${successRate}% Success)`;
+      riskLabel = formattedGrade ? `${formattedGrade} (${successRate}%)` : `Safe Buyer (${successRate}% Success)`;
       riskColor = "#10b981";
     } else if (successRate >= 60) {
       riskLevel = "medium";
@@ -587,6 +624,7 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse) {
   const result = {
     success: true,
     phone: cleanPhone,
+    ratingGrade: formattedGrade,
     successRate: successRate,
     totalParcels: total,
     deliveredCount: delivered,
@@ -602,6 +640,7 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse) {
     sources: {
       pathao: {
         checked: Boolean(pathaoStats),
+        ratingGrade: formattedGrade,
         successRate: pathaoStats && pathaoStats.total > 0 ? Math.round((pathaoStats.delivered / pathaoStats.total) * 100) : 100,
         total: pathaoStats ? pathaoStats.total : 0,
         delivered: pathaoStats ? pathaoStats.delivered : 0,
@@ -617,6 +656,31 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse) {
       }
     }
   };
+
+  // Cache result in memory map
+  customerRatingMemoryCache.set(cleanPhone, {
+    timestamp: Date.now(),
+    result: result
+  });
+
+  // Persist result in chrome.storage.local
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    try {
+      chrome.storage.local.get(["customer_rating_cache"], (store) => {
+        const cache = (store && store.customer_rating_cache) || {};
+        cache[cleanPhone] = {
+          timestamp: Date.now(),
+          result: result
+        };
+        const keys = Object.keys(cache);
+        if (keys.length > 300) {
+          const oldestKey = keys.reduce((minK, k) => (cache[k].timestamp < cache[minK].timestamp ? k : minK), keys[0]);
+          delete cache[oldestKey];
+        }
+        chrome.storage.local.set({ customer_rating_cache: cache });
+      });
+    } catch (persistErr) {}
+  }
 
   sendResponse(result);
 }

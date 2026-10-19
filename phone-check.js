@@ -650,6 +650,13 @@ ${paymentBlock}
             <span>${safeRiskLabel}</span>
           </div>
 
+          ${data.ratingGrade ? `
+            <div style="margin-top: 6px; font-size: 11px; font-weight: 700; color: #10b981; display: flex; align-items: center; justify-content: center; gap: 4px;">
+              <span>⭐</span>
+              <span>Pathao Status: ${escapeHTML(data.ratingGrade)}</span>
+            </div>
+          ` : ''}
+
           <div class="deen-modal-percent-row">
             <span class="deen-modal-percent-val" style="color: ${progressColor};">${Number(data.successRate) || 0}%</span>
             <span class="deen-modal-percent-label">Delivery Rate</span>
@@ -680,7 +687,7 @@ ${paymentBlock}
         <div class="deen-modal-couriers-row">
           <div class="deen-modal-courier-chip" title="Pathao Courier live statistics">
             <span class="deen-modal-courier-dot" style="background: ${data.pathaoStatus === 'live' ? '#10b981' : (data.pathaoStatus === 'clean_record' ? '#3b82f6' : (data.pathaoStatus === 'token_missing' ? '#f59e0b' : '#ef4444'))};"></span>
-            <span>Pathao: <strong>${data.pathaoStats ? `${data.pathaoStats.delivered}/${data.pathaoStats.total} (${Math.round((data.pathaoStats.delivered / Math.max(1, data.pathaoStats.total)) * 100)}%)` : (data.pathaoStatus === 'clean_record' ? '0 Orders (Clean)' : (data.pathaoStatus === 'token_missing' ? 'Link Needed' : 'Not Connected'))}</strong></span>
+            <span>Pathao: <strong>${data.pathaoStats ? `${data.pathaoStats.delivered}/${data.pathaoStats.total} (${Math.round((data.pathaoStats.delivered / Math.max(1, data.pathaoStats.total)) * 100)}%) ${data.ratingGrade ? '• ' + escapeHTML(data.ratingGrade) : ''}` : (data.pathaoStatus === 'clean_record' ? '0 Orders (Clean)' : (data.pathaoStatus === 'token_missing' ? 'Link Needed' : 'Not Connected'))}</strong></span>
           </div>
           <div class="deen-modal-courier-chip" title="Steadfast Courier network records">
             <span class="deen-modal-courier-dot" style="background: ${data.steadfastStatus === 'live' ? '#10b981' : '#3b82f6'};"></span>
@@ -1205,7 +1212,7 @@ ${paymentBlock}
         <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;">
           <div class="deen-modal-courier-chip" style="font-size: 10.5px; padding: 5px 8px;">
             <span class="deen-modal-courier-dot" style="background: ${data.pathaoStatus === 'live' ? '#10b981' : (data.pathaoStatus === 'clean_record' ? '#3b82f6' : (data.pathaoStatus === 'token_missing' ? '#f59e0b' : '#ef4444'))};"></span>
-            <span>Pathao: <strong>${data.pathaoStats ? `${data.pathaoStats.delivered}/${data.pathaoStats.total} (${Math.round((data.pathaoStats.delivered / Math.max(1, data.pathaoStats.total)) * 100)}%)` : (data.pathaoStatus === 'clean_record' ? '0 Orders (Clean)' : (data.pathaoStatus === 'token_missing' ? 'Link Needed' : 'Not Connected'))}</strong></span>
+            <span>Pathao: <strong>${data.pathaoStats ? `${data.pathaoStats.delivered}/${data.pathaoStats.total} (${Math.round((data.pathaoStats.delivered / Math.max(1, data.pathaoStats.total)) * 100)}%) ${data.ratingGrade ? '• ' + escapeHTML(data.ratingGrade) : ''}` : (data.pathaoStatus === 'clean_record' ? '0 Orders (Clean)' : (data.pathaoStatus === 'token_missing' ? 'Link Needed' : 'Not Connected'))}</strong></span>
           </div>
           <div class="deen-modal-courier-chip" style="font-size: 10.5px; padding: 5px 8px;">
             <span class="deen-modal-courier-dot" style="background: ${data.steadfastStatus === 'live' ? '#10b981' : '#3b82f6'};"></span>
@@ -1228,8 +1235,8 @@ ${paymentBlock}
           </div>
 
           <div class="deen-sidebar-qr-tabs" style="display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap;">
-            <button class="deen-sidebar-qr-tab active" id="deen-sb-tab-advance-out" style="flex: 1; min-width: 70px; background: rgba(99, 102, 241, 0.3); border: 1px solid #6366f1; color: #fff; border-radius: 4px; padding: 4px 6px; font-size: 10px; font-weight: 600; cursor: pointer;">💰 Adv ৳130</button>
-            <button class="deen-sidebar-qr-tab" id="deen-sb-tab-advance-in" style="flex: 1; min-width: 70px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: #94a3b8; border-radius: 4px; padding: 4px 6px; font-size: 10px; font-weight: 600; cursor: pointer;">💰 Adv ৳70</button>
+            <button class="deen-sidebar-qr-tab active" id="deen-sb-tab-advance-out" style="flex: 1; min-width: 70px; background: rgba(99, 102, 241, 0.3); border: 1px solid #6366f1; color: #fff; border-radius: 4px; padding: 4px 6px; font-size: 10px; font-weight: 600; cursor: pointer;">💰 Adv ৳90</button>
+            <button class="deen-sidebar-qr-tab" id="deen-sb-tab-advance-in" style="flex: 1; min-width: 70px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: #94a3b8; border-radius: 4px; padding: 4px 6px; font-size: 10px; font-weight: 600; cursor: pointer;">💰 Adv ৳50</button>
             <button class="deen-sidebar-qr-tab" id="deen-sb-tab-confirm" style="flex: 1; min-width: 60px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: #94a3b8; border-radius: 4px; padding: 4px 6px; font-size: 10px; font-weight: 600; cursor: pointer;">✅ Confirm</button>
             <button class="deen-sidebar-qr-tab" id="deen-sb-tab-risk" style="flex: 1; min-width: 50px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: #94a3b8; border-radius: 4px; padding: 4px 6px; font-size: 10px; font-weight: 600; cursor: pointer;">⚠️ Risk</button>
           </div>
@@ -1262,7 +1269,7 @@ ${paymentBlock}
     const allTabs = [tabAdvOut, tabAdvIn, tabConfirm, tabRisk].filter(Boolean);
 
     let activeKey = (data.riskLevel === "high") ? "high_risk_notice" : "advance_fee";
-    let activeFee = (data.riskLevel === "high") ? undefined : 130;
+    let activeFee = (data.riskLevel === "high") ? undefined : 90;
 
     const updatePreview = () => {
       if (!qrPreview) return;
@@ -1292,10 +1299,10 @@ ${paymentBlock}
       updatePreview();
     };
 
-    if (tabAdvOut) tabAdvOut.addEventListener("click", () => activateTab(tabAdvOut, "advance_fee", 130));
-    if (tabAdvIn) tabAdvIn.addEventListener("click", () => activateTab(tabAdvIn, "advance_fee", 70));
+    if (tabAdvOut) tabAdvOut.addEventListener("click", () => activateTab(tabAdvOut, "advance_fee", 90));
+    if (tabAdvIn) tabAdvIn.addEventListener("click", () => activateTab(tabAdvIn, "advance_fee", 50));
     if (tabConfirm) tabConfirm.addEventListener("click", () => activateTab(tabConfirm, "confirm_order", undefined));
-    if (tabRisk) tabRisk.addEventListener("click", () => activateTab(tabRisk, "high_risk_notice", 130));
+    if (tabRisk) tabRisk.addEventListener("click", () => activateTab(tabRisk, "high_risk_notice", 90));
 
     // Initialize preview
     updatePreview();
