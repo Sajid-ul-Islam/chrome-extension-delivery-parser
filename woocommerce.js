@@ -6,8 +6,9 @@
 (function () {
   "use strict";
 
-  // Gracefully suppress "Extension context invalidated" errors on orphaned content script after extension reload
+  // Prevent duplicate execution if script is injected multiple times in browser
   if (typeof window !== "undefined") {
+    if (typeof module === "undefined" && window.__deenWcActive) return;
     window.__deenWcActive = true;
     window.addEventListener("error", (event) => {
       if (event && event.message && event.message.includes("Extension context invalidated")) {
@@ -2432,10 +2433,15 @@
       const count = (d.items && d.items.length) || 0;
       const infoEl = barEl.querySelector(".deen-preview-info");
       if (infoEl) {
-        infoEl.innerHTML = `
+        const newHtml = `
           ${d.phone ? `Phone: <strong>${escapeHTML(d.phone)}</strong> • ` : ""}
           <strong>${count} item${count === 1 ? '' : 's'}</strong> • COD: <strong>৳${escapeHTML(d.cod || "0")}</strong>
-        `;
+        `.trim();
+        // Guard against duplicate DOM writes to eliminate infinite MutationObserver microtask loops
+        if (infoEl.dataset.renderedHtml !== newHtml) {
+          infoEl.dataset.renderedHtml = newHtml;
+          infoEl.innerHTML = newHtml;
+        }
       }
     }
 
@@ -2524,16 +2530,30 @@
       }
     }
 
-    // Observe modal DOM mutations when WooCommerce Backbone loads items asynchronously
-    try {
-      const modalObserver = new MutationObserver(() => {
-        const updated = extractOrderDetailsFromModal(previewModal);
-        if (updated.items && updated.items.length > 0) {
-          renderBarStats(bar, updated);
-        }
-      });
-      modalObserver.observe(previewModal, { childList: true, subtree: true });
-    } catch (e) {}
+    // Observe modal DOM mutations when WooCommerce Backbone loads items asynchronously (guarded & debounced)
+    if (!previewModal.dataset.deenModalObserved) {
+      previewModal.dataset.deenModalObserved = "true";
+      try {
+        let modalDebounceTimer = null;
+        const modalObserver = new MutationObserver((mutations) => {
+          // Ignore mutations originating strictly from our own action bar
+          const allFromBar = mutations.every(m => bar.contains(m.target) || bar === m.target);
+          if (allFromBar) return;
+
+          if (modalDebounceTimer) clearTimeout(modalDebounceTimer);
+          modalDebounceTimer = setTimeout(() => {
+            const updated = extractOrderDetailsFromModal(previewModal);
+            if (updated.items && updated.items.length > 0) {
+              renderBarStats(bar, updated);
+            }
+          }, 200);
+        });
+
+        // Observe table wrapper or modal article, avoiding our own bar
+        const observeTarget = previewModal.querySelector(".wc-order-preview-table-wrapper, .wc-order-preview") || previewModal;
+        modalObserver.observe(observeTarget, { childList: true, subtree: true });
+      } catch (e) {}
+    }
 
     const askBtn = bar.querySelector("#deen-modal-btn-ask-wa");
     if (askBtn) {
@@ -2607,12 +2627,15 @@
 
     rows.forEach(row => {
       if (row.dataset.deenPathaoInjected) return;
+      // Mark as inspected immediately so future debounced cycles don't re-scan non-order rows
+      row.dataset.deenPathaoInjected = "true";
 
-      const text = row.innerText || "";
+      if (row.querySelector(".deen-wc-pathao-btn, .deen-wc-wa-btn")) return;
+
+      // Use textContent to avoid expensive layout recalculation reflows on table rows
+      const text = row.textContent || row.innerText || "";
       const phone = normalizeBDPhone(text);
       if (!phone) return;
-
-      row.dataset.deenPathaoInjected = "true";
 
       // Find an ideal location for the button
       let targetContainer = row.querySelector(".wc_actions, .column-order_actions, .order_actions");
