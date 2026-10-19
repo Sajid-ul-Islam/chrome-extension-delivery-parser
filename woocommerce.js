@@ -2728,7 +2728,11 @@
       // Mark as inspected immediately so future debounced cycles don't re-scan non-order rows
       row.dataset.deenPathaoInjected = "true";
 
-      if (row.querySelector(".deen-wc-pathao-btn, .deen-wc-wa-btn")) return;
+      // Remove any legacy/redundant Pathao button if present (built-in WooCommerce Pathao plugin is used)
+      const oldPathaoBtn = row.querySelector(".deen-wc-pathao-btn");
+      if (oldPathaoBtn) oldPathaoBtn.remove();
+
+      if (row.querySelector(".deen-wc-wa-btn")) return;
 
       // Use textContent to avoid expensive layout recalculation reflows on table rows
       const text = row.textContent || row.innerText || "";
@@ -2745,25 +2749,6 @@
       }
 
       if (targetContainer) {
-        // Pathao button
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "deen-wc-pathao-btn";
-        btn.innerHTML = `<span>⚡ Pathao</span>`;
-        btn.title = `Auto-detect ${phone} in Pathao Recipient Details`;
-
-        btn.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-
-          btn.classList.add("deen-btn-active");
-          setTimeout(() => btn.classList.remove("deen-btn-active"), 800);
-
-          const details = extractRowOrderDetails(row);
-          details.phone = phone; // Ensure phone is set
-          syncToPathao(details, { autoSwitch: true, userTriggered: true });
-        });
-
         // WhatsApp Quick Reply & Confirm Dialog button
         const waBtn = document.createElement("button");
         waBtn.type = "button";
@@ -2865,7 +2850,6 @@
         });
 
         // Add to container
-        targetContainer.appendChild(btn);
         targetContainer.appendChild(waBtn);
       }
     });
@@ -2876,40 +2860,16 @@
    */
   function injectSingleOrderPageButton() {
     const phoneInput = document.querySelector("#_billing_phone, input[name='_billing_phone'], #_shipping_phone");
-    if (phoneInput && !document.getElementById("deen-single-order-pathao-btn")) {
-      const phone = normalizeBDPhone(phoneInput.value);
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.id = "deen-single-order-pathao-btn";
-      btn.className = "deen-wc-pathao-btn single-order-btn";
-      btn.innerHTML = `<span>⚡ Send to Pathao Recipient Details</span>`;
+    if (!phoneInput) return;
 
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        const currentPhone = normalizeBDPhone(phoneInput.value);
-        if (!currentPhone) {
-          alert("Please enter a valid Bangladeshi phone number first.");
-          return;
-        }
+    // Clean up any legacy single order pathao dispatch button if present
+    const oldPathaoSingleBtn = document.getElementById("deen-single-order-pathao-btn");
+    if (oldPathaoSingleBtn) oldPathaoSingleBtn.remove();
 
-        const firstName = (document.querySelector("#_billing_first_name") || {}).value || "";
-        const lastName = (document.querySelector("#_billing_last_name") || {}).value || "";
-        const fullName = `${firstName} ${lastName}`.trim();
-        const address1 = (document.querySelector("#_billing_address_1") || {}).value || "";
-        const city = (document.querySelector("#_billing_city") || {}).value || "";
-        const total = (document.querySelector("#_order_total") || {}).value || "";
+    // Deprecated pathao dispatch payload helper (kept for testing reference)
+    // syncToPathao(payload, { autoSwitch: true, userTriggered: true });
 
-        const payload = {
-          phone: currentPhone,
-          name: fullName,
-          address: `${address1}, ${city}`.trim().replace(/^,\s*|,\s*$/g, ""),
-          cod: total ? Math.round(parseFloat(total)).toString() : "",
-          orderId: (document.querySelector("#post_ID") || {}).value || ""
-        };
-
-        syncToPathao(payload, { autoSwitch: true, userTriggered: true });
-      });
-
+    if (!document.getElementById("deen-single-order-wa-btn")) {
       const waBtn = document.createElement("button");
       waBtn.type = "button";
       waBtn.id = "deen-single-order-wa-btn";
@@ -3066,191 +3026,352 @@
   }
 
   /**
-   * Render or update floating batch dispatch toolbar
+   * Smart Address Normalizer for Pathao Courier
+   * Cleans messy Bangladeshi customer checkout addresses into standard delivery format.
    */
-  function updateBulkDispatchBar() {
+  function normalizeAddressForPathao(rawAddress) {
+    let normFn = null;
+    if (typeof require !== "undefined") {
+      try {
+        normFn = require("./parser.js").normalizeAddressForPathao;
+      } catch (e) {}
+    }
+    if (typeof normFn === "function") {
+      return normFn(rawAddress);
+    }
+
+    if (!rawAddress || typeof rawAddress !== "string") return "";
+    let addr = rawAddress.trim().replace(/[\r\n\t]+/g, ", ").replace(/\s{2,}/g, " ");
+    addr = addr.replace(/(?:\+?88)?01[3-9]\d{8}\b/g, "").trim();
+    addr = addr.replace(/[\w.+-]+@[\w-]+\.[\w.-]+\b/g, "").trim();
+    // House: "House # 5", "House 5", "H# 5", "H-5", "House no. 5" -> "House 5"
+    addr = addr.replace(/\b(?:House(?:\s*(?:no|num|number))?|Hse|Hous|Hs|H)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "House $1");
+
+    // Road: "Road # 11", "Road 11", "R# 11", "R-11", "Road no. 11" -> "Road 11"
+    addr = addr.replace(/\b(?:Road(?:\s*(?:no|num|number))?|Rood|Rd|Ro|R)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Road $1");
+
+    // Sector: "Sector # 4", "Sector 4", "Sec-4", "Sec# 4" -> "Sector 4"
+    addr = addr.replace(/\b(?:Sector(?:\s*(?:no|num|number))?|Sect|Sec)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Sector $1");
+
+    // Block: "Block # C", "Block-C", "Blk C", "Block C" -> "Block C"
+    addr = addr.replace(/\b(?:Block(?:\s*(?:no|num|number))?|Blck|Blk)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Block ${val.toUpperCase()}`);
+
+    // Flat / Apartment: "Flat # 4A", "Flat-4A", "Apt# 3B", "Apartment 3B", "Flat 4A" -> "Flat 4A"
+    addr = addr.replace(/\b(?:Apartment|Flat(?:\s*(?:no|num|number))?|Flt|Apt|Fl)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Flat ${val.toUpperCase()}`);
+    addr = addr.replace(/(?:গ্রাম|Vill|Village)[\s:]*([^\s,;]+)/gi, "গ্রাম: $1");
+    addr = addr.replace(/(?:ডাকঘর|পোস্ট|পোঃ|Post|P\.?O\.?)[\s:]*([^\s,;]+)/gi, "ডাকঘর: $1");
+    addr = addr.replace(/(?:থানা|উপজেলা|Thana|Upazila)[\s:]*([^\s,;]+)/gi, "থানা: $1");
+    addr = addr.replace(/(?:জেলা|District|Dist)[\s:]*([^\s,;]+)/gi, "জেলা: $1");
+    addr = addr.replace(/[;\\]+/g, ",").replace(/\s*,\s*/g, ", ").replace(/,\s*,+/g, ", ").replace(/^[,.\s-]+|[,.\s-]+$/g, "");
+    let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
+    if (!parseBD && typeof require !== "undefined") {
+      try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
+    }
+    const parsed = parseBD ? parseBD(rawAddress) : null;
+    if (parsed && parsed.district) {
+      const distEscaped = parsed.district.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (parsed.postcode) {
+        addr = addr.replace(new RegExp(`[-:,]?\\s*\\b${parsed.postcode}\\b`, "g"), "");
+      }
+      addr = addr.replace(new RegExp(`(?:[,\\s]+${distEscaped})+$`, "i"), "");
+    }
+    addr = addr.replace(/\b([a-z])([a-z0-9]*)\b/g, (match, first, rest) => {
+      if (/^(?:and|of|in|at|to|near|opposite)$/i.test(match)) return match.toLowerCase();
+      return first.toUpperCase() + rest;
+    });
+    addr = addr.replace(/\s*,\s*/g, ", ").replace(/,\s*,+/g, ", ").replace(/^[,.\s-]+|[,.\s-]+$/g, "").trim();
+    return addr || rawAddress.trim();
+  }
+
+  /**
+   * Smart Address Normalizer for Pathao Courier WooCommerce Plugin
+   * Automatically standardizes messy addresses in Pathao single & bulk order popup modals.
+   */
+  function initPathaoPluginAddressNormalizer() {
     if (typeof document === "undefined") return;
 
-    const selectedRows = getSelectedOrderRows();
-    const count = selectedRows.length;
+    // 1. Single Order Pathao Modal (#ptc-custom-modal, #custom-modal, .ptc-modal)
+    const modalCandidates = document.querySelectorAll(
+      "#ptc-custom-modal, #custom-modal, .ptc-modal, [class*='pathao-modal'], [id*='pathao-modal']"
+    );
 
-    let bar = document.getElementById("deen-wc-bulk-bar");
+    modalCandidates.forEach(modal => {
+      const addrInput = modal.querySelector(
+        "#ptc_wc_shipping_address, [name='ptc_wc_shipping_address'], textarea[name*='shipping_address'], input[name*='shipping_address'], textarea[name*='recipient_address'], input[name*='recipient_address'], #shipping_address"
+      );
+      if (!addrInput) return;
 
-    if (count === 0) {
-      if (bar) bar.classList.remove("deen-bar-visible");
-      return;
-    }
+      const citySelect = modal.querySelector("#city, select[name*='city'], select#city");
+      const zoneSelect = modal.querySelector("#zone, select[name*='zone'], select#zone");
 
-    if (!bar) {
-      bar = document.createElement("div");
-      bar.id = "deen-wc-bulk-bar";
-      bar.className = "deen-wc-bulk-bar";
-      document.body.appendChild(bar);
-    }
+      let helper = modal.querySelector("#deen-ptc-address-helper");
+      if (!helper) {
+        helper = document.createElement("div");
+        helper.id = "deen-ptc-address-helper";
+        helper.className = "deen-ptc-address-helper";
+        helper.innerHTML = `
+          <div class="deen-ptc-helper-top">
+            <span class="deen-ptc-badge">⚡ DEEN Smart Address</span>
+            <span class="deen-ptc-detected-text" id="deen-ptc-detected-text">📍 Detecting location...</span>
+          </div>
+          <div class="deen-ptc-helper-actions">
+            <button type="button" class="deen-ptc-btn deen-ptc-btn-clean" id="deen-ptc-btn-clean" title="Clean and normalize address formatting">
+              ✨ Clean Address
+            </button>
+            <button type="button" class="deen-ptc-btn deen-ptc-btn-match" id="deen-ptc-btn-match" title="Auto-match detected City & Zone dropdowns">
+              🎯 Match City & Zone
+            </button>
+            <button type="button" class="deen-ptc-btn deen-ptc-btn-revert" id="deen-ptc-btn-revert" title="Restore original raw address" style="display: none;">
+              ↩️ Revert
+            </button>
+            <span class="deen-ptc-status-hint" id="deen-ptc-status-hint"></span>
+          </div>
+        `;
 
-    bar.innerHTML = `
-      <div class="deen-bulk-info">
-        <span class="deen-bulk-badge">⚡ Batch Dispatch</span>
-        <span class="deen-bulk-count"><strong id="deen-bulk-count-num">${count}</strong> orders selected</span>
-      </div>
-      <div class="deen-bulk-actions">
-        <button type="button" class="deen-bulk-btn deen-btn-csv" id="deen-bulk-csv-btn" title="Download official Pathao Bulk CSV format">
-          📥 Download Pathao CSV
-        </button>
-        <button type="button" class="deen-bulk-btn deen-btn-queue" id="deen-bulk-queue-btn" title="Open Pathao and autofill sequentially">
-          🚀 Queue to Pathao (${count})
-        </button>
-        <button type="button" class="deen-bulk-btn deen-btn-dismiss" id="deen-bulk-deselect-btn" title="Deselect All">&times;</button>
-      </div>
-    `;
-
-    bar.classList.add("deen-bar-visible");
-
-    // CSV Export Button
-    const csvBtn = bar.querySelector("#deen-bulk-csv-btn");
-    if (csvBtn) {
-      csvBtn.addEventListener("click", () => {
-        const orders = selectedRows.map(r => extractRowOrderDetails(r));
-        let exportCSV = typeof exportPathaoBatchCSV === "function" ? exportPathaoBatchCSV : null;
-        if (!exportCSV && typeof require !== "undefined") {
-          try {
-            exportCSV = require("./parser.js").exportPathaoBatchCSV;
-          } catch (e) {}
-        }
-        if (exportCSV) {
-          exportCSV(orders);
-        } else {
-          const header = "Merchant Order ID,Recipient Name,Recipient Phone,Recipient Address,Recipient City,Recipient Zone,Recipient Area,Amount to Collect,Item Type,Item Quantity,Special Instruction";
-          const rows = orders.map(o => `"${o.orderId}","${o.name}","${o.phone}","${o.streetAddress || o.address}","${o.district || 'Dhaka'}","${o.zone || ''}","","${o.cod || '0'}","Parcel","1","Order #${o.orderId}"`);
-          const csv = [header, ...rows].join("\r\n");
-          const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = `Pathao_Bulk_Orders_${new Date().toISOString().slice(0, 10)}.csv`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
+        if (addrInput.parentNode) {
+          addrInput.parentNode.insertBefore(helper, addrInput);
         }
 
-        showWCToast(`📥 Downloaded Pathao bulk CSV for <strong>${orders.length}</strong> orders!`);
-      });
-    }
+        const cleanBtn = helper.querySelector("#deen-ptc-btn-clean");
+        const matchBtn = helper.querySelector("#deen-ptc-btn-match");
+        const revertBtn = helper.querySelector("#deen-ptc-btn-revert");
+        const statusHint = helper.querySelector("#deen-ptc-status-hint");
 
-    // Queue to Pathao Button
-    const queueBtn = bar.querySelector("#deen-bulk-queue-btn");
-    if (queueBtn) {
-      queueBtn.addEventListener("click", () => {
-        const orders = selectedRows.map(r => extractRowOrderDetails(r));
-        if (orders.length === 0) return;
-
-        const queuePayload = {
-          orders: orders,
-          currentIndex: 0,
-          total: orders.length,
-          userTriggered: true,
-          timestamp: Date.now()
+        const updateDetectedDisplay = () => {
+          const currentVal = addrInput.value || "";
+          let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
+          if (!parseBD && typeof require !== "undefined") {
+            try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
+          }
+          const parsed = parseBD ? parseBD(currentVal) : { district: "Dhaka", zone: "Dhaka Sadar", postcode: "" };
+          const detectedEl = helper.querySelector("#deen-ptc-detected-text");
+          if (detectedEl) {
+            const pcText = parsed.postcode ? ` (${parsed.postcode})` : "";
+            detectedEl.innerHTML = `📍 City: <strong>${escapeHTML(parsed.district || 'Dhaka')}</strong> | Zone: <strong>${escapeHTML(parsed.zone || 'N/A')}</strong>${pcText}`;
+          }
+          return parsed;
         };
 
-        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-          chrome.storage.local.set({
-            pathao_batch_queue: queuePayload,
-            pathao_autofill_data: {
-              ...orders[0],
-              source: "woocommerce_batch",
-              userTriggered: true,
-              timestamp: Date.now()
+        if (cleanBtn) {
+          cleanBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            const raw = addrInput.value || "";
+            if (!raw.trim()) return;
+            if (!addrInput.dataset.deenRawAddress) {
+              addrInput.dataset.deenRawAddress = raw;
+            }
+            const cleaned = normalizeAddressForPathao(raw);
+            addrInput.value = cleaned;
+            addrInput.dispatchEvent(new Event("input", { bubbles: true }));
+            addrInput.dispatchEvent(new Event("change", { bubbles: true }));
+            updateDetectedDisplay();
+            if (revertBtn && revertBtn.style) revertBtn.style.display = "inline-flex";
+            if (statusHint) {
+              statusHint.textContent = "✅ Address Cleaned!";
+              setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 2500);
             }
           });
         }
 
-        if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
-          chrome.runtime.sendMessage({
-            action: "focus_or_open_pathao",
-            url: "https://merchant.pathao.com/courier/orders/create"
-          }).catch(() => {});
+        if (revertBtn) {
+          revertBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (addrInput.dataset.deenRawAddress) {
+              addrInput.value = addrInput.dataset.deenRawAddress;
+              addrInput.dispatchEvent(new Event("input", { bubbles: true }));
+              addrInput.dispatchEvent(new Event("change", { bubbles: true }));
+              addrInput.dataset.deenNormalized = "false";
+              if (revertBtn && revertBtn.style) revertBtn.style.display = "none";
+              updateDetectedDisplay();
+              if (statusHint) {
+                statusHint.textContent = "↩️ Reverted";
+                setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 2000);
+              }
+            }
+          });
         }
 
-        showWCToast(
-          `🚀 Queued <strong>${orders.length}</strong> orders to Pathao!`,
-          "👉 Open Pathao",
-          () => {
-            if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
-              chrome.runtime.sendMessage({ action: "focus_or_open_pathao" }).catch(() => {});
+        if (matchBtn) {
+          matchBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            const parsed = updateDetectedDisplay();
+            let matchedCity = false;
+            let matchedZone = false;
+
+            if (citySelect && parsed.district) {
+              const options = Array.from(citySelect.options || []);
+              const targetDist = parsed.district.toLowerCase();
+              const opt = options.find(o => (o.text || "").toLowerCase().includes(targetDist) || targetDist.includes((o.text || "").toLowerCase()));
+              if (opt) {
+                citySelect.value = opt.value;
+                citySelect.dispatchEvent(new Event("change", { bubbles: true }));
+                if (typeof jQuery !== "undefined") {
+                  jQuery(citySelect).trigger("change");
+                }
+                matchedCity = true;
+              }
             }
+
+            setTimeout(() => {
+              if (zoneSelect && parsed.zone) {
+                const zOptions = Array.from(zoneSelect.options || []);
+                const targetZ = parsed.zone.toLowerCase();
+                const zOpt = zOptions.find(o => (o.text || "").toLowerCase().includes(targetZ) || targetZ.includes((o.text || "").toLowerCase()));
+                if (zOpt) {
+                  zoneSelect.value = zOpt.value;
+                  zoneSelect.dispatchEvent(new Event("change", { bubbles: true }));
+                  if (typeof jQuery !== "undefined") {
+                    jQuery(zoneSelect).trigger("change");
+                  }
+                  matchedZone = true;
+                }
+              }
+
+              if (statusHint) {
+                if (matchedCity || matchedZone) {
+                  statusHint.textContent = `🎯 Matched: ${matchedCity ? parsed.district : ''}${matchedZone ? ' > ' + parsed.zone : ''}`;
+                } else {
+                  statusHint.textContent = "ℹ️ Select zone manually";
+                }
+                setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3000);
+              }
+            }, 400);
+          });
+        }
+
+        addrInput.addEventListener("input", () => {
+          updateDetectedDisplay();
+        });
+      }
+
+      // Auto-normalize upon initial modal population
+      const rawCurrent = addrInput.value || "";
+      if (rawCurrent.trim().length > 5 && addrInput.dataset.deenNormalized !== "true") {
+        addrInput.dataset.deenRawAddress = rawCurrent;
+        const cleaned = normalizeAddressForPathao(rawCurrent);
+        if (cleaned && cleaned !== rawCurrent) {
+          addrInput.value = cleaned;
+          addrInput.dispatchEvent(new Event("input", { bubbles: true }));
+          addrInput.dispatchEvent(new Event("change", { bubbles: true }));
+          addrInput.dataset.deenNormalized = "true";
+          const revertBtn = helper.querySelector("#deen-ptc-btn-revert");
+          if (revertBtn && revertBtn.style) revertBtn.style.display = "inline-flex";
+          const statusHint = helper.querySelector("#deen-ptc-status-hint");
+          if (statusHint) {
+            statusHint.textContent = "✨ Auto-cleaned for Pathao";
+            setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3000);
           }
-        );
-      });
-    }
+        } else {
+          addrInput.dataset.deenNormalized = "true";
+        }
 
-    // Deselect All Button
-    const deselectBtn = bar.querySelector("#deen-bulk-deselect-btn");
-    if (deselectBtn) {
-      deselectBtn.addEventListener("click", () => {
-        const allCheckboxes = document.querySelectorAll(
-          "table.wp-list-table tbody .check-column input[type='checkbox'], " +
-          "table.wc-orders-list-table tbody .check-column input[type='checkbox'], " +
-          "#the-list .check-column input[type='checkbox'], " +
-          "input[name='id[]'], input[name='post[]'], " +
-          "#cb-select-all-1, #cb-select-all-2"
-        );
-        allCheckboxes.forEach(cb => { cb.checked = false; });
-        updateBulkDispatchBar();
-      });
-    }
-  }
-
-  /**
-   * Listen for table checkbox changes for batch selection
-   */
-  function initBulkDispatchBar() {
-    if (typeof document === "undefined") return;
-
-    // Attach delegated change listener to document body
-    document.addEventListener("change", (e) => {
-      const target = e.target;
-      if (!target || target.type !== "checkbox") return;
-
-      if (
-        target.closest(".check-column") ||
-        target.name === "id[]" ||
-        target.name === "post[]" ||
-        target.id === "cb-select-all-1" ||
-        target.id === "cb-select-all-2"
-      ) {
-        setTimeout(updateBulkDispatchBar, 20);
+        const detectedEl = helper.querySelector("#deen-ptc-detected-text");
+        let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
+        if (!parseBD && typeof require !== "undefined") {
+          try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
+        }
+        const parsed = parseBD ? parseBD(rawCurrent) : null;
+        if (detectedEl && parsed) {
+          const pcText = parsed.postcode ? ` (${parsed.postcode})` : "";
+          detectedEl.innerHTML = `📍 City: <strong>${escapeHTML(parsed.district || 'Dhaka')}</strong> | Zone: <strong>${escapeHTML(parsed.zone || 'N/A')}</strong>${pcText}`;
+        }
       }
     });
 
-    injectTopBulkActionButton();
+    // 2. Bulk Order Pathao Modal (#ptc-bulk-modal-overlay)
+    const bulkModal = document.getElementById("ptc-bulk-modal-overlay");
+    if (bulkModal && !document.getElementById("deen-ptc-bulk-helper")) {
+      const footerOrHeader = bulkModal.querySelector("#ptc-modal-footer, .modal-footer, .modal-content, [class*='footer']") || bulkModal;
+      const bulkHelper = document.createElement("div");
+      bulkHelper.id = "deen-ptc-bulk-helper";
+      bulkHelper.className = "deen-ptc-bulk-helper";
+      bulkHelper.innerHTML = `
+        <span class="deen-ptc-badge">⚡ DEEN Address Normalizer</span>
+        <button type="button" class="deen-ptc-btn deen-ptc-btn-clean" id="deen-ptc-btn-bulk-clean">
+          ✨ Normalize All Addresses
+        </button>
+        <span class="deen-ptc-status-hint" id="deen-ptc-bulk-status"></span>
+      `;
+
+      footerOrHeader.prepend(bulkHelper);
+
+      const bulkCleanBtn = bulkHelper.querySelector("#deen-ptc-btn-bulk-clean");
+      const bulkStatus = bulkHelper.querySelector("#deen-ptc-bulk-status");
+
+      if (bulkCleanBtn) {
+        bulkCleanBtn.addEventListener("click", () => {
+          let count = 0;
+          if (typeof window !== "undefined" && window.hotInstance && typeof window.hotInstance.getData === "function") {
+            const hot = window.hotInstance;
+            const data = hot.getData();
+            const colHeaders = hot.getColHeader() || [];
+            let addrColIdx = colHeaders.findIndex(h => /address/i.test(h));
+            if (addrColIdx === -1) addrColIdx = 2;
+
+            data.forEach((row, rowIdx) => {
+              const current = row[addrColIdx];
+              if (current && typeof current === "string") {
+                const cleaned = normalizeAddressForPathao(current);
+                if (cleaned !== current) {
+                  hot.setDataAtCell(rowIdx, addrColIdx, cleaned);
+                  count++;
+                }
+              }
+            });
+            hot.render();
+          }
+
+          const textareas = bulkModal.querySelectorAll("textarea, input[name*='address'], td[data-col*='address']");
+          textareas.forEach(ta => {
+            if (ta.value) {
+              const cleaned = normalizeAddressForPathao(ta.value);
+              if (cleaned !== ta.value) {
+                ta.value = cleaned;
+                ta.dispatchEvent(new Event("change", { bubbles: true }));
+                count++;
+              }
+            }
+          });
+
+          if (bulkStatus) {
+            bulkStatus.textContent = `✅ Normalized ${count} addresses!`;
+            setTimeout(() => { if (bulkStatus) bulkStatus.textContent = ""; }, 3000);
+          }
+        });
+      }
+    }
+
+    // 3. Reset normalization state when clicking "Send with Pathao" on a new order
+    const openBtns = document.querySelectorAll(".ptc-open-modal-button");
+    openBtns.forEach(btn => {
+      if (!btn.dataset.deenNormalizerBound) {
+        btn.dataset.deenNormalizerBound = "true";
+        btn.addEventListener("click", () => {
+          setTimeout(() => {
+            const addrInput = document.querySelector("#ptc_wc_shipping_address, [name='ptc_wc_shipping_address']");
+            if (addrInput) {
+              addrInput.dataset.deenNormalized = "false";
+              delete addrInput.dataset.deenRawAddress;
+            }
+          }, 50);
+        });
+      }
+    });
+  }
+
+  // Deprecated/Dropped Pathao dispatch toolbar stubs (clean up if present)
+  function updateBulkDispatchBar() {
+    const existing = document.getElementById("deen-wc-bulk-bar");
+    if (existing) existing.remove();
+  }
+
+  function initBulkDispatchBar() {
+    updateBulkDispatchBar();
   }
 
   function injectTopBulkActionButton() {
-    if (typeof document === "undefined") return;
-    const bulkActionContainers = document.querySelectorAll(".tablenav.top .alignleft.actions.bulkactions, .tablenav.top .actions");
-    bulkActionContainers.forEach(container => {
-      if (container.querySelector(".deen-top-bulk-btn")) return;
-
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "button deen-top-bulk-btn";
-      btn.innerHTML = "<span>⚡ Pathao Batch</span>";
-      btn.title = "Dispatch checked orders with Pathao";
-      btn.style.marginLeft = "4px";
-
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        const selected = getSelectedOrderRows();
-        if (selected.length === 0) {
-          alert("Please select one or more orders from the table checkboxes first.");
-          return;
-        }
-        updateBulkDispatchBar();
-      });
-
-      container.appendChild(btn);
-    });
+    const existing = document.querySelectorAll(".deen-top-bulk-btn");
+    existing.forEach(el => el.remove());
   }
 
   // Initialize
@@ -3264,6 +3385,7 @@
       injectSingleOrderPageButton();
       initBulkDispatchBar();
       injectOrderPreviewModalActions();
+      initPathaoPluginAddressNormalizer();
     } catch (e) {
       if (!isExtensionValid()) return;
     }
@@ -3285,9 +3407,8 @@
           try {
             injectTableActionButtons();
             injectSingleOrderPageButton();
-            injectTopBulkActionButton();
-            updateBulkDispatchBar();
             injectOrderPreviewModalActions();
+            initPathaoPluginAddressNormalizer();
           } catch (err) {
             if (!isExtensionValid() && observer) {
               try { observer.disconnect(); } catch (e) {}
@@ -3344,7 +3465,9 @@
       orderDetailsCache,
       DEEN_LOGO_BASE64,
       getWooCommerceAjaxConfig,
-      parseWooCommerceAjaxOrderDetails
+      parseWooCommerceAjaxOrderDetails,
+      normalizeAddressForPathao,
+      initPathaoPluginAddressNormalizer
     };
   }
 })();

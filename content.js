@@ -773,19 +773,7 @@
   }
 
   function checkBatchQueue() {
-    if (!isExtensionValid()) return;
-    if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
-
-    chrome.storage.local.get(["pathao_batch_queue"], (res) => {
-      if (!isExtensionValid()) return;
-      const queue = res ? res.pathao_batch_queue : null;
-      if (!queue || !Array.isArray(queue.orders) || queue.orders.length === 0) {
-        removeBatchBanner();
-        return;
-      }
-
-      renderBatchBanner(queue);
-    });
+    removeBatchBanner();
   }
 
   /**

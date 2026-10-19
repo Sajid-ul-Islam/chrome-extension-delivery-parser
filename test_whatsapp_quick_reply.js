@@ -355,9 +355,9 @@ global.document.createElement = (tag) => {
 
 wcIntegration.injectTableActionButtons();
 
-assert(mockActionContainer.children.some(c => c.className === "deen-wc-pathao-btn"), "Must inject ⚡ Pathao button");
+assert(!mockActionContainer.children.some(c => c.className === "deen-wc-pathao-btn"), "Redundant ⚡ Pathao dispatch button must be dropped");
 assert(mockActionContainer.children.some(c => c.className === "deen-wc-wa-btn"), "Must inject 💬 WhatsApp button");
-console.log("  ✅ 1-Click 💬 WhatsApp button successfully injected into WooCommerce order rows!");
+console.log("  ✅ Redundant Pathao dispatch button dropped while 1-Click 💬 WhatsApp button remains injected into WooCommerce order rows!");
 
 // -----------------------------------------------------------------------------
 // Test 9: Popup Settings Persistence & Storage Sync
@@ -553,6 +553,7 @@ const mockElement = (tag) => {
     className: "",
     innerHTML: "",
     value: "",
+    style: {},
     children: [],
     _listeners: {},
     appendChild: function (c) {
@@ -1722,8 +1723,115 @@ console.log("  ✅ Quantity correctly captured as 'x 1' (NEVER corrupted by size
 console.log("  ✅ Unit price ৳1,500, line total ৳1,500, Subtotal ৳1,500, Delivery ৳90, and COD ৳1,590 verified!");
 console.log("  ✅ Canvas confirmed rendering authentic receipt with DEEN Commerce branding without any corrupted values!");
 
+// -----------------------------------------------------------------------------
+// Test 22: Testing Smart Address Normalization in WooCommerce Pathao Plugin Popup
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 22: Testing Smart Address Normalization in WooCommerce Pathao Plugin Popup...");
+
+const { normalizeAddressForPathao, initPathaoPluginAddressNormalizer } = wcIntegration;
+
+// 1. Test normalizeAddressForPathao string transformation
+const rawAddr1 = "h# 12, r# 4, blk c, sec 11, apt 3b, mirpur 10, 01711223344, user@test.com, dhaka 1216, dhaka";
+const cleanAddr1 = normalizeAddressForPathao(rawAddr1);
+assert.strictEqual(cleanAddr1, "House 12, Road 4, Block C, Sector 11, Flat 3B, Mirpur 10", `Expected standard formatted street address without phone, email, or trailing repeated district, got '${cleanAddr1}'`);
+
+const rawAddr2 = "House # 5, Flat # 4A, Road # 11, Sector # 4, Uttara, Dhaka";
+const cleanAddr2 = normalizeAddressForPathao(rawAddr2);
+assert.strictEqual(cleanAddr2, "House 5, Flat 4A, Road 11, Sector 4, Uttara", `Expected cleaned street address, got '${cleanAddr2}'`);
+
+const rawAddr3 = "গ্রাম: রামপুর, ডাকঘর: জয়দেবপুর, থানা: গাজীপুর সদর, জেলা: গাজীপুর";
+const cleanAddr3 = normalizeAddressForPathao(rawAddr3);
+assert(cleanAddr3.includes("গ্রাম: রামপুর"), "Bangla village label must be preserved");
+assert(cleanAddr3.includes("ডাকঘর: জয়দেবপুর"), "Bangla post office label must be preserved");
+assert(cleanAddr3.includes("থানা: গাজীপুর সদর"), "Bangla thana label must be preserved");
+
+console.log("  ✅ normalizeAddressForPathao transforms raw abbreviations, strips phones/emails/repeated cities, and preserves Bengali!");
+
+// 2. Test in-popup DOM normalizer injection and interactive features
+const mockShippingAddress = {
+  tagName: "TEXTAREA",
+  id: "ptc_wc_shipping_address",
+  value: rawAddr1,
+  dataset: {},
+  parentNode: {
+    insertBefore: (child, ref) => {
+      mockModalChildren.unshift(child);
+    }
+  },
+  dispatchEvent: (evt) => {},
+  addEventListener: (evt, handler) => {}
+};
+
+const mockCitySelect = {
+  tagName: "SELECT",
+  id: "city",
+  options: [
+    { value: "", text: "Select City" },
+    { value: "1", text: "Dhaka" },
+    { value: "2", text: "Chittagong" },
+    { value: "3", text: "Gazipur" }
+  ],
+  value: "",
+  dispatchEvent: (evt) => {},
+  addEventListener: (evt, handler) => {}
+};
+
+const mockZoneSelect = {
+  tagName: "SELECT",
+  id: "zone",
+  options: [
+    { value: "", text: "Select Zone" },
+    { value: "101", text: "Mirpur" },
+    { value: "102", text: "Uttara" },
+    { value: "103", text: "Gulshan" }
+  ],
+  value: "",
+  dispatchEvent: (evt) => {},
+  addEventListener: (evt, handler) => {}
+};
+
+const mockModalChildren = [mockShippingAddress, mockCitySelect, mockZoneSelect];
+
+const mockPtcModal = {
+  id: "ptc-custom-modal",
+  querySelectorAll: (sel) => [],
+  querySelector: (sel) => {
+    if (sel.includes("ptc_wc_shipping_address")) return mockShippingAddress;
+    if (sel.includes("city")) return mockCitySelect;
+    if (sel.includes("zone")) return mockZoneSelect;
+    if (sel.includes("deen-ptc-address-helper")) {
+      return mockModalChildren.find(c => c.id === "deen-ptc-address-helper") || null;
+    }
+    return null;
+  }
+};
+
+global.document.querySelectorAll = (sel) => {
+  if (sel.includes("ptc-custom-modal") || sel.includes("pathao-modal")) return [mockPtcModal];
+  if (sel.includes("ptc-open-modal-button")) return [];
+  return [];
+};
+global.document.getElementById = (id) => {
+  if (id === "ptc-custom-modal") return mockPtcModal;
+  if (id === "ptc_wc_shipping_address") return mockShippingAddress;
+  return null;
+};
+
+initPathaoPluginAddressNormalizer();
+
+// Assert helper was created and injected
+const injectedHelper = mockModalChildren.find(c => c.id === "deen-ptc-address-helper");
+assert(injectedHelper, "Must inject #deen-ptc-address-helper inside Pathao modal");
+
+// Assert auto-normalization occurred
+assert.strictEqual(mockShippingAddress.value, "House 12, Road 4, Block C, Sector 11, Flat 3B, Mirpur 10", "Shipping address input must be auto-normalized");
+assert.strictEqual(mockShippingAddress.dataset.deenRawAddress, rawAddr1, "Original raw address must be saved in dataset");
+assert.strictEqual(mockShippingAddress.dataset.deenNormalized, "true", "Normalized flag must be set");
+
+console.log("  ✅ Pathao popup modal #ptc_wc_shipping_address auto-normalized and helper bar injected!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 21 WHATSAPP ADVANCE COD & ORDER CONFIRMATION TESTS PASSED!");
+console.log("🎉 ALL 22 WHATSAPP ADVANCE COD, ORDER CONFIRMATION & PATHAO NORMALIZATION TESTS PASSED!");
 console.log("==================================================");
 
 

@@ -1163,6 +1163,84 @@ function parseBDAddress(rawAddress) {
 }
 
 /**
+ * Smart Address Normalizer for Pathao Courier
+ * Cleans messy Bangladeshi customer checkout addresses into standard delivery format.
+ */
+function normalizeAddressForPathao(rawAddress) {
+  if (!rawAddress || typeof rawAddress !== "string") return "";
+
+  let addr = rawAddress.trim();
+  // 1. Remove carriage returns / line breaks and multiple spaces
+  addr = addr.replace(/[\r\n\t]+/g, ", ").replace(/\s{2,}/g, " ");
+
+  // 2. Remove accidental phone numbers embedded in address (01XXXXXXXXX or +8801XXXXXXXXX)
+  addr = addr.replace(/(?:\+?88)?01[3-9]\d{8}\b/g, "").trim();
+
+  // 3. Remove accidental email addresses embedded in address
+  addr = addr.replace(/[\w.+-]+@[\w-]+\.[\w.-]+\b/g, "").trim();
+
+  // 4. Standardize common abbreviations & labels in English
+  // House: "House # 5", "House 5", "H# 5", "H-5", "House no. 5" -> "House 5"
+  addr = addr.replace(/\b(?:House(?:\s*(?:no|num|number))?|Hse|Hous|Hs|H)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "House $1");
+
+  // Road: "Road # 11", "Road 11", "R# 11", "R-11", "Road no. 11" -> "Road 11"
+  addr = addr.replace(/\b(?:Road(?:\s*(?:no|num|number))?|Rood|Rd|Ro|R)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Road $1");
+
+  // Sector: "Sector # 4", "Sector 4", "Sec-4", "Sec# 4" -> "Sector 4"
+  addr = addr.replace(/\b(?:Sector(?:\s*(?:no|num|number))?|Sect|Sec)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Sector $1");
+
+  // Block: "Block # C", "Block-C", "Blk C", "Block C" -> "Block C"
+  addr = addr.replace(/\b(?:Block(?:\s*(?:no|num|number))?|Blck|Blk)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Block ${val.toUpperCase()}`);
+
+  // Flat / Apartment: "Flat # 4A", "Flat-4A", "Apt# 3B", "Apartment 3B", "Flat 4A" -> "Flat 4A"
+  addr = addr.replace(/\b(?:Apartment|Flat(?:\s*(?:no|num|number))?|Flt|Apt|Fl)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Flat ${val.toUpperCase()}`);
+
+  // Bengali common labels
+  addr = addr.replace(/(?:গ্রাম|Vill|Village)[\s:]*([^\s,;]+)/gi, "গ্রাম: $1");
+  addr = addr.replace(/(?:ডাকঘর|পোস্ট|পোঃ|Post|P\.?O\.?)[\s:]*([^\s,;]+)/gi, "ডাকঘর: $1");
+  addr = addr.replace(/(?:থানা|উপজেলা|Thana|Upazila)[\s:]*([^\s,;]+)/gi, "থানা: $1");
+  addr = addr.replace(/(?:জেলা|District|Dist)[\s:]*([^\s,;]+)/gi, "জেলা: $1");
+
+  // 5. Clean punctuation & extra commas
+  addr = addr
+    .replace(/[;\\]+/g, ",")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/,\s*,+/g, ", ")
+    .replace(/^[,.\s-]+|[,.\s-]+$/g, "");
+
+  // 6. Use parseBDAddress to identify district, zone, and postcode
+  let parsed = null;
+  if (typeof parseBDAddress === "function") {
+    parsed = parseBDAddress(rawAddress);
+  }
+
+  // 7. Remove trailing redundant district/postcode repetitions from street address
+  if (parsed && parsed.district) {
+    const distEscaped = parsed.district.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (parsed.postcode) {
+      addr = addr.replace(new RegExp(`[-:,]?\\s*\\b${parsed.postcode}\\b`, "g"), "");
+    }
+    // Remove repeated district name at the very end
+    addr = addr.replace(new RegExp(`(?:[,\\s]+${distEscaped})+$`, "i"), "");
+  }
+
+  // 8. Title Case English words in street address (e.g. mirpur 10 -> Mirpur 10)
+  addr = addr.replace(/\b([a-z])([a-z0-9]*)\b/g, (match, first, rest) => {
+    if (/^(?:and|of|in|at|to|near|opposite)$/i.test(match)) return match.toLowerCase();
+    return first.toUpperCase() + rest;
+  });
+
+  // 9. Final tidy-up of leading/trailing commas and whitespace
+  addr = addr
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/,\s*,+/g, ", ")
+    .replace(/^[,.\s-]+|[,.\s-]+$/g, "")
+    .trim();
+
+  return addr || rawAddress.trim();
+}
+
+/**
  * Generate Pathao Bulk Upload CSV string
  */
 function generatePathaoBatchCSV(orders) {
@@ -1953,6 +2031,7 @@ if (typeof module !== "undefined" && module.exports) {
     DHAKA_ZONES,
     OTHER_CITY_ZONES,
     parseBDAddress,
+    normalizeAddressForPathao,
     generatePathaoBatchCSV,
     exportPathaoBatchCSV,
     DEFAULT_QUICK_REPLY_CONFIG,
