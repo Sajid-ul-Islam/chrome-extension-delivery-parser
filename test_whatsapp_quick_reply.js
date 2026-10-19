@@ -1830,8 +1830,65 @@ assert.strictEqual(mockShippingAddress.dataset.deenNormalized, "true", "Normaliz
 
 console.log("  ✅ Pathao popup modal #ptc_wc_shipping_address auto-normalized and helper bar injected!");
 
+// -----------------------------------------------------------------------------
+// Test 23: Testing ISO 3166-2:BD District Code Detection (BD-01 to BD-64, e.g. BD-15 -> Faridpur)
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 23: Testing ISO 3166-2:BD District Code Detection (e.g. BD-15 -> Faridpur)...");
+
+const {
+  BD_ISO_DISTRICTS,
+  detectDistrictFromISOCode,
+  getISOCodeFromDistrict,
+  parseBDAddress,
+  isInvalidCustomerName: checkInvalidName
+} = require('./parser.js');
+
+assert.strictEqual(typeof detectDistrictFromISOCode, "function", "detectDistrictFromISOCode must be a function");
+assert.strictEqual(typeof getISOCodeFromDistrict, "function", "getISOCodeFromDistrict must be a function");
+assert.strictEqual(Object.keys(BD_ISO_DISTRICTS).length, 64, "BD_ISO_DISTRICTS must contain all 64 districts");
+
+// 23a. Exact code detection across various formats
+assert.strictEqual(detectDistrictFromISOCode("BD-15"), "Faridpur", "BD-15 must detect Faridpur");
+assert.strictEqual(detectDistrictFromISOCode("bd-15"), "Faridpur", "bd-15 lowercase must detect Faridpur");
+assert.strictEqual(detectDistrictFromISOCode("BD 15"), "Faridpur", "BD 15 with space must detect Faridpur");
+assert.strictEqual(detectDistrictFromISOCode("BD15"), "Faridpur", "BD15 without separator must detect Faridpur");
+assert.strictEqual(detectDistrictFromISOCode("BD-18"), "Gazipur", "BD-18 must detect Gazipur");
+assert.strictEqual(detectDistrictFromISOCode("BD-13"), "Dhaka", "BD-13 must detect Dhaka");
+assert.strictEqual(detectDistrictFromISOCode("BD-08"), "Cumilla", "BD-08 must detect Cumilla");
+assert.strictEqual(detectDistrictFromISOCode("BD-01"), "Bandarban", "BD-01 must detect Bandarban");
+assert.strictEqual(detectDistrictFromISOCode("BD-64"), "Thakurgaon", "BD-64 must detect Thakurgaon");
+assert.strictEqual(detectDistrictFromISOCode("BD-99"), "", "Invalid ISO code BD-99 must return empty string");
+
+// 23b. Reverse lookup (District -> ISO code)
+assert.strictEqual(getISOCodeFromDistrict("Faridpur"), "BD-15", "Faridpur must return BD-15");
+assert.strictEqual(getISOCodeFromDistrict("Gazipur"), "BD-18", "Gazipur must return BD-18");
+assert.strictEqual(getISOCodeFromDistrict("Dhaka"), "BD-13", "Dhaka must return BD-13");
+assert.strictEqual(getISOCodeFromDistrict("Cumilla"), "BD-08", "Cumilla must return BD-08");
+
+// 23c. Address parsing with ISO code
+const parsedFaridpur = parseBDAddress("Holding 45, Boalmari, BD-15");
+assert.strictEqual(parsedFaridpur.district, "Faridpur", "Must identify Faridpur district from BD-15");
+assert.strictEqual(parsedFaridpur.zone, "Boalmari", "Must identify Boalmari zone");
+assert.strictEqual(parsedFaridpur.cityType, "Outside Dhaka", "Faridpur must be Outside Dhaka");
+
+const parsedGazipur = parseBDAddress("Mawna Chowrasta, Sreepur, BD-18");
+assert.strictEqual(parsedGazipur.district, "Gazipur", "Must identify Gazipur district from BD-18");
+assert.strictEqual(parsedGazipur.zone, "Sreepur", "Must identify Sreepur zone");
+assert.strictEqual(parsedGazipur.cityType, "Sub Dhaka", "Gazipur must be Sub Dhaka");
+
+// 23d. Normalization cleans trailing ISO codes
+const normalizedAddr = normalizeAddressForPathao("Holding 45, Boalmari, BD-15");
+assert.strictEqual(normalizedAddr, "Holding 45, Boalmari", "Must clean trailing ', BD-15' from normalized street address");
+
+// 23e. isInvalidCustomerName protects against ISO codes
+assert.strictEqual(checkInvalidName("BD-15"), true, "BD-15 must not be considered a customer name");
+assert.strictEqual(checkInvalidName("BD-18"), true, "BD-18 must not be considered a customer name");
+
+console.log("  ✅ ISO 3166-2:BD code detection (BD-15 -> Faridpur), reverse lookup, and address cleaning verified with 100% precision!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 22 WHATSAPP ADVANCE COD, ORDER CONFIRMATION & PATHAO NORMALIZATION TESTS PASSED!");
+console.log("🎉 ALL 23 WHATSAPP ADVANCE COD, ORDER CONFIRMATION & PATHAO NORMALIZATION TESTS PASSED!");
 console.log("==================================================");
+
 
 

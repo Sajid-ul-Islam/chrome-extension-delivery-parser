@@ -2890,6 +2890,7 @@
         const fullName = `${firstName} ${lastName}`.trim();
         const address1 = (document.querySelector("#_billing_address_1") || {}).value || "";
         const city = (document.querySelector("#_billing_city") || {}).value || "";
+        const state = (document.querySelector("#_billing_state, #_shipping_state") || {}).value || "";
         const total = (document.querySelector("#_order_total") || {}).value || "";
         const orderId = (document.querySelector("#post_ID") || {}).value || "";
 
@@ -2899,12 +2900,13 @@
         }
 
         getQuickReplyConfig((config) => {
+          const fullAddress = [address1, city, state].filter(Boolean).join(", ");
           const msg = genReply ? genReply("advance_fee", {
             name: fullName,
             phone: currentPhone,
             orderId: orderId,
             cod: total ? Math.round(parseFloat(total)).toString() : "",
-            address: `${address1}, ${city}`.trim()
+            address: fullAddress
           }, config) : `আসসালামু আলাইকুম ${fullName}! আপনার অর্ডার #${orderId} কনফার্ম করার জন্য ডেলিভারি চার্জ অগ্রিম বিকাশ করুন: ${config.bkashNumber}`;
 
           injectWhatsAppMessage(msg, { phone: currentPhone, openChat: true });
@@ -2912,7 +2914,6 @@
       });
 
       if (phoneInput.parentElement) {
-        phoneInput.parentElement.appendChild(btn);
         phoneInput.parentElement.appendChild(waBtn);
       }
     }
@@ -3068,6 +3069,7 @@
       try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
     }
     const parsed = parseBD ? parseBD(rawAddress) : null;
+    addr = addr.replace(/(?:[,;\s]+\bBD[-_\s]?[0-6]?\d\b)+/gi, "");
     if (parsed && parsed.district) {
       const distEscaped = parsed.district.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       if (parsed.postcode) {
@@ -3201,7 +3203,17 @@
             if (citySelect && parsed.district) {
               const options = Array.from(citySelect.options || []);
               const targetDist = parsed.district.toLowerCase();
-              const opt = options.find(o => (o.text || "").toLowerCase().includes(targetDist) || targetDist.includes((o.text || "").toLowerCase()));
+              let getISO = null;
+              if (typeof getISOCodeFromDistrict === "function") getISO = getISOCodeFromDistrict;
+              else if (typeof require !== "undefined") {
+                try { getISO = require("./parser.js").getISOCodeFromDistrict; } catch (e) {}
+              }
+              const isoCode = (getISO ? getISO(parsed.district) : "").toLowerCase();
+              const opt = options.find(o => {
+                const t = (o.text || "").toLowerCase();
+                const v = (o.value || "").toLowerCase();
+                return t.includes(targetDist) || targetDist.includes(t) || (isoCode && (t.includes(isoCode) || v === isoCode));
+              });
               if (opt) {
                 citySelect.value = opt.value;
                 citySelect.dispatchEvent(new Event("change", { bubbles: true }));
@@ -3467,7 +3479,10 @@
       getWooCommerceAjaxConfig,
       parseWooCommerceAjaxOrderDetails,
       normalizeAddressForPathao,
-      initPathaoPluginAddressNormalizer
+      initPathaoPluginAddressNormalizer,
+      BD_ISO_DISTRICTS: typeof BD_ISO_DISTRICTS !== "undefined" ? BD_ISO_DISTRICTS : (typeof require !== "undefined" ? require("./parser.js").BD_ISO_DISTRICTS : {}),
+      detectDistrictFromISOCode: typeof detectDistrictFromISOCode !== "undefined" ? detectDistrictFromISOCode : (typeof require !== "undefined" ? require("./parser.js").detectDistrictFromISOCode : null),
+      getISOCodeFromDistrict: typeof getISOCodeFromDistrict !== "undefined" ? getISOCodeFromDistrict : (typeof require !== "undefined" ? require("./parser.js").getISOCodeFromDistrict : null)
     };
   }
 })();

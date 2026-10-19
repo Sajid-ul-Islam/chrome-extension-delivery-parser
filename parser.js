@@ -877,6 +877,109 @@ const BD_DISTRICTS = [
 ];
 
 /**
+ * ISO 3166-2:BD District Codes for Bangladesh (used by WooCommerce states BD-01 to BD-64)
+ */
+const BD_ISO_DISTRICTS = {
+  "BD-01": "Bandarban",
+  "BD-02": "Barguna",
+  "BD-03": "Bogura",
+  "BD-04": "Brahmanbaria",
+  "BD-05": "Bagerhat",
+  "BD-06": "Barishal",
+  "BD-07": "Bhola",
+  "BD-08": "Cumilla",
+  "BD-09": "Chandpur",
+  "BD-10": "Chattogram",
+  "BD-11": "Cox's Bazar",
+  "BD-12": "Chuadanga",
+  "BD-13": "Dhaka",
+  "BD-14": "Dinajpur",
+  "BD-15": "Faridpur",
+  "BD-16": "Feni",
+  "BD-17": "Gopalganj",
+  "BD-18": "Gazipur",
+  "BD-19": "Gaibandha",
+  "BD-20": "Habiganj",
+  "BD-21": "Jamalpur",
+  "BD-22": "Jashore",
+  "BD-23": "Jhenaidah",
+  "BD-24": "Joypurhat",
+  "BD-25": "Jhalokathi",
+  "BD-26": "Kishoreganj",
+  "BD-27": "Khulna",
+  "BD-28": "Kurigram",
+  "BD-29": "Khagrachhari",
+  "BD-30": "Kushtia",
+  "BD-31": "Lakshmipur",
+  "BD-32": "Lalmonirhat",
+  "BD-33": "Manikganj",
+  "BD-34": "Mymensingh",
+  "BD-35": "Munshiganj",
+  "BD-36": "Madaripur",
+  "BD-37": "Magura",
+  "BD-38": "Moulvibazar",
+  "BD-39": "Meherpur",
+  "BD-40": "Narayanganj",
+  "BD-41": "Netrokona",
+  "BD-42": "Narsingdi",
+  "BD-43": "Narail",
+  "BD-44": "Natore",
+  "BD-45": "Chapainawabganj",
+  "BD-46": "Nilphamari",
+  "BD-47": "Noakhali",
+  "BD-48": "Naogaon",
+  "BD-49": "Pabna",
+  "BD-50": "Pirojpur",
+  "BD-51": "Patuakhali",
+  "BD-52": "Panchagarh",
+  "BD-53": "Rajbari",
+  "BD-54": "Rajshahi",
+  "BD-55": "Rangpur",
+  "BD-56": "Rangamati",
+  "BD-57": "Sherpur",
+  "BD-58": "Satkhira",
+  "BD-59": "Sirajganj",
+  "BD-60": "Sylhet",
+  "BD-61": "Sunamganj",
+  "BD-62": "Shariatpur",
+  "BD-63": "Tangail",
+  "BD-64": "Thakurgaon"
+};
+
+/**
+ * Detect district name from ISO 3166-2:BD code (e.g. "BD-15" -> "Faridpur", "BD-18" -> "Gazipur")
+ */
+function detectDistrictFromISOCode(text) {
+  if (!text || typeof text !== "string") return "";
+  const match = text.match(/\bBD[-_\s]?([0-6]?\d)\b/i);
+  if (!match) return "";
+  const num = parseInt(match[1], 10);
+  if (num >= 1 && num <= 64) {
+    const code = "BD-" + String(num).padStart(2, "0");
+    return BD_ISO_DISTRICTS[code] || "";
+  }
+  return "";
+}
+
+/**
+ * Get ISO 3166-2:BD code for a district name (e.g. "Faridpur" -> "BD-15")
+ */
+function getISOCodeFromDistrict(name) {
+  if (!name || typeof name !== "string") return "";
+  const cleanName = name.trim().toLowerCase();
+  for (const [code, dist] of Object.entries(BD_ISO_DISTRICTS)) {
+    if (dist.toLowerCase() === cleanName) return code;
+  }
+  const dObj = BD_DISTRICTS.find(d => d.name.toLowerCase() === cleanName || d.aliases.some(a => a.toLowerCase() === cleanName));
+  if (dObj) {
+    for (const [code, dist] of Object.entries(BD_ISO_DISTRICTS)) {
+      if (dist.toLowerCase() === dObj.name.toLowerCase()) return code;
+    }
+  }
+  return "";
+}
+
+/**
  * Common Thanas / Zones in Dhaka City
  */
 /**
@@ -951,7 +1054,8 @@ const OTHER_CITY_ZONES = {
   "Cumilla": ["Cumilla Sadar", "Kandirpar", "Badurtala", "Kotwali", "Tomsom Bridge", "Shashangachha", "EPZ"],
   "Barishal": ["Barishal Sadar", "Natullabad", "Rupatali", "Band Road"],
   "Rangpur": ["Rangpur Sadar", "Jahaj Company", "Modern More", "Dhap"],
-  "Mymensingh": ["Mymensingh Sadar", "Ganginarpar", "Charpara", "Town Hall"]
+  "Mymensingh": ["Mymensingh Sadar", "Ganginarpar", "Charpara", "Town Hall"],
+  "Faridpur": ["Faridpur Sadar", "Boalmari", "Bhanga", "Alfadanga", "Madhukhali", "Nagarkanda", "Sadarpur", "Charbhadrasan", "Saltha"]
 };
 
 /**
@@ -987,15 +1091,24 @@ function parseBDAddress(rawAddress) {
 
   // 2. Identify District
   let matchedDistrict = "";
-  for (const d of BD_DISTRICTS) {
-    for (const alias of d.aliases) {
-      const regex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
-      if (regex.test(clean)) {
-        matchedDistrict = d.name;
-        break;
+
+  // Check for ISO 3166-2:BD code first (e.g. BD-15 -> Faridpur, BD-18 -> Gazipur)
+  const isoDistrict = detectDistrictFromISOCode(clean);
+  if (isoDistrict) {
+    matchedDistrict = isoDistrict;
+  }
+
+  if (!matchedDistrict) {
+    for (const d of BD_DISTRICTS) {
+      for (const alias of d.aliases) {
+        const regex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
+        if (regex.test(clean)) {
+          matchedDistrict = d.name;
+          break;
+        }
       }
+      if (matchedDistrict) break;
     }
-    if (matchedDistrict) break;
   }
 
   // 3. Identify Zone / Thana
@@ -1081,10 +1194,13 @@ function parseBDAddress(rawAddress) {
     }
   }
 
-  // Check token preceding district (e.g. "Sreepur, Gazipur")
+  // Check token preceding district or ISO code (e.g. "Sreepur, Gazipur" or "Boalmari, BD-15")
   if (!matchedZone && matchedDistrict) {
     const parts = clean.split(/[,;\n]+/).map(p => p.trim()).filter(Boolean);
-    const dIdx = parts.findIndex(p => new RegExp(`\\b${matchedDistrict}\\b`, "i").test(p));
+    const dIdx = parts.findIndex(p =>
+      new RegExp(`\\b${matchedDistrict}\\b`, "i").test(p) ||
+      /\bBD[-_\s]?[0-6]?\d\b/i.test(p)
+    );
     if (dIdx > 0) {
       const prev = parts[dIdx - 1];
       if (prev.length <= 30 && !/^(road|house|flat|plot|block|holding)/i.test(prev)) {
@@ -1113,13 +1229,14 @@ function parseBDAddress(rawAddress) {
     }
   }
 
-  // 5. Clean Street Address: Remove trailing district/postcode/zone repetitions
+  // 5. Clean Street Address: Remove trailing district/postcode/zone repetitions and ISO codes
   let streetAddress = clean;
   if (postcode) {
     streetAddress = streetAddress.replace(new RegExp(`[-:,]?\\s*${postcode}\\b`, "g"), "");
   }
   streetAddress = streetAddress
     .replace(new RegExp(`[,;\\s]+${matchedDistrict}\\b.*$`, "i"), "")
+    .replace(/[,;\s]+\bBD[-_\s]?[0-6]?\d\b.*$/i, "")
     .trim();
 
   // Also remove trailing zone if it is at the very end of streetAddress
@@ -1214,7 +1331,8 @@ function normalizeAddressForPathao(rawAddress) {
     parsed = parseBDAddress(rawAddress);
   }
 
-  // 7. Remove trailing redundant district/postcode repetitions from street address
+  // 7. Remove trailing redundant district/postcode/ISO repetitions from street address
+  addr = addr.replace(/(?:[,;\s]+\bBD[-_\s]?[0-6]?\d\b)+/gi, "");
   if (parsed && parsed.district) {
     const distEscaped = parsed.district.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     if (parsed.postcode) {
@@ -1359,6 +1477,7 @@ function isInvalidCustomerName(name) {
          trimmed === "shipping details" ||
          trimmed === "phone" ||
          trimmed.includes("@") ||
+         (trimmed.startsWith("bd-") && /^bd[-_\s]?[0-6]?\d$/i.test(trimmed)) ||
          /^(?:email|guest|customer|বিলিং|নাম|গ্রাহক|শিপিং)$/i.test(trimmed);
 }
 
@@ -1421,10 +1540,11 @@ function parseWooCommerceAddressBlock(source) {
     if (!line) continue;
 
     const isAddressKeyword = /^(?:Road|House|Block|Sector|Village|Holding|Flat|Apt|Post|PO|Thana|District|Dist|বাসস্ট্যান্ড|স্টেশন|পোস্ট|পোঃ|সদর|থানা|উপজেলা|জেলা|গ্রাম|রোড|বাসা|বাড়ি)/i.test(line);
-    const isDistrictOrZone = /^(?:Dhaka|Chattogram|Chittagong|Sylhet|Khulna|Rajshahi|Barishal|Rangpur|Mymensingh|Gazipur|Narayanganj|Bagerhat|Cumilla|Comilla|Bogura|Bogra|Uttara|Mirpur|Banani|Gulshan|Dhanmondi|Mohammadpur)/i.test(line);
+    const isDistrictOrZone = /^(?:Dhaka|Chattogram|Chittagong|Sylhet|Khulna|Rajshahi|Barishal|Rangpur|Mymensingh|Gazipur|Narayanganj|Bagerhat|Cumilla|Comilla|Bogura|Bogra|Faridpur|Uttara|Mirpur|Banani|Gulshan|Dhanmondi|Mohammadpur)/i.test(line);
+    const isIsoStateCode = /^BD[-_\s]?[0-6]?\d$/i.test(line);
     const hasNumberDigits = /\d{3,}/.test(line) || /^\d+$/.test(line);
 
-    if (isAddressKeyword || isDistrictOrZone || hasNumberDigits) {
+    if (isAddressKeyword || isDistrictOrZone || isIsoStateCode || hasNumberDigits) {
       addressStarted = true;
     }
 
@@ -2043,6 +2163,9 @@ if (typeof module !== "undefined" && module.exports) {
     isInvalidCustomerName,
     extractItemNameWithSize,
     cleanHtmlEntities,
-    isExcludedMetaOrButtonRow
+    isExcludedMetaOrButtonRow,
+    BD_ISO_DISTRICTS,
+    detectDistrictFromISOCode,
+    getISOCodeFromDistrict
   };
 }
