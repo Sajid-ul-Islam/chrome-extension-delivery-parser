@@ -975,8 +975,8 @@ function initQuickReplyTab() {
     bkashType: "Personal",
     nagadNumber: "",
     nagadType: "Personal",
-    insideDhakaFee: 70,
-    outsideDhakaFee: 130,
+    insideDhakaFee: 50,
+    outsideDhakaFee: 90,
     customNote: ""
   };
 
@@ -986,8 +986,8 @@ function initQuickReplyTab() {
     bkashType: (bkashTypeSelect && bkashTypeSelect.value) || "Personal",
     nagadNumber: (nagadInput && nagadInput.value ? nagadInput.value.trim() : ""),
     nagadType: (nagadTypeSelect && nagadTypeSelect.value) || "Personal",
-    insideDhakaFee: Number(insideFeeInput && insideFeeInput.value) || 70,
-    outsideDhakaFee: Number(outsideFeeInput && outsideFeeInput.value) || 130,
+    insideDhakaFee: Number(insideFeeInput && insideFeeInput.value) || 50,
+    outsideDhakaFee: Number(outsideFeeInput && outsideFeeInput.value) || 90,
     customNote: ""
   });
 
@@ -1048,8 +1048,8 @@ function initQuickReplyTab() {
       if (bkashTypeSelect) bkashTypeSelect.value = cfg.bkashType || "Personal";
       if (nagadInput) nagadInput.value = cfg.nagadNumber || "";
       if (nagadTypeSelect) nagadTypeSelect.value = cfg.nagadType || "Personal";
-      if (insideFeeInput) insideFeeInput.value = cfg.insideDhakaFee || 70;
-      if (outsideFeeInput) outsideFeeInput.value = cfg.outsideDhakaFee || 130;
+      if (insideFeeInput) insideFeeInput.value = cfg.insideDhakaFee || 50;
+      if (outsideFeeInput) outsideFeeInput.value = cfg.outsideDhakaFee || 90;
       updatePreview();
     });
   } else {

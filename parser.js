@@ -1089,17 +1089,47 @@ function parseBDAddress(rawAddress) {
     }
   }
 
-  // 2. Identify District
+  // 2. Identify District & Zone Intelligently
   let matchedDistrict = "";
+  let matchedZone = "";
 
-  // Check for ISO 3166-2:BD code first (e.g. BD-15 -> Faridpur, BD-18 -> Gazipur)
+  // A. Check for ISO 3166-2:BD code first (e.g. BD-15 -> Faridpur, BD-18 -> Gazipur)
   const isoDistrict = detectDistrictFromISOCode(clean);
   if (isoDistrict) {
     matchedDistrict = isoDistrict;
   }
 
+  // B. Check specific non-Dhaka zones from OTHER_CITY_ZONES
+  // E.g. "Kandirpar" (Cumilla), "Sreepur" (Gazipur), "Agrabad" (Chattogram), "Boalmari" (Faridpur)
   if (!matchedDistrict) {
-    for (const d of BD_DISTRICTS) {
+    for (const [distName, zones] of Object.entries(OTHER_CITY_ZONES)) {
+      if (distName.toLowerCase() === "dhaka") continue;
+      for (const z of zones) {
+        const zName = typeof z === "string" ? z : z.name;
+        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+        let found = false;
+        for (const alias of aliases) {
+          const zRegex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
+          if (zRegex.test(clean)) {
+            matchedZone = zName;
+            matchedDistrict = distName;
+            found = true;
+            break;
+          }
+        }
+        if (found) break;
+      }
+      if (matchedDistrict) break;
+    }
+  }
+
+  // C. Check all 63 NON-DHAKA districts FIRST
+  // Crucial: Bangladeshi customers often select "Dhaka" on checkout to pay ৳50 instead of ৳90,
+  // or WooCommerce defaults the state to "Dhaka". By checking non-Dhaka districts first,
+  // we catch their real outside-Dhaka district even if "Dhaka" is present in the address block!
+  if (!matchedDistrict) {
+    const nonDhakaDistricts = BD_DISTRICTS.filter(d => d.name !== "Dhaka");
+    for (const d of nonDhakaDistricts) {
       for (const alias of d.aliases) {
         const regex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
         if (regex.test(clean)) {
@@ -1111,8 +1141,35 @@ function parseBDAddress(rawAddress) {
     }
   }
 
+  // D. Check non-Dhaka postcode: Dhaka city postcodes are 1000-1236.
+  // Postcodes >= 1300 firmly belong outside Dhaka or in Sub-Dhaka districts
+  if (!matchedDistrict && postcode) {
+    const pcNum = parseInt(postcode, 10);
+    if (pcNum >= 1700 && pcNum <= 1751) {
+      matchedDistrict = "Gazipur";
+    } else if (pcNum >= 1400 && pcNum <= 1432) {
+      matchedDistrict = "Narayanganj";
+    } else if (pcNum >= 1340 && pcNum <= 1349) {
+      matchedDistrict = "Dhaka";
+      matchedZone = "Savar";
+    }
+  }
+
+  // E. Finally, check Dhaka city or Dhaka zones ONLY if no non-Dhaka district was detected
+  if (!matchedDistrict) {
+    const dhakaObj = BD_DISTRICTS.find(d => d.name === "Dhaka");
+    if (dhakaObj) {
+      for (const alias of dhakaObj.aliases) {
+        const regex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
+        if (regex.test(clean)) {
+          matchedDistrict = "Dhaka";
+          break;
+        }
+      }
+    }
+  }
+
   // 3. Identify Zone / Thana
-  let matchedZone = "";
 
   // If district is Dhaka or unknown, check Dhaka zones
   if (!matchedDistrict || matchedDistrict === "Dhaka") {
@@ -1457,8 +1514,8 @@ const DEFAULT_QUICK_REPLY_CONFIG = {
   bkashType: "Personal", // Personal | Merchant
   nagadNumber: "",
   nagadType: "Personal", // Personal | Merchant
-  insideDhakaFee: 70,
-  outsideDhakaFee: 130,
+  insideDhakaFee: 50,
+  outsideDhakaFee: 90,
   customNote: ""
 };
 
@@ -1927,14 +1984,18 @@ function normalizeCustomerAndOrderData(rawDetails) {
   }
 
   const isOutside = (district && !district.toLowerCase().includes("dhaka")) ||
+                    (parsed.cityType && parsed.cityType !== "Inside Dhaka") ||
                     (address && !address.toLowerCase().includes("dhaka"));
+
+  const insideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 50;
+  const outsideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 90;
+  const realDeliveryFee = isOutside ? outsideFee : insideFee;
 
   // Auto-resolve single item price if total was missing but COD is known
   if (items.length === 1 && (!items[0].total || items[0].total === "0" || !items[0].unitPrice)) {
     const codNum = Number(cod);
     if (codNum > 0) {
-      const estDelivery = isOutside ? (Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 130) : (Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 70);
-      const resolvedTotal = (codNum > estDelivery && estDelivery > 0) ? (codNum - estDelivery) : codNum;
+      const resolvedTotal = (codNum > realDeliveryFee && realDeliveryFee > 0) ? (codNum - realDeliveryFee) : codNum;
       if (!items[0].total || items[0].total === "0") {
         items[0].total = resolvedTotal.toString();
       }
@@ -1957,7 +2018,36 @@ function normalizeCustomerAndOrderData(rawDetails) {
       finalSubtotal = "0";
     }
   }
-  const finalCod = cod && cod !== "0" ? cod : (finalSubtotal !== "0" ? finalSubtotal : "0");
+
+  // Intelligent Delivery Fee & Falsely Inside Dhaka Detection:
+  // If customer is outside Dhaka, but WooCommerce charged ৳50 (or subtotal was ৳1500 and COD was ৳1550),
+  // correct COD to Subtotal + ৳90 (1500 + 90 = 1590) so the merchant is never underpaid!
+  let wasFalselyInside = false;
+  let finalCod = cod && cod !== "0" ? cod : "";
+
+  if (finalSubtotal && Number(finalSubtotal) > 0) {
+    const subNum = Number(finalSubtotal);
+    const codNum = Number(finalCod || 0);
+
+    if (isOutside) {
+      // Detected outside Dhaka: if COD matches subtotal + 50 (or legacy 70) or equals subtotal (0 shipping)
+      if (codNum === subNum + 50 || codNum === subNum + 70 || codNum === subNum) {
+        wasFalselyInside = (codNum === subNum + 50 || codNum === subNum + 70);
+        finalCod = (subNum + outsideFee).toString();
+      } else if (!finalCod || codNum === 0) {
+        finalCod = (subNum + outsideFee).toString();
+      }
+    } else {
+      // Inside Dhaka: only fill if COD was missing
+      if (!finalCod || codNum === 0) {
+        finalCod = (subNum + insideFee).toString();
+      }
+    }
+  }
+
+  if (!finalCod || finalCod === "0") {
+    finalCod = finalSubtotal !== "0" ? (Number(finalSubtotal) + realDeliveryFee).toString() : "0";
+  }
 
   return Object.assign({}, d, {
     orderId: (d.orderId || "").toString().trim().replace(/^#/, ""),
@@ -1968,8 +2058,10 @@ function normalizeCustomerAndOrderData(rawDetails) {
     zone: zone,
     items: items,
     subtotal: finalSubtotal,
+    deliveryFee: realDeliveryFee,
     cod: finalCod,
-    isOutsideDhaka: isOutside
+    isOutsideDhaka: isOutside,
+    wasFalselyInsideDhaka: wasFalselyInside
   });
 }
 
@@ -1982,30 +2074,42 @@ function calculateDeliveryFee(params, config) {
     if (!isNaN(num) && num > 0) return num;
   }
   const cfg = config || DEFAULT_QUICK_REPLY_CONFIG;
-  const insideFee = Number(cfg.insideDhakaFee) || 70;
-  const outsideFee = Number(cfg.outsideDhakaFee) || 130;
+  const insideFee = Number(cfg.insideDhakaFee) || 50;
+  const outsideFee = Number(cfg.outsideDhakaFee) || 90;
 
   if (params && typeof params.isOutsideDhaka === "boolean") {
     return params.isOutsideDhaka ? outsideFee : insideFee;
   }
 
-  const addr = (params && (params.address || params.district || params.city || "")) .toLowerCase();
+  const addr = (params && (params.address || params.district || params.city || "")).toLowerCase();
   if (!addr) {
     return outsideFee; // Default to outside Dhaka standard for merchant financial security
   }
 
-  // Check if inside Dhaka city
-  const isDhaka = addr.includes("dhaka") || addr.includes("ঢাকা") ||
-                  addr.includes("uttara") || addr.includes("mirpur") ||
-                  addr.includes("dhanmondi") || addr.includes("gulshan") ||
-                  addr.includes("banani") || addr.includes("mohammadpur") ||
-                  addr.includes("motijheel") || addr.includes("badda");
+  let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
+  if (!parseBD && typeof require !== "undefined") {
+    try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
+  }
+  if (parseBD) {
+    const parsed = parseBD(addr);
+    if (parsed.cityType === "Inside Dhaka") {
+      return insideFee;
+    }
+    return outsideFee;
+  }
+
+  // Fallback checks
   const isSubDhaka = addr.includes("savar") || addr.includes("সাভার") ||
                      addr.includes("gazipur") || addr.includes("গাজীপুর") ||
                      addr.includes("narayanganj") || addr.includes("নারায়ণগঞ্জ") ||
                      addr.includes("keraniganj") || addr.includes("কেরানীগঞ্জ");
+  const isDhaka = (addr.includes("dhaka") || addr.includes("ঢাকা") ||
+                   addr.includes("uttara") || addr.includes("mirpur") ||
+                   addr.includes("dhanmondi") || addr.includes("gulshan") ||
+                   addr.includes("banani") || addr.includes("mohammadpur") ||
+                   addr.includes("motijheel") || addr.includes("badda")) && !isSubDhaka;
 
-  if (isDhaka && !isSubDhaka) {
+  if (isDhaka) {
     return insideFee;
   }
   return outsideFee;

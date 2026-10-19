@@ -24,10 +24,10 @@ console.log("==================================================");
 console.log("\n▶ Test 1: Testing Default Configuration Schema...");
 assert(DEFAULT_QUICK_REPLY_CONFIG, "DEFAULT_QUICK_REPLY_CONFIG must exist");
 assert.strictEqual(DEFAULT_QUICK_REPLY_CONFIG.storeName, "DEEN Commerce");
-assert.strictEqual(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee, 70, "Default inside Dhaka fee must be 70");
-assert.strictEqual(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee, 130, "Default outside Dhaka fee must be 130");
+assert.strictEqual(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee, 50, "Default inside Dhaka fee must be 50");
+assert.strictEqual(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee, 90, "Default outside Dhaka fee must be 90");
 assert.strictEqual(DEFAULT_QUICK_REPLY_CONFIG.bkashType, "Personal");
-console.log("  ✅ Default configuration schema is valid with ৳70/৳130 standard courier fees.");
+console.log("  ✅ Default configuration schema is valid with ৳50/৳90 standard courier fees.");
 
 // -----------------------------------------------------------------------------
 // Test 2: Smart Delivery Fee Calculator
@@ -40,31 +40,31 @@ assert.strictEqual(feeOverride, 99, "Explicit fee should override defaults");
 
 // Case 2b: Explicit boolean flag
 const feeOutsideFlag = calculateDeliveryFee({ isOutsideDhaka: true });
-assert.strictEqual(feeOutsideFlag, 130, "isOutsideDhaka: true must return 130");
+assert.strictEqual(feeOutsideFlag, 90, "isOutsideDhaka: true must return 90");
 
 const feeInsideFlag = calculateDeliveryFee({ isOutsideDhaka: false });
-assert.strictEqual(feeInsideFlag, 70, "isOutsideDhaka: false must return 70");
+assert.strictEqual(feeInsideFlag, 50, "isOutsideDhaka: false must return 50");
 
 // Case 2c: Address based detection - Inside Dhaka
 const feeDhaka1 = calculateDeliveryFee({ address: "House 12, Road 4, Dhanmondi, Dhaka" });
-assert.strictEqual(feeDhaka1, 70, "Dhanmondi, Dhaka should be Inside Dhaka (৳70)");
+assert.strictEqual(feeDhaka1, 50, "Dhanmondi, Dhaka should be Inside Dhaka (৳50)");
 
 const feeDhaka2 = calculateDeliveryFee({ address: "Sector 3, Uttara, Dhaka-1230" });
-assert.strictEqual(feeDhaka2, 70, "Uttara, Dhaka should be Inside Dhaka (৳70)");
+assert.strictEqual(feeDhaka2, 50, "Uttara, Dhaka should be Inside Dhaka (৳50)");
 
 // Case 2d: Address based detection - Sub Dhaka
 const feeSubDhaka = calculateDeliveryFee({ address: "Sreepur, Gazipur" });
-assert.strictEqual(feeSubDhaka, 130, "Gazipur should be Outside/Sub Dhaka (৳130)");
+assert.strictEqual(feeSubDhaka, 90, "Gazipur should be Outside/Sub Dhaka (৳90)");
 
 const feeSavar = calculateDeliveryFee({ address: "Hemayetpur, Savar, Dhaka" });
-assert.strictEqual(feeSavar, 130, "Savar should be Outside/Sub Dhaka (৳130)");
+assert.strictEqual(feeSavar, 90, "Savar should be Outside/Sub Dhaka (৳90)");
 
 // Case 2e: Address based detection - Outside Dhaka Districts
 const feeChittagong = calculateDeliveryFee({ address: "GEC Circle, Chattogram" });
-assert.strictEqual(feeChittagong, 130, "Chattogram should be Outside Dhaka (৳130)");
+assert.strictEqual(feeChittagong, 90, "Chattogram should be Outside Dhaka (৳90)");
 
 const feeSylhet = calculateDeliveryFee({ address: "Zindabazar, Sylhet" });
-assert.strictEqual(feeSylhet, 130, "Sylhet should be Outside Dhaka (৳130)");
+assert.strictEqual(feeSylhet, 90, "Sylhet should be Outside Dhaka (৳90)");
 
 // Case 2f: Custom merchant fee configuration
 const customConfig = { insideDhakaFee: 60, outsideDhakaFee: 150 };
@@ -2052,8 +2052,85 @@ assert.strictEqual(injectedRatingCard.dataset.deenCheckedPhone, "01711223344", "
 
 console.log("  ✅ In-Popup Pathao Customer Rating card injection, live check, risk states, and WhatsApp COD action verified!");
 
+// -----------------------------------------------------------------------------
+// Test 25: Smart Outside Dhaka Detection, False-Dhaka 50 TK Correction & Hermes API
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 25: Testing Smart Outside Dhaka Detection, False-Dhaka 50 TK Correction & Hermes API...");
+
+// Case 25a: Address has both Cumilla and Dhaka (customer chose Dhaka in dropdown)
+const addrCumillaDhaka = parseBDAddress("Kandirpar, Cumilla, Dhaka");
+assert.strictEqual(addrCumillaDhaka.district, "Cumilla", "Must match Cumilla district despite Dhaka dropdown");
+assert.strictEqual(addrCumillaDhaka.cityType, "Outside Dhaka", "Must classify as Outside Dhaka");
+
+// Case 25b: Address has Bagerhat and Dhaka
+const addrBagerhatDhaka = parseBDAddress("মেসার্স বরকত ফিলিং স্টেশন,বাসস্ট্যান্ড, বাগেরহাট সদর, Bagerhat, 9300, Dhaka");
+assert.strictEqual(addrBagerhatDhaka.district, "Bagerhat", "Must match Bagerhat district despite Dhaka suffix");
+assert.strictEqual(addrBagerhatDhaka.cityType, "Outside Dhaka", "Must classify as Outside Dhaka");
+
+// Case 25c: Order where customer selected Inside Dhaka (৳50) but address is Outside Dhaka
+const rawFalselyInsideOrder = {
+  orderId: "19050",
+  name: "Farhan Hossain",
+  phone: "01812345678",
+  address: "Kandirpar, Cumilla, Dhaka",
+  items: [{ name: "Cotton Polo Shirt - Navy - L", qty: 1, unitPrice: "1500", total: "1500" }],
+  subtotal: "1500",
+  cod: "1550" // Falsely charged 50 TK instead of 90 TK
+};
+
+const normalizedFalselyInside = wcIntegration.normalizeCustomerAndOrderData(rawFalselyInsideOrder);
+assert.strictEqual(normalizedFalselyInside.isOutsideDhaka, true, "Must detect customer is Outside Dhaka");
+assert.strictEqual(normalizedFalselyInside.wasFalselyInsideDhaka, true, "Must flag wasFalselyInsideDhaka as true");
+assert.strictEqual(normalizedFalselyInside.deliveryFee, 90, "Real delivery fee must be ৳90");
+assert.strictEqual(normalizedFalselyInside.cod, "1590", "Corrected COD must be Subtotal 1500 + 90 = 1590 TK");
+
+// Case 25d: Verify Canvas Receipt renders corrected delivery fee and COD
+const drawnTexts25 = [];
+const mockCanvas25 = {
+  width: 0,
+  height: 0,
+  style: {},
+  getContext: () => ({
+    scale: () => {},
+    clearRect: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    fillText: (text) => drawnTexts25.push(text),
+    strokeText: () => {},
+    measureText: (txt) => ({ width: (txt || "").length * 7 }),
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    quadraticCurveTo: () => {},
+    closePath: () => {},
+    stroke: () => {},
+    fill: () => {},
+    save: () => {},
+    restore: () => {},
+    drawImage: () => {}
+  })
+};
+
+const oldDocCreate25 = global.document.createElement;
+global.document.createElement = (tag) => tag === "canvas" ? mockCanvas25 : oldDocCreate25(tag);
+
+wcIntegration.renderOrderReceiptCanvas(normalizedFalselyInside);
+global.document.createElement = oldDocCreate25;
+
+assert(drawnTexts25.some(t => t.includes("Delivery (Outside Dhaka): ৳90")), "Canvas must render authentic ৳90 delivery fee");
+assert(drawnTexts25.some(t => t.includes("৳1590")), "Canvas must render corrected total COD ৳1590");
+
+// Case 25e: Verify Pathao Hermes API credentials from env.js
+const envLoaded = require("./env.js");
+assert(envLoaded.PATHAO_CLIENT_ID && envLoaded.PATHAO_CLIENT_ID.length > 5, "PATHAO_CLIENT_ID must be loaded from env");
+assert(envLoaded.PATHAO_CLIENT_SECRET && envLoaded.PATHAO_CLIENT_SECRET.length > 10, "PATHAO_CLIENT_SECRET must be loaded from env");
+assert(envLoaded.PATHAO_USERNAME && envLoaded.PATHAO_USERNAME.includes("@"), "PATHAO_USERNAME must be valid email");
+assert(envLoaded.PATHAO_PASSWORD && envLoaded.PATHAO_PASSWORD.length > 5, "PATHAO_PASSWORD must be present");
+
+console.log("  ✅ Smart Outside Dhaka detection, false-Dhaka ৳50 correction (1500 + 90 = ৳1590), and Hermes API verified!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 24 WHATSAPP ADVANCE COD, ORDER CONFIRMATION & PATHAO NORMALIZATION TESTS PASSED!");
+console.log("🎉 ALL 25 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION & HERMES API TESTS PASSED!");
 console.log("==================================================");
 
 

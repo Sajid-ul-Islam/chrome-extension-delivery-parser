@@ -1220,8 +1220,8 @@
     bkashType: "Personal",
     nagadNumber: "",
     nagadType: "Personal",
-    insideDhakaFee: 70,
-    outsideDhakaFee: 130,
+    insideDhakaFee: 50,
+    outsideDhakaFee: 90,
     customNote: ""
   };
 
@@ -1523,14 +1523,18 @@
     }
 
     const isOutside = (district && !district.toLowerCase().includes("dhaka")) ||
+                      (parsed.cityType && parsed.cityType !== "Inside Dhaka") ||
                       (address && !address.toLowerCase().includes("dhaka"));
+
+    const insideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 50;
+    const outsideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 90;
+    const realDeliveryFee = isOutside ? outsideFee : insideFee;
 
     // Auto-resolve single item price if total was missing but COD is known
     if (items.length === 1 && (!items[0].total || items[0].total === "0" || !items[0].unitPrice)) {
       const codNum = Number(cod);
       if (codNum > 0) {
-        const estDelivery = isOutside ? (Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 130) : (Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 70);
-        const resolvedTotal = (codNum > estDelivery && estDelivery > 0) ? (codNum - estDelivery) : codNum;
+        const resolvedTotal = (codNum > realDeliveryFee && realDeliveryFee > 0) ? (codNum - realDeliveryFee) : codNum;
         if (!items[0].total || items[0].total === "0") {
           items[0].total = resolvedTotal.toString();
         }
@@ -1553,7 +1557,34 @@
         finalSubtotal = "0";
       }
     }
-    const finalCod = cod && cod !== "0" ? cod : (finalSubtotal !== "0" ? finalSubtotal : "0");
+
+    // Intelligent Delivery Fee & Falsely Inside Dhaka Detection:
+    // If customer is outside Dhaka, but WooCommerce charged ৳50 (or subtotal was ৳1500 and COD was ৳1550),
+    // correct COD to Subtotal + ৳90 (1500 + 90 = 1590) so merchant is never underpaid!
+    let wasFalselyInside = false;
+    let finalCod = cod && cod !== "0" ? cod : "";
+
+    if (finalSubtotal && Number(finalSubtotal) > 0) {
+      const subNum = Number(finalSubtotal);
+      const codNum = Number(finalCod || 0);
+
+      if (isOutside) {
+        if (codNum === subNum + 50 || codNum === subNum + 70 || codNum === subNum) {
+          wasFalselyInside = (codNum === subNum + 50 || codNum === subNum + 70);
+          finalCod = (subNum + outsideFee).toString();
+        } else if (!finalCod || codNum === 0) {
+          finalCod = (subNum + outsideFee).toString();
+        }
+      } else {
+        if (!finalCod || codNum === 0) {
+          finalCod = (subNum + insideFee).toString();
+        }
+      }
+    }
+
+    if (!finalCod || finalCod === "0") {
+      finalCod = finalSubtotal !== "0" ? (Number(finalSubtotal) + realDeliveryFee).toString() : "0";
+    }
 
     return Object.assign({}, d, {
       orderId: (d.orderId || "").toString().trim().replace(/^#/, ""),
@@ -1564,8 +1595,10 @@
       zone: zone,
       items: items,
       subtotal: finalSubtotal,
+      deliveryFee: realDeliveryFee,
       cod: finalCod,
-      isOutsideDhaka: isOutside
+      isOutsideDhaka: isOutside,
+      wasFalselyInsideDhaka: wasFalselyInside
     });
   }
 
@@ -2137,7 +2170,7 @@
     curY += 4;
     // Subtotal & Delivery Fee breakdown row
     const isOutside = details.isOutsideDhaka;
-    let feeCalc = isOutside ? (Number(cfg.outsideDhakaFee) || 130) : (Number(cfg.insideDhakaFee) || 70);
+    let feeCalc = isOutside ? (Number(cfg.outsideDhakaFee) || 90) : (Number(cfg.insideDhakaFee) || 50);
     ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     ctx.fillStyle = "#64748b";
     let subtotalVal = details.subtotal;
@@ -2345,8 +2378,12 @@
             </div>
             <div class="deen-info-item">
               <span class="deen-info-lbl">Delivery Fee</span>
-              <span class="deen-info-val">${isOutside ? "Outside Dhaka (৳" + config.outsideDhakaFee + ")" : "Inside Dhaka (৳" + config.insideDhakaFee + ")"}</span>
+              <span class="deen-info-val">${isOutside ? "Outside Dhaka (৳" + (config.outsideDhakaFee || 90) + ")" : "Inside Dhaka (৳" + (config.insideDhakaFee || 50) + ")"}</span>
             </div>
+            ${details.wasFalselyInsideDhaka ? `
+            <div class="deen-info-item full-width" style="background: #fff7ed; border-left: 3px solid #ea580c; padding: 6px 10px; border-radius: 4px; font-size: 11px; color: #9a3412;">
+              <span>⚠️ <strong>Smart Fee Adjustment:</strong> Customer selected Inside Dhaka on checkout, but shipping address is Outside Dhaka (${escapeHTML(details.district || "District")}). Delivery fee and COD automatically adjusted to authentic Outside Dhaka rate (৳${config.outsideDhakaFee || 90}).</span>
+            </div>` : ""}
           </div>
 
           <div class="deen-modal-items-section">

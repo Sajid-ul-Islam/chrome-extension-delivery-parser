@@ -23,3 +23,9 @@ build/
 # Test Artifacts
 temp_chrome_e2e_profile/
 *.log
+
+# Secrets & Environment Credentials (DO NOT COMMIT)
+.env
+env.js
+test_pathao_auth.js
+

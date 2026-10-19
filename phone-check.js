@@ -116,8 +116,8 @@
     bkashType: "Personal", // Personal | Merchant
     nagadNumber: "",
     nagadType: "Personal", // Personal | Merchant
-    insideDhakaFee: 70,
-    outsideDhakaFee: 130,
+    insideDhakaFee: 50,
+    outsideDhakaFee: 90,
     customNote: ""
   };
 
@@ -127,8 +127,8 @@
       if (!isNaN(num) && num > 0) return num;
     }
     const cfg = config || DEFAULT_QUICK_REPLY_CONFIG;
-    const insideFee = Number(cfg.insideDhakaFee) || 70;
-    const outsideFee = Number(cfg.outsideDhakaFee) || 130;
+    const insideFee = Number(cfg.insideDhakaFee) || 50;
+    const outsideFee = Number(cfg.outsideDhakaFee) || 90;
 
     if (params && typeof params.isOutsideDhaka === "boolean") {
       return params.isOutsideDhaka ? outsideFee : insideFee;

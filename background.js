@@ -2,6 +2,12 @@
  * DEEN Delivery Parser - Background Service Worker (Manifest V3)
  */
 
+try {
+  if (typeof importScripts === "function") {
+    importScripts("env.js");
+  }
+} catch (e) {}
+
 if (typeof chrome !== "undefined" && chrome.runtime) {
   function safeCreateContextMenu(options) {
     try {
@@ -156,19 +162,107 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
  * Handle background customer rating & courier intelligence lookup
  */
 /**
- * Helper to get Pathao token from local storage or Chrome cookies
+ * Issue new Pathao access token using Developer API OAuth credentials (.env / env.js)
+ */
+async function issuePathaoTokenFromCredentials(creds) {
+  if (!creds || !creds.clientId || !creds.clientSecret || !creds.username || !creds.password) {
+    return null;
+  }
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const resp = await fetch("https://api-hermes.pathao.com/aladdin/api/v1/issue-token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        client_id: creds.clientId,
+        client_secret: creds.clientSecret,
+        grant_type: "password",
+        username: creds.username,
+        password: creds.password
+      })
+    });
+    clearTimeout(timeoutId);
+
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.access_token) {
+        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({
+            pathao_merchant_token: data.access_token,
+            pathao_refresh_token: data.refresh_token || "",
+            pathao_token_expiry: Date.now() + ((data.expires_in || 2592000) * 1000)
+          });
+        }
+        return data.access_token;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+/**
+ * Helper to get Pathao token from local storage, .env / env.js credentials, or Chrome cookies
  */
 async function getPathaoToken() {
+  // 1. Check storage for existing valid token
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     try {
-      const store = await new Promise(r => chrome.storage.local.get(["pathao_merchant_token"], r));
+      const store = await new Promise(r => chrome.storage.local.get(["pathao_merchant_token", "pathao_token_expiry"], r));
       if (store && store.pathao_merchant_token && store.pathao_merchant_token.length > 20) {
-        return store.pathao_merchant_token;
+        if (!store.pathao_token_expiry || Date.now() < store.pathao_token_expiry - 60000) {
+          return store.pathao_merchant_token;
+        }
       }
     } catch (e) {}
   }
 
-  // Check chrome.cookies for merchant.pathao.com
+  // 2. Check credentials from env.js / DEEN_ENV / .env
+  let envCreds = null;
+  if (typeof self !== "undefined" && self.DEEN_ENV) {
+    envCreds = self.DEEN_ENV;
+  } else if (typeof DEEN_ENV !== "undefined") {
+    envCreds = DEEN_ENV;
+  }
+  if (!envCreds && typeof require !== "undefined") {
+    try { envCreds = require("./env.js"); } catch (e) {}
+  }
+
+  // Also check chrome.storage.local for credentials saved via options
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    try {
+      const storedCreds = await new Promise(r => chrome.storage.local.get(["pathao_client_id", "pathao_client_secret", "pathao_username", "pathao_password"], r));
+      if (storedCreds && storedCreds.pathao_client_id) {
+        envCreds = Object.assign({}, envCreds || {}, {
+          PATHAO_CLIENT_ID: storedCreds.pathao_client_id,
+          PATHAO_CLIENT_SECRET: storedCreds.pathao_client_secret,
+          PATHAO_USERNAME: storedCreds.pathao_username,
+          PATHAO_PASSWORD: storedCreds.pathao_password
+        });
+      }
+    } catch (e) {}
+  }
+
+  if (envCreds) {
+    if (envCreds.PATHAO_BEARER_TOKEN && envCreds.PATHAO_BEARER_TOKEN.length > 20) {
+      return envCreds.PATHAO_BEARER_TOKEN;
+    }
+    if (envCreds.PATHAO_CLIENT_ID && envCreds.PATHAO_CLIENT_SECRET && envCreds.PATHAO_USERNAME && envCreds.PATHAO_PASSWORD) {
+      const issued = await issuePathaoTokenFromCredentials({
+        clientId: envCreds.PATHAO_CLIENT_ID,
+        clientSecret: envCreds.PATHAO_CLIENT_SECRET,
+        username: envCreds.PATHAO_USERNAME,
+        password: envCreds.PATHAO_PASSWORD
+      });
+      if (issued) return issued;
+    }
+  }
+
+  // 3. Check chrome.cookies for merchant.pathao.com
   if (typeof chrome !== "undefined" && chrome.cookies) {
     const candidateNames = [
       "token", "access_token", "accessToken", "auth_token", "auth",
@@ -334,51 +428,64 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse) {
           "Accept": "application/json",
           "Authorization": "Bearer " + token
         };
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
-        const fetchResp = await fetch("https://merchant.pathao.com/api/v1/user/success", {
-          method: "POST",
-          headers: headers,
-          credentials: "include",
-          signal: controller.signal,
-          body: JSON.stringify({ phone: cleanPhone })
-        });
-        clearTimeout(timeoutId);
-        const json = await fetchResp.json().catch(() => null);
-        if (fetchResp.ok && json) {
-          pathaoData = json;
-        } else if (fetchResp.status === 401) {
-          // 401 may be a race: content script may have just captured the token.
-          // Wait briefly and retry once if a fresh token appeared.
-          await new Promise(r => setTimeout(r, 2000));
-          const refreshedToken = await getPathaoToken();
-          if (refreshedToken && refreshedToken !== token) {
+
+        const endpoints = [
+          "https://api-hermes.pathao.com/aladdin/api/v1/user/success",
+          "https://merchant.pathao.com/api/v1/user/success"
+        ];
+
+        for (const ep of endpoints) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
+            const fetchResp = await fetch(ep, {
+              method: "POST",
+              headers: headers,
+              signal: controller.signal,
+              body: JSON.stringify({ phone: cleanPhone })
+            });
+            clearTimeout(timeoutId);
+            const json = await fetchResp.json().catch(() => null);
+            if (fetchResp.ok && json) {
+              pathaoData = json;
+              break;
+            } else if (fetchResp.status === 401) {
+              pathaoData = { error: true, status: 401, details: json || "token_expired" };
+            }
+          } catch (e) {}
+        }
+
+        // If 401 token expired, re-issue token via credentials and retry once
+        if (pathaoData && pathaoData.status === 401) {
+          if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.remove(["pathao_merchant_token"]);
+          }
+          const freshToken = await getPathaoToken();
+          if (freshToken && freshToken !== token) {
             const retryHeaders = {
               "Content-Type": "application/json",
               "Accept": "application/json",
-              "Authorization": "Bearer " + refreshedToken
+              "Authorization": "Bearer " + freshToken
             };
-            const retryController = new AbortController();
-            const retryTimeout = setTimeout(() => retryController.abort(), 4000);
-            const retryResp = await fetch("https://merchant.pathao.com/api/v1/user/success", {
-              method: "POST",
-              headers: retryHeaders,
-              credentials: "include",
-              signal: retryController.signal,
-              body: JSON.stringify({ phone: cleanPhone })
-            });
-            clearTimeout(retryTimeout);
-            const retryJson = await retryResp.json().catch(() => null);
-            if (retryResp.ok && retryJson) {
-              pathaoData = retryJson;
-            } else {
-              pathaoData = { error: true, status: retryResp.status, details: retryJson || "token_missing" };
+            for (const ep of endpoints) {
+              try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 4000);
+                const retryResp = await fetch(ep, {
+                  method: "POST",
+                  headers: retryHeaders,
+                  signal: controller.signal,
+                  body: JSON.stringify({ phone: cleanPhone })
+                });
+                clearTimeout(timeoutId);
+                const json = await retryResp.json().catch(() => null);
+                if (retryResp.ok && json) {
+                  pathaoData = json;
+                  break;
+                }
+              } catch (e) {}
             }
-          } else {
-            pathaoData = { error: true, status: fetchResp.status, details: json || "token_missing" };
           }
-        } else if (fetchResp.status === 400) {
-          pathaoData = { error: true, status: fetchResp.status, details: json || "token_missing" };
         }
       } else {
         pathaoData = { error: true, status: "token_missing" };
