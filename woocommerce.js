@@ -1782,7 +1782,7 @@
 
     const headerHeight = 90;
     const customerSectionHeight = 110;
-    const tableHeaderHeight = 36;
+    const tableHeaderHeight = 46;
     let totalItemsHeight = 0;
     items.forEach(it => {
       const nm = (it.name || "").trim();
@@ -1952,7 +1952,7 @@
     ctx.fillText("TOTAL", width - 36, curY + 18);
     ctx.textAlign = "left";
 
-    curY += 34;
+    curY += 44;
 
     // Items rows
     items.forEach((item) => {
