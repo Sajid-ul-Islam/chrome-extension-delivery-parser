@@ -759,4 +759,171 @@
   box-shadow: 0 5px 14px rgba(255, 96, 0, 0.55);
 }
 
+/* ==========================================================================
+   Pathao Popup Customer Rating & Intelligence Card
+   ========================================================================== */
+.deen-ptc-phone-rating {
+  margin: 10px 0 16px 0;
+  padding: 12px 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  transition: all 0.25s ease;
+}
+
+.deen-ptc-phone-rating.rating-danger {
+  border-color: #fca5a5;
+  background: #fff5f5;
+  box-shadow: 0 3px 10px rgba(239, 68, 68, 0.12);
+}
+
+.deen-ptc-phone-rating.rating-moderate {
+  border-color: #fde68a;
+  background: #fffdf5;
+}
+
+.deen-ptc-phone-rating.rating-safe {
+  border-color: #a7f3d0;
+  background: #f0fdf4;
+}
+
+.deen-ptc-rating-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.deen-ptc-rating-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.deen-ptc-rating-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 12px;
+  color: #ffffff;
+  background: #10b981;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.deen-ptc-rating-badge.loading {
+  background: #e2e8f0 !important;
+  color: #475569 !important;
+}
+
+.deen-ptc-rating-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.deen-ptc-stat-rate {
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1;
+  color: #10b981;
+  min-width: 48px;
+}
+
+.deen-ptc-stat-text {
+  font-size: 12px;
+  color: #334155;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.deen-ptc-rating-progress-bar {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.deen-ptc-rating-progress-fill {
+  height: 100%;
+  background: #10b981;
+  border-radius: 4px;
+  transition: width 0.4s ease, background-color 0.3s ease;
+}
+
+.deen-ptc-rating-breakdown {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #cbd5e1;
+  margin-bottom: 10px;
+}
+
+.deen-ptc-rating-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deen-ptc-rating-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.deen-ptc-rating-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.deen-ptc-rating-btn-wa {
+  background: #25d366;
+  color: #ffffff;
+  border-color: #1ebe5d;
+}
+
+.deen-ptc-rating-btn-wa:hover {
+  background: #128c7e;
+  border-color: #0e7063;
+  color: #ffffff;
+}
+
+.deen-ptc-rating-btn-wa.pulse-alert {
+  animation: deen-pulse-wa 1.5s infinite;
+  font-weight: 700;
+  background: #ef4444;
+  border-color: #dc2626;
+}
+
+@keyframes deen-pulse-wa {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
 

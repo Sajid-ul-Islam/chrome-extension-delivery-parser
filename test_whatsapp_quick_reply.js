@@ -1886,9 +1886,176 @@ assert.strictEqual(checkInvalidName("BD-18"), true, "BD-18 must not be considere
 
 console.log("  ✅ ISO 3166-2:BD code detection (BD-15 -> Faridpur), reverse lookup, and address cleaning verified with 100% precision!");
 
+// -----------------------------------------------------------------------------
+// Test 24: Testing In-Popup Pathao Customer Rating & Courier Intelligence Card
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 24: Testing In-Popup Pathao Customer Rating & Courier Intelligence Card...");
+
+const {
+  fetchCustomerRatingBackground,
+  renderRatingState
+} = wcIntegration;
+
+assert.strictEqual(typeof fetchCustomerRatingBackground, "function", "fetchCustomerRatingBackground must be a function");
+assert.strictEqual(typeof renderRatingState, "function", "renderRatingState must be a function");
+
+// 24a. Test renderRatingState on High-Risk Customer
+const mockCard = {
+  className: "deen-ptc-phone-rating",
+  classList: {
+    classes: new Set(["deen-ptc-phone-rating"]),
+    add: function(c) { this.classes.add(c); },
+    remove: function(...args) { args.forEach(c => this.classes.delete(c)); },
+    contains: function(c) { return this.classes.has(c); }
+  },
+  elements: {
+    "#deen-ptc-rating-badge": { textContent: "", style: {}, className: "" },
+    "#deen-ptc-stat-rate": { textContent: "", style: {} },
+    "#deen-ptc-stat-text": { textContent: "" },
+    "#deen-ptc-rating-progress-fill": { style: {} },
+    "#deen-ptc-delivered-count": { textContent: "" },
+    "#deen-ptc-cancelled-count": { textContent: "" },
+    "#deen-ptc-source-tag": { textContent: "" },
+    "#deen-ptc-rating-btn-wa": {
+      classList: {
+        classes: new Set(),
+        add: function(c) { this.classes.add(c); },
+        remove: function(c) { this.classes.delete(c); },
+        contains: function(c) { return this.classes.has(c); }
+      },
+      title: ""
+    }
+  },
+  querySelector: function(sel) {
+    return this.elements[sel] || null;
+  }
+};
+
+const ptcHighRiskData = {
+  success: true,
+  phone: "01711223344",
+  successRate: 40,
+  totalParcels: 10,
+  deliveredCount: 4,
+  cancelledCount: 6,
+  riskLevel: "high",
+  riskLabel: "High Return Risk (40% Delivery Rate!)",
+  riskColor: "#ef4444",
+  isNewCustomer: false
+};
+
+renderRatingState(mockCard, ptcHighRiskData);
+
+assert(mockCard.classList.contains("rating-danger"), "High risk customer must apply 'rating-danger' class");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").textContent, "High Return Risk (40% Delivery Rate!)", "Badge text must match high risk");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").style.backgroundColor, "#ef4444", "Badge color must be red");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-stat-rate").textContent, "40%", "Rate stat must be 40%");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-stat-rate").style.color, "#ef4444", "Rate color must be red");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-progress-fill").style.width, "40%", "Progress fill must be 40%");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-delivered-count").textContent, "📦 Delivered: 4", "Delivered count must match 4");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-cancelled-count").textContent, "⚠️ Returned: 6", "Cancelled count must match 6");
+assert(mockCard.querySelector("#deen-ptc-rating-btn-wa").classList.contains("pulse-alert"), "High risk must add 'pulse-alert' to WhatsApp button");
+
+// 24b. Test renderRatingState on Safe Customer
+const ptcSafeData = {
+  success: true,
+  phone: "01812345678",
+  successRate: 95,
+  totalParcels: 20,
+  deliveredCount: 19,
+  cancelledCount: 1,
+  riskLevel: "low",
+  riskLabel: "Safe Buyer (95% Success)",
+  riskColor: "#10b981",
+  isNewCustomer: false
+};
+
+renderRatingState(mockCard, ptcSafeData);
+assert(mockCard.classList.contains("rating-safe"), "Safe customer must apply 'rating-safe' class");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").style.backgroundColor, "#10b981", "Badge color must be green");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-stat-rate").textContent, "95%", "Rate stat must be 95%");
+assert(!mockCard.querySelector("#deen-ptc-rating-btn-wa").classList.contains("pulse-alert"), "Safe customer must not have 'pulse-alert'");
+
+// 24c. Test renderRatingState on New Customer (Clean History)
+const ptcNewCustomerData = {
+  success: true,
+  phone: "01912345678",
+  successRate: 100,
+  totalParcels: 0,
+  deliveredCount: 0,
+  cancelledCount: 0,
+  riskLevel: "low",
+  riskLabel: "New Customer (Clean History)",
+  riskColor: "#3b82f6",
+  isNewCustomer: true
+};
+
+renderRatingState(mockCard, ptcNewCustomerData);
+assert(mockCard.classList.contains("rating-safe"), "New customer must apply 'rating-safe' class");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").style.backgroundColor, "#3b82f6", "Badge color must be blue");
+assert(mockCard.querySelector("#deen-ptc-stat-text").textContent.includes("Clean delivery history"), "Stat text must reflect clean new customer history");
+
+// 24d. In-Popup Modal Injection with Phone Input
+const mockPhoneInput = {
+  tagName: "INPUT",
+  id: "ptc_wc_shipping_phone",
+  value: "01711223344",
+  dataset: {},
+  parentNode: {
+    children: [],
+    insertBefore: function(newEl, refEl) {
+      this.children.push(newEl);
+    }
+  },
+  addEventListener: (evt, handler) => {},
+  dispatchEvent: (evt) => {}
+};
+
+const mockFullPtcModal = {
+  id: "ptc-custom-modal",
+  dataset: { orderId: "14920" },
+  querySelectorAll: (sel) => [],
+  querySelector: (sel) => {
+    if (sel.includes("ptc_wc_shipping_phone")) return mockPhoneInput;
+    if (sel.includes("ptc_wc_shipping_address")) return mockShippingAddress;
+    if (sel.includes("ptc_wc_shipping_name")) return { value: "Ashfaq Ahmed" };
+    if (sel.includes("ptc_wc_amount_to_collect")) return { value: "1550" };
+    if (sel.includes("city")) return mockCitySelect;
+    if (sel.includes("zone")) return mockZoneSelect;
+    if (sel.includes("deen-ptc-phone-rating")) {
+      return mockPhoneInput.parentNode.children.find(c => c.id === "deen-ptc-phone-rating") || null;
+    }
+    if (sel.includes("deen-ptc-address-helper")) {
+      return mockModalChildren.find(c => c.id === "deen-ptc-address-helper") || null;
+    }
+    return null;
+  }
+};
+
+global.document.querySelectorAll = (sel) => {
+  if (sel.includes("ptc-custom-modal") || sel.includes("pathao-modal")) return [mockFullPtcModal];
+  if (sel.includes("ptc-open-modal-button")) return [];
+  return [];
+};
+global.document.getElementById = (id) => {
+  if (id === "ptc-custom-modal") return mockFullPtcModal;
+  if (id === "ptc_wc_shipping_phone") return mockPhoneInput;
+  if (id === "ptc_wc_shipping_address") return mockShippingAddress;
+  return null;
+};
+
+initPathaoPluginAddressNormalizer();
+
+const injectedRatingCard = mockPhoneInput.parentNode.children.find(c => c.id === "deen-ptc-phone-rating");
+assert(injectedRatingCard, "Must automatically inject #deen-ptc-phone-rating next to phone input in Pathao modal");
+assert.strictEqual(injectedRatingCard.dataset.deenCheckedPhone, "01711223344", "Must record checked phone number");
+
+console.log("  ✅ In-Popup Pathao Customer Rating card injection, live check, risk states, and WhatsApp COD action verified!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 23 WHATSAPP ADVANCE COD, ORDER CONFIRMATION & PATHAO NORMALIZATION TESTS PASSED!");
+console.log("🎉 ALL 24 WHATSAPP ADVANCE COD, ORDER CONFIRMATION & PATHAO NORMALIZATION TESTS PASSED!");
 console.log("==================================================");
+
 
 
 
