@@ -1416,6 +1416,60 @@ function normalizeAddressForPathao(rawAddress) {
 }
 
 /**
+ * Build complete modified full address for delivery labels & courier input.
+ * Combines cleaned street address with properly resolved City/District, Zone, and Postcode.
+ */
+function buildFullAddress(rawAddress, parsedData) {
+  if (!rawAddress || typeof rawAddress !== "string" || !rawAddress.trim()) return "";
+
+  // 1. Get base cleaned street address (cleans typos, abbreviations, embedded phones/emails, trailing ISO codes)
+  let base = normalizeAddressForPathao(rawAddress);
+
+  // 2. Resolve location components
+  let parsed = parsedData;
+  if (!parsed && typeof parseBDAddress === "function") {
+    parsed = parseBDAddress(rawAddress);
+  }
+
+  if (!parsed) return base;
+
+  const district = (parsed.district || "").trim();
+  const zone = (parsed.zone || "").trim();
+  const postcode = (parsed.postcode || "").trim();
+
+  if (!district && !zone) return base;
+
+  const baseLower = base.toLowerCase();
+  let parts = [base];
+
+  // Include zone if specific and not already in base
+  if (zone && !/^(?:all|sadar|zone)$/i.test(zone)) {
+    const zoneLower = zone.toLowerCase();
+    if (!baseLower.includes(zoneLower)) {
+      parts.push(zone);
+    }
+  }
+
+  // Include district/city if not already in base
+  if (district) {
+    const distLower = district.toLowerCase();
+    if (!baseLower.includes(distLower)) {
+      parts.push(district);
+    }
+  }
+
+  // Include postcode if present and not in base
+  if (postcode && !baseLower.includes(postcode)) {
+    let last = parts.pop();
+    parts.push(`${last} - ${postcode}`);
+  }
+
+  let full = parts.filter(Boolean).join(", ");
+  full = full.replace(/\s*,\s*/g, ", ").replace(/,\s*,+/g, ", ").trim();
+  return full || base;
+}
+
+/**
  * Generate Pathao Bulk Upload CSV string
  */
 function generatePathaoBatchCSV(orders) {
@@ -2270,6 +2324,7 @@ if (typeof module !== "undefined" && module.exports) {
     isExcludedMetaOrButtonRow,
     BD_ISO_DISTRICTS,
     detectDistrictFromISOCode,
-    getISOCodeFromDistrict
+    getISOCodeFromDistrict,
+    buildFullAddress
   };
 }

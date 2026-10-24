@@ -3206,6 +3206,66 @@
   }
 
   /**
+   * Build complete modified full address for delivery labels & courier input.
+   * Combines cleaned street address with properly resolved City/District, Zone, and Postcode.
+   */
+  function buildFullAddress(rawAddress, parsedData) {
+    let fn = null;
+    if (typeof require !== "undefined") {
+      try {
+        fn = require("./parser.js").buildFullAddress;
+      } catch (e) {}
+    }
+    if (typeof fn === "function") {
+      return fn(rawAddress, parsedData);
+    }
+
+    if (!rawAddress || typeof rawAddress !== "string" || !rawAddress.trim()) return "";
+    let base = normalizeAddressForPathao(rawAddress);
+    let parsed = parsedData;
+    if (!parsed) {
+      let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
+      if (!parseBD && typeof require !== "undefined") {
+        try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
+      }
+      if (parseBD) parsed = parseBD(rawAddress);
+    }
+    if (!parsed) return base;
+
+    const district = (parsed.district || "").trim();
+    const zone = (parsed.zone || "").trim();
+    const postcode = (parsed.postcode || "").trim();
+
+    if (!district && !zone) return base;
+
+    const baseLower = base.toLowerCase();
+    let parts = [base];
+
+    if (zone && !/^(?:all|sadar|zone)$/i.test(zone)) {
+      const zoneLower = zone.toLowerCase();
+      if (!baseLower.includes(zoneLower)) {
+        parts.push(zone);
+      }
+    }
+
+    if (district) {
+      const distLower = district.toLowerCase();
+      if (!baseLower.includes(distLower)) {
+        parts.push(district);
+      }
+    }
+
+    if (postcode && !baseLower.includes(postcode)) {
+      let last = parts.pop();
+      parts.push(`${last} - ${postcode}`);
+    }
+
+    let full = parts.filter(Boolean).join(", ");
+    full = full.replace(/\s*,\s*/g, ", ").replace(/,\s*,+/g, ", ").trim();
+    return full || base;
+  }
+
+  /**
    * Helper to fetch customer courier rating from background service worker
    */
   function fetchCustomerRatingBackground(phone, callback, forceRefresh = false) {
@@ -3470,10 +3530,16 @@
         helper.className = "deen-ptc-address-helper";
         helper.innerHTML = `
           <div class="deen-ptc-helper-top">
-            <span class="deen-ptc-badge">⚡ DEEN Smart Address</span>
-            <span class="deen-ptc-detected-text" id="deen-ptc-detected-text">📍 Detecting location...</span>
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+              <span class="deen-ptc-badge">⚡ DEEN Smart Address</span>
+              <span class="deen-ptc-detected-text" id="deen-ptc-detected-text">📍 Detecting location...</span>
+            </div>
+            <div class="deen-ptc-chips-row" id="deen-ptc-chips-row" style="display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; align-items: center;"></div>
           </div>
           <div class="deen-ptc-helper-actions">
+            <button type="button" class="deen-ptc-btn deen-ptc-btn-full" id="deen-ptc-btn-full" title="Build & insert complete modified full address with City/District & Zone">
+              📝 Full Address
+            </button>
             <button type="button" class="deen-ptc-btn deen-ptc-btn-clean" id="deen-ptc-btn-clean" title="Clean and normalize address formatting">
               ✨ Clean Address
             </button>
@@ -3491,6 +3557,7 @@
           addrInput.parentNode.insertBefore(helper, addrInput);
         }
 
+        const fullBtn = helper.querySelector("#deen-ptc-btn-full");
         const cleanBtn = helper.querySelector("#deen-ptc-btn-clean");
         const matchBtn = helper.querySelector("#deen-ptc-btn-match");
         const revertBtn = helper.querySelector("#deen-ptc-btn-revert");
@@ -3508,8 +3575,80 @@
             const pcText = parsed.postcode ? ` (${parsed.postcode})` : "";
             detectedEl.innerHTML = `📍 City: <strong>${escapeHTML(parsed.district || 'Dhaka')}</strong> | Zone: <strong>${escapeHTML(parsed.zone || 'N/A')}</strong>${pcText}`;
           }
+
+          // Populate interactive quick-insert chips
+          const chipsRow = helper.querySelector("#deen-ptc-chips-row");
+          if (chipsRow && parsed) {
+            chipsRow.innerHTML = "";
+            const currentValLower = (addrInput.value || "").toLowerCase();
+
+            const addChip = (label, valToInsert) => {
+              if (!valToInsert) return;
+              const chip = document.createElement("button");
+              chip.type = "button";
+              chip.className = "deen-ptc-chip";
+              const alreadyIn = currentValLower.includes(valToInsert.toLowerCase());
+              chip.innerHTML = alreadyIn ? `✓ ${escapeHTML(label)}` : `+ ${escapeHTML(label)}`;
+              chip.title = alreadyIn ? `'${valToInsert}' is in address box` : `Click to append '${valToInsert}' to address input box`;
+              if (alreadyIn) {
+                chip.style.opacity = "0.65";
+                chip.style.cursor = "default";
+              } else {
+                chip.addEventListener("click", (e) => {
+                  e.preventDefault();
+                  if (!addrInput.dataset.deenRawAddress) {
+                    addrInput.dataset.deenRawAddress = addrInput.value;
+                  }
+                  const cur = (addrInput.value || "").trim();
+                  const sep = cur && !cur.endsWith(",") ? ", " : " ";
+                  addrInput.value = cur ? `${cur}${sep}${valToInsert}` : valToInsert;
+                  addrInput.dispatchEvent(new Event("input", { bubbles: true }));
+                  addrInput.dispatchEvent(new Event("change", { bubbles: true }));
+                  updateDetectedDisplay();
+                  if (revertBtn && revertBtn.style) revertBtn.style.display = "inline-flex";
+                  if (statusHint) {
+                    statusHint.textContent = `+ Added ${label}`;
+                    setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 2000);
+                  }
+                });
+              }
+              chipsRow.appendChild(chip);
+            };
+
+            if (parsed.district) {
+              addChip(parsed.district, parsed.district);
+            }
+            if (parsed.zone && !/^(?:all|sadar|zone)$/i.test(parsed.zone)) {
+              addChip(parsed.zone, parsed.zone);
+            }
+            if (parsed.postcode) {
+              addChip(parsed.postcode, parsed.postcode);
+            }
+          }
+
           return parsed;
         };
+
+        if (fullBtn) {
+          fullBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            const raw = addrInput.value || "";
+            if (!raw.trim()) return;
+            if (!addrInput.dataset.deenRawAddress) {
+              addrInput.dataset.deenRawAddress = raw;
+            }
+            const full = buildFullAddress(raw);
+            addrInput.value = full;
+            addrInput.dispatchEvent(new Event("input", { bubbles: true }));
+            addrInput.dispatchEvent(new Event("change", { bubbles: true }));
+            updateDetectedDisplay();
+            if (revertBtn && revertBtn.style) revertBtn.style.display = "inline-flex";
+            if (statusHint) {
+              statusHint.textContent = "✅ Full Address Applied!";
+              setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 2500);
+            }
+          });
+        }
 
         if (cleanBtn) {
           cleanBtn.addEventListener("click", (e) => {
@@ -3844,6 +3983,7 @@
       getWooCommerceAjaxConfig,
       parseWooCommerceAjaxOrderDetails,
       normalizeAddressForPathao,
+      buildFullAddress,
       initPathaoPluginAddressNormalizer,
       fetchCustomerRatingBackground,
       renderRatingState,

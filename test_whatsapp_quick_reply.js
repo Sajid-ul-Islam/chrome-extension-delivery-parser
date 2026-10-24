@@ -1729,16 +1729,23 @@ console.log("  ✅ Canvas confirmed rendering authentic receipt with DEEN Commer
 // -----------------------------------------------------------------------------
 console.log("\n▶ Test 22: Testing Smart Address Normalization in WooCommerce Pathao Plugin Popup...");
 
-const { normalizeAddressForPathao, initPathaoPluginAddressNormalizer } = wcIntegration;
+const { normalizeAddressForPathao, buildFullAddress, initPathaoPluginAddressNormalizer } = wcIntegration;
 
-// 1. Test normalizeAddressForPathao string transformation
+// 1. Test normalizeAddressForPathao & buildFullAddress string transformation
 const rawAddr1 = "h# 12, r# 4, blk c, sec 11, apt 3b, mirpur 10, 01711223344, user@test.com, dhaka 1216, dhaka";
 const cleanAddr1 = normalizeAddressForPathao(rawAddr1);
 assert.strictEqual(cleanAddr1, "House 12, Road 4, Block C, Sector 11, Flat 3B, Mirpur 10", `Expected standard formatted street address without phone, email, or trailing repeated district, got '${cleanAddr1}'`);
 
+const fullAddr1 = buildFullAddress(rawAddr1);
+assert(fullAddr1.includes("Mirpur 10"), "Full address must include street/zone");
+assert(fullAddr1.includes("Dhaka"), "Full address must include city/district");
+assert(fullAddr1.includes("1216"), "Full address must include postcode");
+
 const rawAddr2 = "House # 5, Flat # 4A, Road # 11, Sector # 4, Uttara, Dhaka";
 const cleanAddr2 = normalizeAddressForPathao(rawAddr2);
 assert.strictEqual(cleanAddr2, "House 5, Flat 4A, Road 11, Sector 4, Uttara", `Expected cleaned street address, got '${cleanAddr2}'`);
+const fullAddr2 = buildFullAddress(rawAddr2);
+assert.strictEqual(fullAddr2, "House 5, Flat 4A, Road 11, Sector 4, Uttara, Dhaka", "Full address must include Uttara and Dhaka");
 
 const rawAddr3 = "গ্রাম: রামপুর, ডাকঘর: জয়দেবপুর, থানা: গাজীপুর সদর, জেলা: গাজীপুর";
 const cleanAddr3 = normalizeAddressForPathao(rawAddr3);
@@ -1746,7 +1753,10 @@ assert(cleanAddr3.includes("গ্রাম: রামপুর"), "Bangla villa
 assert(cleanAddr3.includes("ডাকঘর: জয়দেবপুর"), "Bangla post office label must be preserved");
 assert(cleanAddr3.includes("থানা: গাজীপুর সদর"), "Bangla thana label must be preserved");
 
-console.log("  ✅ normalizeAddressForPathao transforms raw abbreviations, strips phones/emails/repeated cities, and preserves Bengali!");
+const fullAddrISO = buildFullAddress("Holding 45, Boalmari, BD-15");
+assert.strictEqual(fullAddrISO, "Holding 45, Boalmari, Faridpur", "Full address must resolve BD-15 to Faridpur and combine street with district");
+
+console.log("  ✅ normalizeAddressForPathao & buildFullAddress transform raw abbreviations, strip noise, resolve ISO codes, and produce modified full addresses!");
 
 // 2. Test in-popup DOM normalizer injection and interactive features
 const mockShippingAddress = {
@@ -1823,13 +1833,15 @@ initPathaoPluginAddressNormalizer();
 // Assert helper was created and injected
 const injectedHelper = mockModalChildren.find(c => c.id === "deen-ptc-address-helper");
 assert(injectedHelper, "Must inject #deen-ptc-address-helper inside Pathao modal");
+assert(injectedHelper.innerHTML.includes("deen-ptc-btn-full"), "Smart Address must provide 📝 Full Address button");
+assert(injectedHelper.innerHTML.includes("deen-ptc-chips-row"), "Smart Address must provide interactive quick-insert chips row");
 
 // Assert auto-normalization occurred
 assert.strictEqual(mockShippingAddress.value, "House 12, Road 4, Block C, Sector 11, Flat 3B, Mirpur 10", "Shipping address input must be auto-normalized");
 assert.strictEqual(mockShippingAddress.dataset.deenRawAddress, rawAddr1, "Original raw address must be saved in dataset");
 assert.strictEqual(mockShippingAddress.dataset.deenNormalized, "true", "Normalized flag must be set");
 
-console.log("  ✅ Pathao popup modal #ptc_wc_shipping_address auto-normalized and helper bar injected!");
+console.log("  ✅ Pathao popup modal #ptc_wc_shipping_address auto-normalized, Full Address button & chips row injected!");
 
 // -----------------------------------------------------------------------------
 // Test 23: Testing ISO 3166-2:BD District Code Detection (BD-01 to BD-64, e.g. BD-15 -> Faridpur)
