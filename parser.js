@@ -1040,27 +1040,550 @@ const DHAKA_ZONES = [
   { name: "Tongi", aliases: ["tongi", "টঙ্গী", "টঙ্গি"] }
 ];
 
+const DELIM_START = "(?:^|[\\s,;:\\/\\\\_\\-\\(\\)\\[\\]{}।ঃ|#])";
+const DELIM_END = "(?:$|[\\s,;:\\/\\\\_\\-\\(\\)\\[\\]{}।ঃ|#0-9])";
+
 /**
- * Prominent Zones in Other Major Hubs
+ * Unicode-aware word match with Bengali suffix/locative inflection support
+ */
+function matchWord(text, alias) {
+  if (!text || !alias) return false;
+  const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = `${DELIM_START}${escaped}(?:ে|ের|য়|য়)?${DELIM_END}`;
+  return new RegExp(pattern, "i").test(text);
+}
+
+/**
+ * Prominent Zones in Other Major Hubs across Bangladesh with English & Bengali aliases
  */
 const OTHER_CITY_ZONES = {
-  "Chattogram": ["Agrabad", "Nasirabad", "Halishahar", "Panchlaish", "Kotwali", "Khulshi", "Chandgaon", "Bakalia", "Pahartali", "Patenga", "Muradpur", "GEC", "Bayazid", "Hathazari", "Sitakunda", "Chawkbazar"],
-  "Gazipur": ["Tongi", "Gazipur Sadar", "Sreepur", "Kaliakair", "Kapasia", "Kaliganj", "Konabari", "Board Bazar", "Chandona"],
-  "Narayanganj": ["Narayanganj Sadar", "Fatullah", "Siddhirganj", "Bandar", "Rupganj", "Araihazar", "Sonargaon", "Kanchpur"],
-  "Sylhet": ["Zindabazar", "Amberkhana", "Shibganj", "Upashahar", "Kadamtoli", "Subidbazar", "Sylhet Sadar", "South Surma", "Kumarpara", "Lamabazar"],
-  "Rajshahi": ["Boalia", "Motihar", "Rajpara", "Shah Makhdum", "Rajshahi Sadar", "Kazla"],
-  "Bogura": ["Bogura Sadar", "Sherpur", "Shajahanpur", "Thanthania", "Joleshworitola"],
-  "Khulna": ["Khulna Sadar", "Sonadanga", "Khalishpur", "Daulatpur", "Khan Jahan Ali", "Boyra"],
-  "Cumilla": ["Cumilla Sadar", "Kandirpar", "Badurtala", "Kotwali", "Tomsom Bridge", "Shashangachha", "EPZ"],
-  "Barishal": ["Barishal Sadar", "Natullabad", "Rupatali", "Band Road"],
-  "Rangpur": ["Rangpur Sadar", "Jahaj Company", "Modern More", "Dhap"],
-  "Mymensingh": ["Mymensingh Sadar", "Ganginarpar", "Charpara", "Town Hall"],
-  "Faridpur": ["Faridpur Sadar", "Boalmari", "Bhanga", "Alfadanga", "Madhukhali", "Nagarkanda", "Sadarpur", "Charbhadrasan", "Saltha"]
+  "Gazipur": [
+    { name: "Sreepur", aliases: ["sreepur", "শ্রীপুর"] },
+    { name: "Tongi", aliases: ["tongi", "টঙ্গী", "টঙ্গি"] },
+    { name: "Kaliakair", aliases: ["kaliakair", "কালিয়াকৈর", "কালিয়াকৈর"] },
+    { name: "Kapasia", aliases: ["kapasia", "কাপাসিয়া", "কাপাসিয়া"] },
+    { name: "Kaliganj", aliases: ["kaliganj", "কালীগঞ্জ", "কালিগঞ্জ"] },
+    { name: "Konabari", aliases: ["konabari", "কোনাবাড়ী", "কোনাবাড়ি"] },
+    { name: "Board Bazar", aliases: ["board bazar", "বোর্ড বাজার"] },
+    { name: "Chandona", aliases: ["chandona", "চান্দনা"] },
+    { name: "Joydebpur", aliases: ["joydebpur", "joydevpur", "জয়দেবপুর", "জয়দেবপুর"] },
+    { name: "Gazipur Sadar", aliases: ["gazipur sadar", "গাজীপুর সদর"] }
+  ],
+  "Narayanganj": [
+    { name: "Fatullah", aliases: ["fatullah", "ফতুল্লা"] },
+    { name: "Siddhirganj", aliases: ["siddhirganj", "সিদ্ধিরগঞ্জ"] },
+    { name: "Bandar", aliases: ["bandar", "বন্দর"] },
+    { name: "Rupganj", aliases: ["rupganj", "রূপগঞ্জ", "রুপগঞ্জ"] },
+    { name: "Araihazar", aliases: ["araihazar", "আড়াইহাজার", "আড়াইহাজার"] },
+    { name: "Sonargaon", aliases: ["sonargaon", "সোনারগাঁও", "সোনারগা"] },
+    { name: "Kanchpur", aliases: ["kanchpur", "কাঁচপুর", "কাচপুর"] },
+    { name: "Narayanganj Sadar", aliases: ["narayanganj sadar", "নারায়ণগঞ্জ সদর"] }
+  ],
+  "Faridpur": [
+    { name: "Boalmari", aliases: ["boalmari", "বোয়ালমারী", "বোয়ালমারী"] },
+    { name: "Bhanga", aliases: ["bhanga", "ভাঙ্গা"] },
+    { name: "Alfadanga", aliases: ["alfadanga", "আলফাডাঙ্গা"] },
+    { name: "Madhukhali", aliases: ["madhukhali", "মধুখালী"] },
+    { name: "Nagarkanda", aliases: ["nagarkanda", "নগরকান্দা"] },
+    { name: "Sadarpur", aliases: ["sadarpur", "সদরপুর"] },
+    { name: "Charbhadrasan", aliases: ["charbhadrasan", "চরভদ্রাসন"] },
+    { name: "Saltha", aliases: ["saltha", "সালথা"] },
+    { name: "Faridpur Sadar", aliases: ["faridpur sadar", "ফরিদপুর সদর"] }
+  ],
+  "Chattogram": [
+    { name: "Agrabad", aliases: ["agrabad", "আগ্রাবাদ"] },
+    { name: "Nasirabad", aliases: ["nasirabad", "নাসিরাবাদ"] },
+    { name: "Halishahar", aliases: ["halishahar", "হালিশহর"] },
+    { name: "Panchlaish", aliases: ["panchlaish", "পাঁচলাইশ"] },
+    { name: "Kotwali", aliases: ["kotwali", "কোতোয়ালী", "কোতোয়ালী", "কোতোয়ালি"] },
+    { name: "Khulshi", aliases: ["khulshi", "খুলশী", "খুলশি"] },
+    { name: "Chandgaon", aliases: ["chandgaon", "চান্দগাঁও", "চান্দগাও"] },
+    { name: "Bakalia", aliases: ["bakalia", "বাকলিয়া", "বাকলিয়া"] },
+    { name: "Pahartali", aliases: ["pahartali", "পাহাড়তলী", "পাহাড়তলী"] },
+    { name: "Patenga", aliases: ["patenga", "পতেঙ্গা"] },
+    { name: "Muradpur", aliases: ["muradpur", "মুরাদপুর"] },
+    { name: "GEC", aliases: ["gec", "জিইসি"] },
+    { name: "Bayazid", aliases: ["bayazid", "বায়েজিদ", "বায়েজিদ"] },
+    { name: "Hathazari", aliases: ["hathazari", "হাটহাজারী", "হাটহাজারি"] },
+    { name: "Sitakunda", aliases: ["sitakunda", "sitakund", "সীতাকুণ্ড", "সীতাকুন্ড"] },
+    { name: "Chawkbazar", aliases: ["chawkbazar", "চকবাজার"] },
+    { name: "Chattogram Sadar", aliases: ["chattogram sadar", "চট্টগ্রাম সদর"] }
+  ],
+  "Sylhet": [
+    { name: "Zindabazar", aliases: ["zindabazar", "জিন্দাবাজার"] },
+    { name: "Amberkhana", aliases: ["amberkhana", "আম্বরখানা"] },
+    { name: "Shibganj", aliases: ["shibganj", "শিবগঞ্জ"] },
+    { name: "Upashahar", aliases: ["upashahar", "উপশহর"] },
+    { name: "Kadamtoli", aliases: ["kadamtoli", "কদমতলী", "কদমতলি"] },
+    { name: "Subidbazar", aliases: ["subidbazar", "সুবিদবাজার"] },
+    { name: "South Surma", aliases: ["south surma", "দক্ষিণ সুরমা"] },
+    { name: "Kumarpara", aliases: ["kumarpara", "কুমারপাড়া", "কুমারপাড়া"] },
+    { name: "Lamabazar", aliases: ["lamabazar", "লামাবাজার"] },
+    { name: "Beanibazar", aliases: ["beanibazar", "বিয়ানীবাজার", "বিয়ানীবাজার"] },
+    { name: "Golapganj", aliases: ["golapganj", "গোলাপগঞ্জ"] },
+    { name: "Sylhet Sadar", aliases: ["sylhet sadar", "সিলেট সদর"] }
+  ],
+  "Cumilla": [
+    { name: "Kandirpar", aliases: ["kandirpar", "কান্দিরপাড়", "কান্দিরপাড়", "কান্দিরপার"] },
+    { name: "Badurtala", aliases: ["badurtala", "বাদুরতলা"] },
+    { name: "Kotwali", aliases: ["kotwali", "কোতোয়ালী", "কোতোয়ালী"] },
+    { name: "Tomsom Bridge", aliases: ["tomsom bridge", "টমছম ব্রিজ"] },
+    { name: "Shashangachha", aliases: ["shashangachha", "শাসনগাছা"] },
+    { name: "EPZ", aliases: ["epz", "ইপিজেড"] },
+    { name: "Daudkandi", aliases: ["daudkandi", "দাউদকান্দি"] },
+    { name: "Chandina", aliases: ["chandina", "চান্দিনা"] },
+    { name: "Laksam", aliases: ["laksam", "লাকসাম"] },
+    { name: "Chauddagram", aliases: ["chauddagram", "চৌদ্দগ্রাম"] },
+    { name: "Debidwar", aliases: ["debidwar", "দেবীদ্বার", "দেবিদ্বার"] },
+    { name: "Burichang", aliases: ["burichang", "বুড়িচং", "বুড়িচং"] },
+    { name: "Cumilla Sadar", aliases: ["cumilla sadar", "কুমিল্লা সদর"] }
+  ],
+  "Khulna": [
+    { name: "Sonadanga", aliases: ["sonadanga", "সোনাডাঙ্গা"] },
+    { name: "Khalishpur", aliases: ["khalishpur", "খালিশপুর"] },
+    { name: "Daulatpur", aliases: ["daulatpur", "দৌলতপুর"] },
+    { name: "Khan Jahan Ali", aliases: ["khan jahan ali", "খান জাহান আলী"] },
+    { name: "Boyra", aliases: ["boyra", "বয়রা", "বয়রা"] },
+    { name: "Rupsha", aliases: ["rupsha", "রূপসা", "রুপসা"] },
+    { name: "Phultala", aliases: ["phultala", "ফুলতলা"] },
+    { name: "Dumuria", aliases: ["dumuria", "ডুমুরিয়া", "ডুমুরিয়া"] },
+    { name: "Batiaghata", aliases: ["batiaghata", "বটিয়াঘাটা", "বটিয়াঘাটা"] },
+    { name: "Khulna Sadar", aliases: ["khulna sadar", "খুলনা সদর"] }
+  ],
+  "Barishal": [
+    { name: "Natullabad", aliases: ["natullabad", "নথুল্লাবাদ"] },
+    { name: "Rupatali", aliases: ["rupatali", "রূপাতলী", "রুপাতলী", "রূপাতলি"] },
+    { name: "Choumatha", aliases: ["choumatha", "chowmatha", "চৌমাথা"] },
+    { name: "Band Road", aliases: ["band road", "ব্যান্ড রোড", "বান্দ রোড"] },
+    { name: "Gournadi", aliases: ["gournadi", "গৌরনদী"] },
+    { name: "Agailjhara", aliases: ["agailjhara", "আগৈলঝাড়া", "আগৈলঝাড়া"] },
+    { name: "Babuganj", aliases: ["babuganj", "বাবুগঞ্জ"] },
+    { name: "Bakerganj", aliases: ["bakerganj", "বাকেরগঞ্জ"] },
+    { name: "Banaripara", aliases: ["banaripara", "বানারীপাড়া", "বানারীপাড়া"] },
+    { name: "Mehendiganj", aliases: ["mehendiganj", "মেহেন্দীগঞ্জ", "মেহেন্দিগঞ্জ"] },
+    { name: "Muladi", aliases: ["muladi", "মুলাদী", "মুলাদি"] },
+    { name: "Wazirpur", aliases: ["wazirpur", "উজিরপুর"] },
+    { name: "Barishal Sadar", aliases: ["barishal sadar", "বরিশাল সদর"] }
+  ],
+  "Bogura": [
+    { name: "Bogura Sadar", aliases: ["bogura sadar", "bogra sadar", "বগুড়া সদর", "বগুড়া সদর"] },
+    { name: "Sherpur", aliases: ["bogura sherpur", "বগুড়া শেরপুর", "শেরপুর, বগুড়া"] },
+    { name: "Shajahanpur", aliases: ["shajahanpur", "শাজাহানপুর"] },
+    { name: "Shibganj", aliases: ["shibganj", "শিবগঞ্জ"] },
+    { name: "Gabtali", aliases: ["gabtali", "গাবতলী", "গাবতলি"] },
+    { name: "Sonatola", aliases: ["sonatola", "সোনাতলা"] },
+    { name: "Sariakandi", aliases: ["sariakandi", "সারিয়াকান্দি", "সারিয়াকান্দি"] },
+    { name: "Dhunat", aliases: ["dhunat", "ধুনট"] },
+    { name: "Nandigram", aliases: ["nandigram", "নন্দীগ্রাম", "নন্দিগ্রাম"] },
+    { name: "Kahaloo", aliases: ["kahaloo", "কাহালু"] },
+    { name: "Adamdighi", aliases: ["adamdighi", "আদমদীঘি", "আদমদিঘি"] },
+    { name: "Dupchanchia", aliases: ["dupchanchia", "দুপচাঁচিয়া", "দুপচাচিয়া"] },
+    { name: "Thanthania", aliases: ["thanthania", "ঠনঠনিয়া", "ঠনঠনিয়া"] },
+    { name: "Joleshworitola", aliases: ["joleshworitola", "জলেশ্বরীতলা"] }
+  ],
+  "Rajshahi": [
+    { name: "Boalia", aliases: ["boalia", "বোয়ালিয়া", "বোয়ালিয়া"] },
+    { name: "Motihar", aliases: ["motihar", "মতিহার"] },
+    { name: "Rajpara", aliases: ["rajpara", "রাজপাড়া", "রাজপাড়া"] },
+    { name: "Shah Makhdum", aliases: ["shah makhdum", "শাহ মখদুম"] },
+    { name: "Kazla", aliases: ["kazla", "কাজলা"] },
+    { name: "Bagha", aliases: ["bagha", "বাঘা"] },
+    { name: "Charghat", aliases: ["charghat", "চারঘাট"] },
+    { name: "Puthia", aliases: ["puthia", "পুঠিয়া", "পুঠিয়া"] },
+    { name: "Durgapur", aliases: ["durgapur", "দুর্গাপুর"] },
+    { name: "Godagari", aliases: ["godagari", "গোদাগাড়ী", "গোদাগাড়ী"] },
+    { name: "Tanore", aliases: ["tanore", "তানোর"] },
+    { name: "Mohanpur", aliases: ["mohanpur", "মোহনপুর"] },
+    { name: "Bagmara", aliases: ["bagmara", "বাগমারা"] },
+    { name: "Rajshahi Sadar", aliases: ["rajshahi sadar", "রাজশাহী সদর"] }
+  ],
+  "Rangpur": [
+    { name: "Jahaj Company", aliases: ["jahaj company", "জাহাজ কোম্পানী", "জাহাজ কোম্পানি"] },
+    { name: "Modern More", aliases: ["modern more", "মডার্ন মোড়", "মডার্ন মোড়"] },
+    { name: "Dhap", aliases: ["dhap", "ধাপ"] },
+    { name: "Badarganj", aliases: ["badarganj", "বদরগঞ্জ"] },
+    { name: "Mithapukur", aliases: ["mithapukur", "মিঠাপুকুর"] },
+    { name: "Pirganj", aliases: ["pirganj", "পীরগঞ্জ"] },
+    { name: "Pirgachha", aliases: ["pirgachha", "পীরগাছা"] },
+    { name: "Kaunia", aliases: ["kaunia", "কাউনিয়া", "কাউনিয়া"] },
+    { name: "Gangachhara", aliases: ["gangachhara", "গঙ্গাচড়া", "গঙ্গাচড়া"] },
+    { name: "Taraganj", aliases: ["taraganj", "তারাগঞ্জ"] },
+    { name: "Rangpur Sadar", aliases: ["rangpur sadar", "রংপুর সদর"] }
+  ],
+  "Mymensingh": [
+    { name: "Ganginarpar", aliases: ["ganginarpar", "গাঙ্গিনারপাড়", "গাঙ্গিনারপাড়"] },
+    { name: "Charpara", aliases: ["charpara", "চরপাড়া", "চরপাড়া"] },
+    { name: "Town Hall", aliases: ["town hall", "টাউন হল"] },
+    { name: "Trishal", aliases: ["trishal", "ত্রিশাল"] },
+    { name: "Muktagachha", aliases: ["muktagachha", "মুক্তাগাছা"] },
+    { name: "Bhaluka", aliases: ["bhaluka", "ভালুকা"] },
+    { name: "Fulbaria", aliases: ["fulbaria", "ফুলবাড়িয়া", "ফুলবাড়িয়া"] },
+    { name: "Gaffargaon", aliases: ["gaffargaon", "গফরগাঁও", "গফরগাও"] },
+    { name: "Nandail", aliases: ["nandail", "নান্দাইল"] },
+    { name: "Ishwarganj", aliases: ["ishwarganj", "ঈশ্বরগঞ্জ"] },
+    { name: "Haluaghat", aliases: ["haluaghat", "হালুয়াঘাট", "হালুয়াঘাট"] },
+    { name: "Dhobaura", aliases: ["dhobaura", "ধোবাউড়া", "ধোবাউড়া"] },
+    { name: "Tara Khanda", aliases: ["tara khanda", "তারাকান্দা"] },
+    { name: "Gouripur", aliases: ["gouripur", "গৌরীপুর", "গৌরিপুর"] },
+    { name: "Mymensingh Sadar", aliases: ["mymensingh sadar", "ময়মনসিংহ সদর"] }
+  ],
+  "Bagerhat": [
+    { name: "Bagerhat Sadar", aliases: ["bagerhat sadar", "বাগেরহাট সদর"] },
+    { name: "Mongla", aliases: ["mongla", "মোংলা", "মংলা"] },
+    { name: "Rampal", aliases: ["rampal", "রামপাল"] },
+    { name: "Morrelganj", aliases: ["morrelganj", "মোরেলগঞ্জ"] },
+    { name: "Fakirhat", aliases: ["fakirhat", "ফকিরহাট"] },
+    { name: "Kachua", aliases: ["kachua", "কচুয়া", "কচুয়া"] },
+    { name: "Chitalmari", aliases: ["chitalmari", "চিতলমারী", "চিতলমারি"] },
+    { name: "Mollahat", aliases: ["mollahat", "মোল্লাহাট"] },
+    { name: "Sarankhola", aliases: ["sarankhola", "শরণখোলা"] }
+  ],
+  "Cox's Bazar": [
+    { name: "Cox's Bazar Sadar", aliases: ["cox's bazar sadar", "coxs bazar sadar", "কক্সবাজার সদর"] },
+    { name: "Chakaria", aliases: ["chakaria", "চকোরিয়া", "চকোরিয়া", "চকরিয়া"] },
+    { name: "Teknaf", aliases: ["teknaf", "টেকনাফ"] },
+    { name: "Ukhiya", aliases: ["ukhiya", "উখিয়া", "উখিয়া"] },
+    { name: "Ramu", aliases: ["ramu", "রামু"] },
+    { name: "Maheshkhali", aliases: ["maheshkhali", "মহেশখালী"] },
+    { name: "Kutubdia", aliases: ["kutubdia", "কুতুবদিয়া", "কুতুবদিয়া"] },
+    { name: "Pekua", aliases: ["pekua", "পেকুয়া", "পেকুয়া"] }
+  ],
+  "Feni": [
+    { name: "Feni Sadar", aliases: ["feni sadar", "ফেনী সদর"] },
+    { name: "Daganbhuiyan", aliases: ["daganbhuiyan", "দাগনভূঞা", "দাগনভূঁইয়া"] },
+    { name: "Chhagalnaiya", aliases: ["chhagalnaiya", "ছাগলনাইয়া", "ছাগলনাইয়া"] },
+    { name: "Sonagazi", aliases: ["sonagazi", "সোনাগাজী", "সোনাগাজি"] },
+    { name: "Parshuram", aliases: ["parshuram", "পরশুরাম"] },
+    { name: "Fulgazi", aliases: ["fulgazi", "ফুলগাজী", "ফুলগাজি"] }
+  ],
+  "Tangail": [
+    { name: "Tangail Sadar", aliases: ["tangail sadar", "টাঙ্গাইল সদর"] },
+    { name: "Madhupur", aliases: ["madhupur", "মধুপুর"] },
+    { name: "Gopalpur", aliases: ["gopalpur", "গোপালপুর"] },
+    { name: "Ghatail", aliases: ["ghatail", "ঘাটাইল"] },
+    { name: "Kalihati", aliases: ["kalihati", "কালিহাতী", "কালিহাতি"] },
+    { name: "Sakhipur", aliases: ["sakhipur", "সখিপুর"] },
+    { name: "Mirzapur", aliases: ["mirzapur", "মির্জাপুর"] },
+    { name: "Basail", aliases: ["basail", "বাসাইল"] },
+    { name: "Delduar", aliases: ["delduar", "দেলদুয়ার", "দেলদুয়ার"] },
+    { name: "Nagarpur", aliases: ["nagarpur", "নাগরপুর"] },
+    { name: "Dhanbari", aliases: ["dhanbari", "ধানবাড়ী", "ধানবাড়ি"] }
+  ],
+  "Narsingdi": [
+    { name: "Narsingdi Sadar", aliases: ["narsingdi sadar", "নরসিংদী সদর"] },
+    { name: "Belabo", aliases: ["belabo", "বেলাবো"] },
+    { name: "Monohardi", aliases: ["monohardi", "মনোহরদী", "মনোহরদি"] },
+    { name: "Shibpur", aliases: ["shibpur", "শিবপুর"] },
+    { name: "Raipura", aliases: ["raipura", "রায়পুরা", "রায়পুরা"] },
+    { name: "Palash", aliases: ["palash", "পলাশ"] },
+    { name: "Madhabdi", aliases: ["madhabdi", "মাধবদী", "মাধবদি"] }
+  ],
+  "Brahmanbaria": [
+    { name: "Brahmanbaria Sadar", aliases: ["brahmanbaria sadar", "ব্রাহ্মণবাড়িয়া সদর"] },
+    { name: "Ashuganj", aliases: ["ashuganj", "আশুগঞ্জ"] },
+    { name: "Bancharampur", aliases: ["bancharampur", "বাঞ্ছারামপুর"] },
+    { name: "Kasba", aliases: ["kasba", "কসবা"] },
+    { name: "Nabinagar", aliases: ["nabinagar", "নবীনগর"] },
+    { name: "Nasirnagar", aliases: ["nasirnagar", "নাসিরনগর"] },
+    { name: "Sarail", aliases: ["sarail", "সরাইল"] },
+    { name: "Akhaura", aliases: ["akhaura", "আখাউড়া", "আখাউড়া"] },
+    { name: "Bijoynagar", aliases: ["bijoynagar", "বিজয়নগর", "বিজয়নগর"] }
+  ],
+  "Noakhali": [
+    { name: "Noakhali Sadar", aliases: ["noakhali sadar", "নোয়াখালী সদর"] },
+    { name: "Begumganj", aliases: ["begumganj", "বেগমগঞ্জ"] },
+    { name: "Chowmuhani", aliases: ["chowmuhani", "চৌমুহনী", "চৌমুহনি"] },
+    { name: "Senbagh", aliases: ["senbagh", "সেনবাগ"] },
+    { name: "Chatkhil", aliases: ["chatkhil", "চাটখিল"] },
+    { name: "Companiganj", aliases: ["companiganj", "কোম্পানীগঞ্জ", "কোম্পানিগঞ্জ"] },
+    { name: "Hatiya", aliases: ["hatiya", "হাতিয়া", "হাতিয়া"] },
+    { name: "Kabirhat", aliases: ["kabirhat", "কবিরহাট"] },
+    { name: "Subarnachar", aliases: ["subarnachar", "সুবর্ণচর"] }
+  ],
+  "Jashore": [
+    { name: "Jashore Sadar", aliases: ["jashore sadar", "jessore sadar", "যশোর সদর"] },
+    { name: "Abhaynagar", aliases: ["abhaynagar", "অভয়নগর", "অভয়নগর"] },
+    { name: "Bagherpara", aliases: ["bagherpara", "বাঘারপাড়া", "বাঘারপাড়া"] },
+    { name: "Chaugachha", aliases: ["chaugachha", "চৌগাছা"] },
+    { name: "Jhikargachha", aliases: ["jhikargachha", "ঝিকরগাছা"] },
+    { name: "Keshabpur", aliases: ["keshabpur", "কেশবপুর"] },
+    { name: "Manirampur", aliases: ["manirampur", "মণিরামপুর", "মনিরামপুর"] },
+    { name: "Sharsha", aliases: ["sharsha", "শার্শা"] },
+    { name: "Benapole", aliases: ["benapole", "বেনাপোল"] }
+  ],
+  "Kushtia": [
+    { name: "Kushtia Sadar", aliases: ["kushtia sadar", "কুষ্টিয়া সদর"] },
+    { name: "Kumarkhali", aliases: ["kumarkhali", "কুমারখালী", "কুমারখালি"] },
+    { name: "Daulatpur", aliases: ["daulatpur", "দৌলতপুর"] },
+    { name: "Bheramara", aliases: ["bheramara", "ভেড়ামারা", "ভেড়ামারা"] },
+    { name: "Khoksa", aliases: ["khoksa", "খোকসা"] },
+    { name: "Kushtia Mirpur", aliases: ["kushtia mirpur", "মিরপুর, কুষ্টিয়া", "মিরপুর (কুষ্টিয়া)"] }
+  ],
+  "Pabna": [
+    { name: "Pabna Sadar", aliases: ["pabna sadar", "পাবনা সদর"] },
+    { name: "Ishwardi", aliases: ["ishwardi", "ঈশ্বরদী", "ঈশ্বরদি"] },
+    { name: "Bera", aliases: ["bera", "বেড়া", "বেড়া"] },
+    { name: "Santhia", aliases: ["santhia", "সাঁথিয়া", "সাথিয়া"] },
+    { name: "Chatmohar", aliases: ["chatmohar", "চাটমোহর"] },
+    { name: "Sujanagar", aliases: ["sujanagar", "সুজানগর"] },
+    { name: "Atgharia", aliases: ["atgharia", "আটঘরিয়া", "আটঘরিয়া"] },
+    { name: "Bhangura", aliases: ["bhangura", "ভাঙ্গুড়া", "ভাঙ্গুড়া"] }
+  ],
+  "Sirajganj": [
+    { name: "Sirajganj Sadar", aliases: ["sirajganj sadar", "সিরাজগঞ্জ সদর"] },
+    { name: "Shahjadpur", aliases: ["shahjadpur", "শাহজাদপুর"] },
+    { name: "Ullapara", aliases: ["ullapara", "উল্লাপাড়া", "উল্লাপাড়া"] },
+    { name: "Belkuchi", aliases: ["belkuchi", "বেলকুচি"] },
+    { name: "Kazipur", aliases: ["kazipur", "কাজীপুর", "কাজিপুর"] },
+    { name: "Raiganj", aliases: ["raiganj", "রায়গঞ্জ", "রায়গঞ্জ"] },
+    { name: "Tarash", aliases: ["tarash", "তাড়াশ", "তাড়াশ"] }
+  ],
+  "Habiganj": [
+    { name: "Habiganj Sadar", aliases: ["habiganj sadar", "হবিগঞ্জ সদর"] },
+    { name: "Madhabpur", aliases: ["madhabpur", "মাধবপুর"] },
+    { name: "Nabiganj", aliases: ["nabiganj", "নবীগঞ্জ"] },
+    { name: "Chunarughat", aliases: ["chunarughat", "চুনারুঘাট"] },
+    { name: "Bahubal", aliases: ["bahubal", "বাহুবল"] },
+    { name: "Baniachong", aliases: ["baniachong", "বানিয়াচং", "বানিয়াচং"] },
+    { name: "Shaistaganj", aliases: ["shaistaganj", "শায়েস্তাগঞ্জ", "শায়েস্তাগঞ্জ"] }
+  ],
+  "Moulvibazar": [
+    { name: "Moulvibazar Sadar", aliases: ["moulvibazar sadar", "মৌলভীবাজার সদর"] },
+    { name: "Sreemangal", aliases: ["sreemangal", "শ্রীমঙ্গল"] },
+    { name: "Kulaura", aliases: ["kulaura", "কুলাউড়া", "কুলাউড়া"] },
+    { name: "Kamalganj", aliases: ["kamalganj", "কমলগঞ্জ"] },
+    { name: "Barlekha", aliases: ["barlekha", "বড়লেখা", "বড়লেখা"] },
+    { name: "Rajnagar", aliases: ["rajnagar", "রাজনগর"] },
+    { name: "Juri", aliases: ["juri", "জুড়ী", "জুড়ী"] }
+  ],
+  "Sunamganj": [
+    { name: "Sunamganj Sadar", aliases: ["sunamganj sadar", "সুনামগঞ্জ সদর"] },
+    { name: "Jagannathpur", aliases: ["jagannathpur", "জগন্নাথপুর"] },
+    { name: "Chhatak", aliases: ["chhatak", "ছাতক"] },
+    { name: "Derai", aliases: ["derai", "দিরাই"] },
+    { name: "Dowarabazar", aliases: ["dowarabazar", "দোয়ারাবাজার", "দোয়ারা বাজার"] },
+    { name: "Tahirpur", aliases: ["tahirpur", "তাহিরপুর"] }
+  ],
+  "Gopalganj": [
+    { name: "Gopalganj Sadar", aliases: ["gopalganj sadar", "গোপালগঞ্জ সদর"] },
+    { name: "Kashiani", aliases: ["kashiani", "কাশিয়ানী", "কাশিয়ানী"] },
+    { name: "Kotalipara", aliases: ["kotalipara", "কোটালীপাড়া", "কোটালীপাড়া"] },
+    { name: "Muksudpur", aliases: ["muksudpur", "মুকসুদপুর"] },
+    { name: "Tungipara", aliases: ["tungipara", "টুঙ্গিপাড়া", "টুঙ্গিপাড়া"] }
+  ],
+  "Chandpur": [
+    { name: "Chandpur Sadar", aliases: ["chandpur sadar", "চাঁদপুর সদর"] },
+    { name: "Matlab", aliases: ["matlab", "মতলব"] },
+    { name: "Hajiganj", aliases: ["hajiganj", "হাজীগঞ্জ", "হাজিগঞ্জ"] },
+    { name: "Shahrasti", aliases: ["shahrasti", "শাহরাস্তি"] },
+    { name: "Kachua", aliases: ["kachua", "কচুয়া", "কচুয়া"] },
+    { name: "Faridganj", aliases: ["faridganj", "ফরিদগঞ্জ"] },
+    { name: "Haimchar", aliases: ["haimchar", "হাইমচর"] }
+  ],
+  "Lakshmipur": [
+    { name: "Lakshmipur Sadar", aliases: ["lakshmipur sadar", "লক্ষ্মীপুর সদর"] },
+    { name: "Raipur", aliases: ["raipur", "রায়পুর", "রায়পুর"] },
+    { name: "Ramganj", aliases: ["ramganj", "রামগঞ্জ"] },
+    { name: "Ramgati", aliases: ["ramgati", "রামগতি"] },
+    { name: "Kamalnagar", aliases: ["kamalnagar", "কমলনগর"] }
+  ],
+  "Patuakhali": [
+    { name: "Patuakhali Sadar", aliases: ["patuakhali sadar", "পটুয়াখালী সদর"] },
+    { name: "Kuakata", aliases: ["kuakata", "কুয়াকাটা", "কুয়াকাটা"] },
+    { name: "Galachipa", aliases: ["galachipa", "গলাচিপা"] },
+    { name: "Kalapara", aliases: ["kalapara", "কলাপাড়া", "কলাপাড়া"] },
+    { name: "Bauphal", aliases: ["bauphal", "বাউফল"] }
+  ],
+  "Bhola": [
+    { name: "Bhola Sadar", aliases: ["bhola sadar", "ভোলা সদর"] },
+    { name: "Borhanuddin", aliases: ["borhanuddin", "বোরহানউদ্দিন"] },
+    { name: "Char Fasson", aliases: ["char fasson", "চরফ্যাশন", "চরফ্যাসন"] },
+    { name: "Daulatkhan", aliases: ["daulatkhan", "দৌলতখান"] },
+    { name: "Lalmohan", aliases: ["lalmohan", "লালমোহন"] }
+  ],
+  "Kishoreganj": [
+    { name: "Kishoreganj Sadar", aliases: ["kishoreganj sadar", "কিশোরগঞ্জ সদর"] },
+    { name: "Bhairab", aliases: ["bhairab", "ভৈরব"] },
+    { name: "Bajitpur", aliases: ["bajitpur", "বাজিতপুর"] },
+    { name: "Kuliarchar", aliases: ["kuliarchar", "কুলিয়ারচর", "কুলিয়ারচর"] },
+    { name: "Pakundia", aliases: ["pakundia", "পাকুন্দিয়া", "পাকুন্দিয়া"] },
+    { name: "Katiadi", aliases: ["katiadi", "কটিয়াদী", "কটিয়াদি"] }
+  ],
+  "Jamalpur": [
+    { name: "Jamalpur Sadar", aliases: ["jamalpur sadar", "জামালপুর সদর"] },
+    { name: "Sarishabari", aliases: ["sarishabari", "সরিষাবাড়ী", "সরিষাবাড়ি"] },
+    { name: "Melandaha", aliases: ["melandaha", "মেলান্দহ"] },
+    { name: "Islampur", aliases: ["islampur", "ইসলামপুর"] },
+    { name: "Dewanganj", aliases: ["dewanganj", "দেওয়ানগঞ্জ", "দেওয়ানগঞ্জ"] },
+    { name: "Bakshiganj", aliases: ["bakshiganj", "বকশীগঞ্জ", "বকশিগঞ্জ"] }
+  ],
+  "Sherpur": [
+    { name: "Sherpur Sadar", aliases: ["sherpur sadar", "শেরপুর সদর"] },
+    { name: "Nakla", aliases: ["nakla", "নকলা"] },
+    { name: "Nalitabari", aliases: ["nalitabari", "নালিতাবাড়ী", "নালিতাবাড়ি"] },
+    { name: "Jhenaigati", aliases: ["jhenaigati", "ঝিনাইগাতী", "ঝিনাইগাতি"] },
+    { name: "Sreebardi", aliases: ["sreebardi", "শ্রীবরদী", "শ্রীবরদি"] }
+  ],
+  "Netrokona": [
+    { name: "Netrokona Sadar", aliases: ["netrokona sadar", "নেত্রকোণা সদর", "নেত্রকোনা সদর"] },
+    { name: "Durgapur", aliases: ["durgapur", "দুর্গাপুর"] },
+    { name: "Kendua", aliases: ["kendua", "কেন্দুয়া", "কেন্দুয়া"] },
+    { name: "Mohanganj", aliases: ["mohanganj", "মোহনগঞ্জ"] },
+    { name: "Kalmakanda", aliases: ["kalmakanda", "কলমাকান্দা"] }
+  ],
+  "Natore": [
+    { name: "Natore Sadar", aliases: ["natore sadar", "নাটোর সদর"] },
+    { name: "Singra", aliases: ["singra", "সিংড়া", "সিংড়া"] },
+    { name: "Gurudaspur", aliases: ["gurudaspur", "গুরুদাসপুর"] },
+    { name: "Baraigram", aliases: ["baraigram", "বড়াইগ্রাম", "বড়াইগ্রাম"] },
+    { name: "Lalpur", aliases: ["lalpur", "লালপুর"] }
+  ],
+  "Naogaon": [
+    { name: "Naogaon Sadar", aliases: ["naogaon sadar", "নওগাঁ সদর"] },
+    { name: "Mohadevpur", aliases: ["mohadevpur", "মহাদেবপুর"] },
+    { name: "Patnitala", aliases: ["patnitala", "পত্নীতলা"] },
+    { name: "Dhamoirhat", aliases: ["dhamoirhat", "ধামইরহাট"] },
+    { name: "Manda", aliases: ["manda", "মান্দা"] },
+    { name: "Raninagar", aliases: ["raninagar", "রাণীনগর", "রানীনগর"] }
+  ],
+  "Satkhira": [
+    { name: "Satkhira Sadar", aliases: ["satkhira sadar", "সাতক্ষীরা সদর"] },
+    { name: "Kaliganj", aliases: ["kaliganj", "কালীগঞ্জ", "কালিগঞ্জ"] },
+    { name: "Shyamnagar", aliases: ["shyamnagar", "শ্যামনগর"] },
+    { name: "Tala", aliases: ["tala", "তালা"] },
+    { name: "Kalaroa", aliases: ["kalaroa", "কলারোয়া", "কলারোয়া"] }
+  ],
+  "Jhenaidah": [
+    { name: "Jhenaidah Sadar", aliases: ["jhenaidah sadar", "ঝিনাইদহ সদর"] },
+    { name: "Kotchandpur", aliases: ["kotchandpur", "কোটচাঁদপুর", "কোটচাদপুর"] },
+    { name: "Maheshpur", aliases: ["maheshpur", "মহেশপুর"] },
+    { name: "Shailkupa", aliases: ["shailkupa", "শৈলকুপা"] },
+    { name: "Harinakundu", aliases: ["harinakundu", "হরিণাকুণ্ডু", "হরিণাকুন্ডু"] }
+  ],
+  "Madaripur": [
+    { name: "Madaripur Sadar", aliases: ["madaripur sadar", "মাদারীপুর সদর"] },
+    { name: "Shibchar", aliases: ["shibchar", "শিবচর"] },
+    { name: "Kalkini", aliases: ["kalkini", "কালকিনি"] },
+    { name: "Rajoir", aliases: ["rajoir", "রাজৈর"] }
+  ],
+  "Rajbari": [
+    { name: "Rajbari Sadar", aliases: ["rajbari sadar", "রাজবাড়ী সদর", "রাজবাড়ি সদর"] },
+    { name: "Pangsha", aliases: ["pangsha", "পাংশা"] },
+    { name: "Goalanda", aliases: ["goalanda", "গোয়ালন্দ", "গোয়ালন্দ"] },
+    { name: "Baliakandi", aliases: ["baliakandi", "বালিয়াকান্দি", "বালিকান্দি"] }
+  ],
+  "Shariatpur": [
+    { name: "Shariatpur Sadar", aliases: ["shariatpur sadar", "শরীয়তপুর সদর"] },
+    { name: "Naria", aliases: ["naria", "নড়িয়া", "নড়িয়া"] },
+    { name: "Zajira", aliases: ["zajira", "জাজিরা"] },
+    { name: "Bhedarganj", aliases: ["bhedarganj", "ভেদরগঞ্জ"] }
+  ],
+  "Kurigram": [
+    { name: "Kurigram Sadar", aliases: ["kurigram sadar", "কুড়িগ্রাম সদর"] },
+    { name: "Nageshwari", aliases: ["nageshwari", "নাগেশ্বরী", "নাগেশ্বরি"] },
+    { name: "Bhurungamari", aliases: ["bhurungamari", "ভুরুঙ্গামারী", "ভুরুঙ্গামারি"] },
+    { name: "Ulipur", aliases: ["ulipur", "উলিপুর"] },
+    { name: "Chilmari", aliases: ["chilmari", "চিলমারী", "চিলমারি"] }
+  ],
+  "Gaibandha": [
+    { name: "Gaibandha Sadar", aliases: ["gaibandha sadar", "গাইবান্ধা সদর"] },
+    { name: "Gobindaganj", aliases: ["gobindaganj", "গোবিন্দগঞ্জ"] },
+    { name: "Sundarganj", aliases: ["sundarganj", "সুন্দরগঞ্জ"] },
+    { name: "Sadullapur", aliases: ["sadullapur", "সাদুল্লাপুর"] },
+    { name: "Palashbari", aliases: ["palashbari", "পলাশবাড়ী", "পলাশবাড়ি"] }
+  ],
+  "Nilphamari": [
+    { name: "Nilphamari Sadar", aliases: ["nilphamari sadar", "নীলফামারী সদর"] },
+    { name: "Saidpur", aliases: ["saidpur", "সৈয়দপুর", "সৈয়দপুর"] },
+    { name: "Domar", aliases: ["domar", "ডোমার"] },
+    { name: "Dimla", aliases: ["dimla", "ডিমলা"] },
+    { name: "Jaldhaka", aliases: ["jaldhaka", "জলঢাকা"] }
+  ],
+  "Panchagarh": [
+    { name: "Panchagarh Sadar", aliases: ["panchagarh sadar", "পঞ্চগড় সদর"] },
+    { name: "Tetulia", aliases: ["tetulia", "তেঁতুলিয়া", "তেতুলিয়া"] },
+    { name: "Boda", aliases: ["boda", "বোদা"] },
+    { name: "Debiganj", aliases: ["debiganj", "দেবীগঞ্জ", "দেবিগঞ্জ"] }
+  ],
+  "Thakurgaon": [
+    { name: "Thakurgaon Sadar", aliases: ["thakurgaon sadar", "ঠাকুরগাঁও সদর"] },
+    { name: "Pirganj", aliases: ["pirganj", "পীরগঞ্জ"] },
+    { name: "Ranisankail", aliases: ["ranisankail", "রাণীশংকৈল", "রানিশংকৈল"] },
+    { name: "Baliadangi", aliases: ["baliadangi", "বালিয়াডাঙ্গী", "বালিয়াডাঙ্গি"] }
+  ],
+  "Dinajpur": [
+    { name: "Dinajpur Sadar", aliases: ["dinajpur sadar", "দিনাজপুর সদর"] },
+    { name: "Birganj", aliases: ["birganj", "বীরগঞ্জ"] },
+    { name: "Bochaganj", aliases: ["bochaganj", "বোচাগঞ্জ"] },
+    { name: "Setabganj", aliases: ["setabganj", "সেতাবগঞ্জ"] },
+    { name: "Parbatipur", aliases: ["parbatipur", "পার্বতীপুর", "পারবতীপুর"] },
+    { name: "Phulbari", aliases: ["phulbari", "ফুলবাড়ী", "ফুলবাড়ি"] },
+    { name: "Hili", aliases: ["hili", "হিলি"] },
+    { name: "Hakimpur", aliases: ["hakimpur", "হাকিমপুর"] },
+    { name: "Chirirbandar", aliases: ["chirirbandar", "চিরিরবন্দর"] }
+  ],
+  "Pirojpur": [
+    { name: "Pirojpur Sadar", aliases: ["pirojpur sadar", "পিরোজপুর সদর"] },
+    { name: "Bhandaria", aliases: ["bhandaria", "ভাণ্ডারিয়া", "ভান্ডারিয়া"] },
+    { name: "Mathbaria", aliases: ["mathbaria", "মঠবাড়িয়া", "মঠবাড়িয়া"] },
+    { name: "Swarupkathi", aliases: ["swarupkathi", "nesarabad", "স্বরূপকাঠি", "নেছারাবাদ"] }
+  ],
+  "Barguna": [
+    { name: "Barguna Sadar", aliases: ["barguna sadar", "বরগুনা সদর"] },
+    { name: "Amtali", aliases: ["amtali", "আমতলী", "আমতলি"] },
+    { name: "Patharghata", aliases: ["patharghata", "পাথরঘাটা"] },
+    { name: "Betagi", aliases: ["betagi", "বেতাগী", "বেতাগি"] }
+  ],
+  "Jhalokathi": [
+    { name: "Jhalokathi Sadar", aliases: ["jhalokathi sadar", "ঝালকাঠি সদর"] },
+    { name: "Nalchhiti", aliases: ["nalchhiti", "নলছিটি"] },
+    { name: "Rajapur", aliases: ["rajapur", "রাজাপুর"] }
+  ],
+  "Chuadanga": [
+    { name: "Chuadanga Sadar", aliases: ["chuadanga sadar", "চুয়াডাঙ্গা সদর"] },
+    { name: "Alamdanga", aliases: ["alamdanga", "আলমডাঙ্গা"] },
+    { name: "Damurhuda", aliases: ["damurhuda", "দামুড়হুদা", "দামুড়হুদা"] },
+    { name: "Jibannagar", aliases: ["jibannagar", "জীবননগর"] }
+  ],
+  "Meherpur": [
+    { name: "Meherpur Sadar", aliases: ["meherpur sadar", "মেহেরপুর সদর"] },
+    { name: "Gangni", aliases: ["gangni", "গাংনী", "গাংনি"] },
+    { name: "Mujibnagar", aliases: ["mujibnagar", "মুজিবনগর"] }
+  ],
+  "Magura": [
+    { name: "Magura Sadar", aliases: ["magura sadar", "মাগুরা সদর"] },
+    { name: "Sreepur", aliases: ["sreepur", "শ্রীপুর"] },
+    { name: "Magura Mohammadpur", aliases: ["magura mohammadpur", "মোহাম্মদপুর, মাগুরা"] },
+    { name: "Shalikha", aliases: ["shalikha", "শালিখা"] }
+  ],
+  "Narail": [
+    { name: "Narail Sadar", aliases: ["narail sadar", "নড়াইল সদর"] },
+    { name: "Lohagara", aliases: ["lohagara", "লোহাগড়া", "লোহাগড়া"] },
+    { name: "Kalia", aliases: ["kalia", "কালিয়া", "কালিয়া"] }
+  ],
+  "Joypurhat": [
+    { name: "Joypurhat Sadar", aliases: ["joypurhat sadar", "জয়পুরহাট সদর"] },
+    { name: "Panchbibi", aliases: ["panchbibi", "পাঁচবিবি"] },
+    { name: "Kalai", aliases: ["kalai", "কালাই"] },
+    { name: "Khetlal", aliases: ["khetlal", "ক্ষেতলাল"] }
+  ],
+  "Chapainawabganj": [
+    { name: "Chapainawabganj Sadar", aliases: ["chapainawabganj sadar", "চাঁপাইনবাবগঞ্জ সদর"] },
+    { name: "Shibganj", aliases: ["shibganj", "শিবগঞ্জ"] },
+    { name: "Gomostapur", aliases: ["gomostapur", "গোমস্তাপুর"] },
+    { name: "Nachole", aliases: ["nachole", "নাচোল"] }
+  ],
+  "Lalmonirhat": [
+    { name: "Lalmonirhat Sadar", aliases: ["lalmonirhat sadar", "লালমনিরহাট সদর"] },
+    { name: "Hatibandha", aliases: ["hatibandha", "হাতীবান্ধা", "হাতিবান্ধা"] },
+    { name: "Patgram", aliases: ["patgram", "পাটগ্রাম"] }
+  ]
 };
 
 /**
  * Smart Bangladesh Address Parser
  * Decomposes unstructured BD addresses into District, Zone, Area, Postcode, and Clean Street.
+ * Supports English, Bengali script, transliterated names, and explicit labels.
  */
 function parseBDAddress(rawAddress) {
   if (!rawAddress || typeof rawAddress !== "string") {
@@ -1077,62 +1600,74 @@ function parseBDAddress(rawAddress) {
 
   const clean = rawAddress.trim().replace(/[\r\n\t]+/g, " ");
 
-  // 1. Extract Postcode (4 digits, e.g. "1216", "1740", "1230")
+  // 1. Extract Postcode (4 digits: ASCII or Bengali numerals [০-৯])
   let postcode = "";
-  const pcMatch = clean.match(/(?:postal\s*code|post\s*code|postcode|zip)?\s*[-:,]?\s*\b([1-9]\d{3})\b/i);
+  const asciiClean = bengaliToAsciiDigits(clean);
+  const pcMatch = asciiClean.match(/(?:postal\s*code|post\s*code|postcode|zip|পোস্ট\s*কোড|পোস্ট|ডাকঘর|পোঃ|পো:)?\s*[-:,=ঃ]?\s*\b([1-9]\d{3})\b/i);
   if (pcMatch) {
     const matchedVal = pcMatch[1];
     const fullMatchIdx = pcMatch.index;
-    const prevChars = clean.substring(Math.max(0, fullMatchIdx - 4), fullMatchIdx);
+    const prevChars = asciiClean.substring(Math.max(0, fullMatchIdx - 4), fullMatchIdx);
     if (!/01\d$/.test(prevChars)) {
       postcode = matchedVal;
     }
   }
 
-  // 2. Identify District & Zone Intelligently
   let matchedDistrict = "";
   let matchedZone = "";
 
-  // A. Check for ISO 3166-2:BD code first (e.g. BD-15 -> Faridpur, BD-18 -> Gazipur)
-  const isoDistrict = detectDistrictFromISOCode(clean);
-  if (isoDistrict) {
-    matchedDistrict = isoDistrict;
-  }
-
-  // B. Check specific non-Dhaka zones from OTHER_CITY_ZONES
-  // E.g. "Kandirpar" (Cumilla), "Sreepur" (Gazipur), "Agrabad" (Chattogram), "Boalmari" (Faridpur)
-  if (!matchedDistrict) {
-    for (const [distName, zones] of Object.entries(OTHER_CITY_ZONES)) {
-      if (distName.toLowerCase() === "dhaka") continue;
-      for (const z of zones) {
-        const zName = typeof z === "string" ? z : z.name;
-        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
-        let found = false;
-        for (const alias of aliases) {
-          const zRegex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
-          if (zRegex.test(clean)) {
-            matchedZone = zName;
-            matchedDistrict = distName;
-            found = true;
-            break;
-          }
-        }
-        if (found) break;
+  // 2A. Check for explicit district label (e.g. "জেলা: ফরিদপুর", "District: Gazipur", "জেলাঃ ঢাকা")
+  const explicitDistMatch = clean.match(/(?:জেলা|District|Dist|Zilla|State|City)[\s:ঃ#\-]+([^\s,;।\n]+)/i);
+  if (explicitDistMatch) {
+    const rawDist = explicitDistMatch[1].trim();
+    for (const d of BD_DISTRICTS) {
+      if (d.name.toLowerCase() === rawDist.toLowerCase() || d.aliases.some(a => a.toLowerCase() === rawDist.toLowerCase() || matchWord(rawDist, a))) {
+        matchedDistrict = d.name;
+        break;
       }
-      if (matchedDistrict) break;
     }
   }
 
-  // C. Check all 63 NON-DHAKA districts FIRST
-  // Crucial: Bangladeshi customers often select "Dhaka" on checkout to pay ৳50 instead of ৳90,
-  // or WooCommerce defaults the state to "Dhaka". By checking non-Dhaka districts first,
-  // we catch their real outside-Dhaka district even if "Dhaka" is present in the address block!
+  // 2B. Check for explicit thana/zone label (e.g. "থানা: শ্রীপুর", "উপজেলা: বোয়ালমারী", "Thana: Mirpur")
+  const explicitThanaMatch = clean.match(/(?:থানা|উপজেলা|Thana|Upazila|Upozila|Police\s*Station|P\.?S\.?)[\s:ঃ#\-]+([^\s,;।\n]+)/i);
+  if (explicitThanaMatch) {
+    const rawThana = explicitThanaMatch[1].trim();
+    for (const [distName, zones] of Object.entries(OTHER_CITY_ZONES)) {
+      for (const z of zones) {
+        const zName = typeof z === "string" ? z : z.name;
+        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+        if (zName.toLowerCase() === rawThana.toLowerCase() || aliases.some(a => a.toLowerCase() === rawThana.toLowerCase() || matchWord(rawThana, a))) {
+          matchedZone = zName;
+          if (!matchedDistrict) matchedDistrict = distName;
+          break;
+        }
+      }
+      if (matchedZone) break;
+    }
+
+    if (!matchedZone) {
+      for (const z of DHAKA_ZONES) {
+        const zName = typeof z === "string" ? z : z.name;
+        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+        if (zName.toLowerCase() === rawThana.toLowerCase() || aliases.some(a => a.toLowerCase() === rawThana.toLowerCase() || matchWord(rawThana, a))) {
+          matchedZone = zName;
+          if (!matchedDistrict) matchedDistrict = "Dhaka";
+          break;
+        }
+      }
+    }
+
+    if (!matchedZone && rawThana.length >= 3) {
+      matchedZone = rawThana;
+    }
+  }
+
+  // 2C. Check all 63 NON-DHAKA districts FIRST (avoids Dhaka default when customer is outside Dhaka)
   if (!matchedDistrict) {
     const nonDhakaDistricts = BD_DISTRICTS.filter(d => d.name !== "Dhaka");
     for (const d of nonDhakaDistricts) {
       for (const alias of d.aliases) {
-        const regex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
-        if (regex.test(clean)) {
+        if (matchWord(clean, alias)) {
           matchedDistrict = d.name;
           break;
         }
@@ -1141,8 +1676,25 @@ function parseBDAddress(rawAddress) {
     }
   }
 
-  // D. Check non-Dhaka postcode: Dhaka city postcodes are 1000-1236.
-  // Postcodes >= 1300 firmly belong outside Dhaka or in Sub-Dhaka districts
+  // 2D. If no non-Dhaka district was found, check if Dhaka city or Dhaka postcode (1000-1236) is present
+  if (!matchedDistrict) {
+    const isDhakaPc = postcode && parseInt(postcode, 10) >= 1000 && parseInt(postcode, 10) <= 1236;
+    const dhakaObj = BD_DISTRICTS.find(d => d.name === "Dhaka");
+    const hasDhakaWord = dhakaObj && dhakaObj.aliases.some(a => matchWord(clean, a));
+    if (isDhakaPc || hasDhakaWord) {
+      matchedDistrict = "Dhaka";
+    }
+  }
+
+  // 2E. Check for ISO 3166-2:BD code (e.g. BD-15 -> Faridpur, BD-18 -> Gazipur)
+  if (!matchedDistrict) {
+    const isoDistrict = detectDistrictFromISOCode(clean);
+    if (isoDistrict) {
+      matchedDistrict = isoDistrict;
+    }
+  }
+
+  // 2F. Check non-Dhaka postcode ranges
   if (!matchedDistrict && postcode) {
     const pcNum = parseInt(postcode, 10);
     if (pcNum >= 1700 && pcNum <= 1751) {
@@ -1152,34 +1704,43 @@ function parseBDAddress(rawAddress) {
     } else if (pcNum >= 1340 && pcNum <= 1349) {
       matchedDistrict = "Dhaka";
       matchedZone = "Savar";
+    } else if (pcNum >= 9300 && pcNum <= 9399) {
+      matchedDistrict = "Bagerhat";
+    } else if (pcNum >= 7800 && pcNum <= 7899) {
+      matchedDistrict = "Faridpur";
     }
   }
 
-  // E. Finally, check Dhaka city or Dhaka zones ONLY if no non-Dhaka district was detected
-  if (!matchedDistrict) {
-    const dhakaObj = BD_DISTRICTS.find(d => d.name === "Dhaka");
-    if (dhakaObj) {
-      for (const alias of dhakaObj.aliases) {
-        const regex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
-        if (regex.test(clean)) {
-          matchedDistrict = "Dhaka";
-          break;
+  // 2G. Check specific non-Dhaka zones from OTHER_CITY_ZONES with full Bengali alias matching
+  if (!matchedZone) {
+    for (const [distName, zones] of Object.entries(OTHER_CITY_ZONES)) {
+      if (distName.toLowerCase() === "dhaka") continue;
+      for (const z of zones) {
+        const zName = typeof z === "string" ? z : z.name;
+        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+        let found = false;
+        for (const alias of aliases) {
+          if (matchWord(clean, alias)) {
+            matchedZone = zName;
+            if (!matchedDistrict) matchedDistrict = distName;
+            found = true;
+            break;
+          }
         }
+        if (found) break;
       }
+      if (matchedZone && matchedDistrict) break;
     }
   }
 
-  // 3. Identify Zone / Thana
-
-  // If district is Dhaka or unknown, check Dhaka zones
+  // 2H. Check Dhaka city or Dhaka zones ONLY if no non-Dhaka district was detected
   if (!matchedDistrict || matchedDistrict === "Dhaka") {
     for (const z of DHAKA_ZONES) {
       const zName = typeof z === "string" ? z : z.name;
       const aliases = typeof z === "string" ? [z] : z.aliases;
       let found = false;
       for (const alias of aliases) {
-        const zRegex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
-        if (zRegex.test(clean)) {
+        if (matchWord(clean, alias)) {
           matchedZone = zName;
           found = true;
           if (!matchedDistrict) {
@@ -1198,75 +1759,63 @@ function parseBDAddress(rawAddress) {
     }
   }
 
-  // Check specific zones for known districts or other cities
-  if (!matchedZone) {
-    const targetDist = matchedDistrict || "";
-    if (OTHER_CITY_ZONES[targetDist]) {
-      for (const z of OTHER_CITY_ZONES[targetDist]) {
-        const zName = typeof z === "string" ? z : z.name;
-        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
-        let found = false;
-        for (const alias of aliases) {
-          const zRegex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
-          if (zRegex.test(clean)) {
-            matchedZone = zName;
-            found = true;
-            break;
-          }
+  if (!matchedDistrict) {
+    const dhakaObj = BD_DISTRICTS.find(d => d.name === "Dhaka");
+    if (dhakaObj) {
+      for (const alias of dhakaObj.aliases) {
+        if (matchWord(clean, alias)) {
+          matchedDistrict = "Dhaka";
+          break;
         }
-        if (found) break;
-      }
-    } else {
-      // Scan all other city zones if district was not matched yet
-      for (const [distName, zones] of Object.entries(OTHER_CITY_ZONES)) {
-        for (const z of zones) {
-          const zName = typeof z === "string" ? z : z.name;
-          const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
-          let found = false;
-          for (const alias of aliases) {
-            const zRegex = new RegExp(`(?:^|[\\s,;\\/\\-\\(\\[])${alias.replace(".", "\\.")}(?:$|[\\s,;\\/\\-\\)\\]0-9])`, "i");
-            if (zRegex.test(clean)) {
-              matchedZone = zName;
-              if (!matchedDistrict) matchedDistrict = distName;
-              found = true;
-              break;
-            }
-          }
-          if (found) break;
-        }
-        if (matchedZone) break;
       }
     }
   }
 
-  // Check for "<Word> Sadar"
+  // 3. Zone / Thana Fallbacks
+  // Check for "<Word> Sadar" or "<Word> সদর"
   if (!matchedZone) {
-    const sadarMatch = clean.match(/([a-zA-Z]+)\s+Sadar\b/i);
+    const sadarMatch = clean.match(/([a-zA-Z\u0980-\u09FF]+)\s+(?:Sadar|সদর)\b/i);
     if (sadarMatch) {
-      matchedZone = `${sadarMatch[1]} Sadar`;
-      if (!matchedDistrict) {
-        const dObj = BD_DISTRICTS.find(d => d.name.toLowerCase() === sadarMatch[1].toLowerCase());
-        if (dObj) matchedDistrict = dObj.name;
+      const rawSadar = sadarMatch[1];
+      for (const d of BD_DISTRICTS) {
+        if (d.name.toLowerCase() === rawSadar.toLowerCase() || d.aliases.some(a => a.toLowerCase() === rawSadar.toLowerCase() || matchWord(rawSadar, a))) {
+          matchedZone = `${d.name} Sadar`;
+          if (!matchedDistrict) matchedDistrict = d.name;
+          break;
+        }
       }
+      if (!matchedZone) matchedZone = `${rawSadar} Sadar`;
     }
   }
 
-  // Check token preceding district or ISO code (e.g. "Sreepur, Gazipur" or "Boalmari, BD-15")
+  // Check token preceding district or ISO code (e.g. "Sreepur, Gazipur" or "বোয়ালমারী, ফরিদপুর")
   if (!matchedZone && matchedDistrict) {
-    const parts = clean.split(/[,;\n]+/).map(p => p.trim()).filter(Boolean);
+    const parts = clean.split(/[,;\n।]+/).map(p => p.trim()).filter(Boolean);
+    const dObj = BD_DISTRICTS.find(d => d.name === matchedDistrict);
+    const dAliases = dObj ? [dObj.name, ...dObj.aliases] : [matchedDistrict];
     const dIdx = parts.findIndex(p =>
-      new RegExp(`\\b${matchedDistrict}\\b`, "i").test(p) ||
+      dAliases.some(a => matchWord(p, a)) ||
       /\bBD[-_\s]?[0-6]?\d\b/i.test(p)
     );
     if (dIdx > 0) {
       const prev = parts[dIdx - 1];
-      if (prev.length <= 30 && !/^(road|house|flat|plot|block|holding)/i.test(prev)) {
-        matchedZone = prev;
+      if (prev.length <= 30 && !/^(road|house|flat|plot|block|holding|বাসা|বাড়ি|বাড়ি|রোড|রাস্তা|গ্রাম|পোস্ট|ডাকঘর)/i.test(prev)) {
+        if (OTHER_CITY_ZONES[matchedDistrict]) {
+          for (const z of OTHER_CITY_ZONES[matchedDistrict]) {
+            const zName = typeof z === "string" ? z : z.name;
+            const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+            if (aliases.some(a => matchWord(prev, a))) {
+              matchedZone = zName;
+              break;
+            }
+          }
+        }
+        if (!matchedZone) matchedZone = prev;
       }
     }
   }
 
-  // Fallbacks
+  // Final Defaults
   if (!matchedDistrict) {
     matchedDistrict = "Dhaka";
   }
@@ -1274,13 +1823,15 @@ function parseBDAddress(rawAddress) {
     matchedZone = matchedDistrict === "Dhaka" ? "Dhaka Sadar" : `${matchedDistrict} Sadar`;
   }
 
-  // 4. Identify Area / Sub-area (Sector, Block, Ward have highest priority)
+  // 4. Identify Area / Sub-area (Sector, Block, Ward, Gram)
   let matchedArea = "";
-  const priorityAreaMatch = clean.match(/\b(Sector\s*[-#]?\s*\d+|Block\s*[-#]?\s*[A-Z0-9]+|Ward\s*[-#]?\s*\d+)\b/i);
+  const priorityAreaMatch = clean.match(/\b(Sector\s*[-#]?\s*\d+|Block\s*[-#]?\s*[A-Z0-9]+|Ward\s*[-#]?\s*\d+)\b/i) ||
+                            clean.match(/(সেক্টর\s*[-#নং]?\s*[০-৯\d]+|ব্লক\s*[-#নং]?\s*[a-zA-Z0-9\u0980-\u09FF]+|ওয়ার্ড\s*[-#নং]?\s*[০-৯\d]+)/i);
   if (priorityAreaMatch) {
     matchedArea = priorityAreaMatch[1];
   } else {
-    const fallbackAreaMatch = clean.match(/\b(Road\s*[-#]?\s*\d+|Mirpur\s*[-#]?\s*\d+|Uttara\s*[-#]?\s*\d+|Dhanmondi\s*[-#]?\s*\d+)\b/i);
+    const fallbackAreaMatch = clean.match(/\b(Road\s*[-#]?\s*\d+|Mirpur\s*[-#]?\s*\d+|Uttara\s*[-#]?\s*\d+|Dhanmondi\s*[-#]?\s*\d+)\b/i) ||
+                              clean.match(/(রোড\s*[-#নং]?\s*[০-৯\d]+|রাস্তা\s*[-#নং]?\s*[০-৯\d]+|গ্রাম\s*[:ঃ#\-]?\s*[^\s,;।\n]+)/i);
     if (fallbackAreaMatch) {
       matchedArea = fallbackAreaMatch[1];
     }
@@ -1290,21 +1841,27 @@ function parseBDAddress(rawAddress) {
   let streetAddress = clean;
   if (postcode) {
     streetAddress = streetAddress.replace(new RegExp(`[-:,]?\\s*${postcode}\\b`, "g"), "");
+    const bgDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    const bgPc = postcode.split('').map(c => bgDigits[parseInt(c, 10)] || c).join('');
+    streetAddress = streetAddress.replace(new RegExp(`[-:,]?\\s*${bgPc}`, "g"), "");
   }
-  streetAddress = streetAddress
-    .replace(new RegExp(`[,;\\s]+${matchedDistrict}\\b.*$`, "i"), "")
-    .replace(/[,;\s]+\bBD[-_\s]?[0-6]?\d\b.*$/i, "")
-    .trim();
+
+  streetAddress = streetAddress.replace(/[-:,;\s।]+$/, "").trim();
+  const distObjForClean = BD_DISTRICTS.find(d => d.name === matchedDistrict);
+  const distAliasesForClean = distObjForClean ? [distObjForClean.name, ...distObjForClean.aliases] : [matchedDistrict];
+  for (const a of distAliasesForClean) {
+    const esc = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    streetAddress = streetAddress.replace(new RegExp(`(?:[-:,;\\s।]+(?:জেলা[:\\sঃ]*)?${esc})+[-:,;\\s।]*$`, "i"), "");
+  }
+  streetAddress = streetAddress.replace(/[,;\s]+\bBD[-_\s]?[0-6]?\d\b.*$/i, "").trim();
 
   // Also remove trailing zone if it is at the very end of streetAddress
   if (matchedZone) {
     const escapedZone = matchedZone.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    streetAddress = streetAddress
-      .replace(new RegExp(`[,;\\s]+${escapedZone}\\b$`, "i"), "")
-      .trim();
+    streetAddress = streetAddress.replace(new RegExp(`[,;\\s]+${escapedZone}\\b$`, "i"), "").trim();
   }
 
-  streetAddress = streetAddress.replace(/^[,;\\s]+|[,;\\s]+$/g, "");
+  streetAddress = streetAddress.replace(/^[,;\\s।]+|[,;\\s।]+$/g, "");
 
   if (!streetAddress || streetAddress.length < 3) {
     streetAddress = clean;
@@ -1347,33 +1904,25 @@ function normalizeAddressForPathao(rawAddress) {
   // 1. Remove carriage returns / line breaks and multiple spaces
   addr = addr.replace(/[\r\n\t]+/g, ", ").replace(/\s{2,}/g, " ");
 
-  // 2. Remove accidental phone numbers embedded in address (01XXXXXXXXX or +8801XXXXXXXXX)
+  // 2. Remove accidental phone numbers embedded in address (01XXXXXXXXX or +8801XXXXXXXXX or Bengali digits)
   addr = addr.replace(/(?:\+?88)?01[3-9]\d{8}\b/g, "").trim();
+  addr = addr.replace(/(?:\+?৮৮)?০১[৩-৯][০-৯]{8}/g, "").trim();
 
   // 3. Remove accidental email addresses embedded in address
   addr = addr.replace(/[\w.+-]+@[\w-]+\.[\w.-]+\b/g, "").trim();
 
   // 4. Standardize common abbreviations & labels in English
-  // House: "House # 5", "House 5", "H# 5", "H-5", "House no. 5" -> "House 5"
   addr = addr.replace(/\b(?:House(?:\s*(?:no|num|number))?|Hse|Hous|Hs|H)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "House $1");
-
-  // Road: "Road # 11", "Road 11", "R# 11", "R-11", "Road no. 11" -> "Road 11"
   addr = addr.replace(/\b(?:Road(?:\s*(?:no|num|number))?|Rood|Rd|Ro|R)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Road $1");
-
-  // Sector: "Sector # 4", "Sector 4", "Sec-4", "Sec# 4" -> "Sector 4"
   addr = addr.replace(/\b(?:Sector(?:\s*(?:no|num|number))?|Sect|Sec)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Sector $1");
-
-  // Block: "Block # C", "Block-C", "Blk C", "Block C" -> "Block C"
   addr = addr.replace(/\b(?:Block(?:\s*(?:no|num|number))?|Blck|Blk)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Block ${val.toUpperCase()}`);
-
-  // Flat / Apartment: "Flat # 4A", "Flat-4A", "Apt# 3B", "Apartment 3B", "Flat 4A" -> "Flat 4A"
   addr = addr.replace(/\b(?:Apartment|Flat(?:\s*(?:no|num|number))?|Flt|Apt|Fl)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Flat ${val.toUpperCase()}`);
 
-  // Bengali common labels
-  addr = addr.replace(/(?:গ্রাম|Vill|Village)[\s:]*([^\s,;]+)/gi, "গ্রাম: $1");
-  addr = addr.replace(/(?:ডাকঘর|পোস্ট|পোঃ|Post|P\.?O\.?)[\s:]*([^\s,;]+)/gi, "ডাকঘর: $1");
-  addr = addr.replace(/(?:থানা|উপজেলা|Thana|Upazila)[\s:]*([^\s,;]+)/gi, "থানা: $1");
-  addr = addr.replace(/(?:জেলা|District|Dist)[\s:]*([^\s,;]+)/gi, "জেলা: $1");
+  // Bengali common labels (cleanly including ঃ / : without corrupting)
+  addr = addr.replace(/(?:গ্রাম|Vill|Village)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "গ্রাম: $1");
+  addr = addr.replace(/(?:ডাকঘর|পোস্ট|পোঃ|পো:|Post|P\.?O\.?)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "ডাকঘর: $1");
+  addr = addr.replace(/(?:থানা|উপজেলা|Thana|Upazila|Upozila)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "থানা: $1");
+  addr = addr.replace(/(?:জেলা|District|Dist|Zilla)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "জেলা: $1");
 
   // 5. Clean punctuation & extra commas
   addr = addr
@@ -1391,15 +1940,23 @@ function normalizeAddressForPathao(rawAddress) {
   // 7. Remove trailing redundant district/postcode/ISO repetitions from street address
   addr = addr.replace(/(?:[,;\s]+\bBD[-_\s]?[0-6]?\d\b)+/gi, "");
   if (parsed && parsed.district) {
-    const distEscaped = parsed.district.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     if (parsed.postcode) {
       addr = addr.replace(new RegExp(`[-:,]?\\s*\\b${parsed.postcode}\\b`, "g"), "");
+      const bgDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+      const bgPc = parsed.postcode.split('').map(c => bgDigits[parseInt(c, 10)] || c).join('');
+      addr = addr.replace(new RegExp(`[-:,]?\\s*${bgPc}`, "g"), "");
     }
-    // Remove repeated district name at the very end
-    addr = addr.replace(new RegExp(`(?:[,\\s]+${distEscaped})+$`, "i"), "");
+
+    addr = addr.replace(/[-:,;\s।]+$/, "").trim();
+    const distObj = BD_DISTRICTS.find(d => d.name === parsed.district);
+    const aliases = distObj ? [distObj.name, ...distObj.aliases] : [parsed.district];
+    for (const a of aliases) {
+      const esc = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      addr = addr.replace(new RegExp(`(?:[-:,;\\s।]+(?:জেলা[:\\sঃ]*)?${esc})+[-:,;\\s।]*$`, "i"), "");
+    }
   }
 
-  // 8. Title Case English words in street address (e.g. mirpur 10 -> Mirpur 10)
+  // 8. Title Case English words in street address
   addr = addr.replace(/\b([a-z])([a-z0-9]*)\b/g, (match, first, rest) => {
     if (/^(?:and|of|in|at|to|near|opposite)$/i.test(match)) return match.toLowerCase();
     return first.toUpperCase() + rest;
@@ -1418,11 +1975,12 @@ function normalizeAddressForPathao(rawAddress) {
 /**
  * Build complete modified full address for delivery labels & courier input.
  * Combines cleaned street address with properly resolved City/District, Zone, and Postcode.
+ * Unicode and alias-aware: avoids duplicating district or zone in either English or Bengali.
  */
 function buildFullAddress(rawAddress, parsedData) {
   if (!rawAddress || typeof rawAddress !== "string" || !rawAddress.trim()) return "";
 
-  // 1. Get base cleaned street address (cleans typos, abbreviations, embedded phones/emails, trailing ISO codes)
+  // 1. Get base cleaned street address
   let base = normalizeAddressForPathao(rawAddress);
 
   // 2. Resolve location components
@@ -1439,29 +1997,51 @@ function buildFullAddress(rawAddress, parsedData) {
 
   if (!district && !zone) return base;
 
-  const baseLower = base.toLowerCase();
   let parts = [base];
 
-  // Include zone if specific and not already in base
+  // Resolve zone aliases
+  let zoneAliases = [zone];
+  let foundZoneObj = null;
+  if (district && OTHER_CITY_ZONES[district]) {
+    foundZoneObj = OTHER_CITY_ZONES[district].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === zone.toLowerCase());
+  }
+  if (!foundZoneObj) {
+    foundZoneObj = DHAKA_ZONES.find(z => z.name.toLowerCase() === zone.toLowerCase());
+  }
+  if (foundZoneObj && typeof foundZoneObj === "object") {
+    zoneAliases = [foundZoneObj.name, ...(foundZoneObj.aliases || [])];
+  }
+
+  // Resolve district aliases
+  let distAliases = [district];
+  const distObj = BD_DISTRICTS.find(d => d.name === district);
+  if (distObj) distAliases = [distObj.name, ...distObj.aliases];
+
+  // Include zone if specific and not already in base (checking all aliases)
   if (zone && !/^(?:all|sadar|zone)$/i.test(zone)) {
-    const zoneLower = zone.toLowerCase();
-    if (!baseLower.includes(zoneLower)) {
+    const hasZone = zoneAliases.some(a => matchWord(base, a));
+    if (!hasZone) {
       parts.push(zone);
     }
   }
 
-  // Include district/city if not already in base
+  // Include district/city if not already in base (checking all aliases)
   if (district) {
-    const distLower = district.toLowerCase();
-    if (!baseLower.includes(distLower)) {
+    const hasDist = distAliases.some(a => matchWord(base, a));
+    if (!hasDist) {
       parts.push(district);
     }
   }
 
-  // Include postcode if present and not in base
-  if (postcode && !baseLower.includes(postcode)) {
-    let last = parts.pop();
-    parts.push(`${last} - ${postcode}`);
+  // Include postcode if present and not in base (checking ASCII & Bengali digits)
+  if (postcode) {
+    const bgDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    const bgPc = postcode.split('').map(c => bgDigits[parseInt(c, 10)] || c).join('');
+    const hasPc = base.includes(postcode) || base.includes(bgPc);
+    if (!hasPc) {
+      let last = parts.pop();
+      parts.push(`${last} - ${postcode}`);
+    }
   }
 
   let full = parts.filter(Boolean).join(", ");
@@ -2325,6 +2905,7 @@ if (typeof module !== "undefined" && module.exports) {
     BD_ISO_DISTRICTS,
     detectDistrictFromISOCode,
     getISOCodeFromDistrict,
+    matchWord,
     buildFullAddress
   };
 }

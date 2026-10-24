@@ -118,6 +118,39 @@ assert.strictEqual(addr8.district, "Dhaka", "Case 8 Bengali district mismatch");
 assert.strictEqual(addr8.zone, "Uttara", "Case 8 Bengali zone mismatch");
 console.log('  ✅ Case 8: Bengali script address parsed correctly');
 
+// Case 9: Explicit Bengali labels (Gram, Dakghor, Thana, Jilla)
+const addr9 = parseBDAddress("গ্রাম: রামপুর, ডাকঘর: জয়দেবপুর, থানা: শ্রীপুর, জেলা: গাজীপুর");
+assert.strictEqual(addr9.district, "Gazipur", "Case 9 District mismatch");
+assert.strictEqual(addr9.zone, "Sreepur", "Case 9 Zone mismatch");
+assert.strictEqual(addr9.cityType, "Sub Dhaka", "Case 9 CityType mismatch");
+console.log('  ✅ Case 9: Explicit Bengali Gram/Dakghor/Thana/Jilla parsed correctly');
+
+// Case 10: Bengali Visarga & Boalmari Faridpur
+const addr10 = parseBDAddress("গ্রামঃ কাশিমপুর, ডাকঘরঃ কাশিমপুর, থানাঃ বোয়ালমারী, জেলাঃ ফরিদপুর");
+assert.strictEqual(addr10.district, "Faridpur", "Case 10 District mismatch");
+assert.strictEqual(addr10.zone, "Boalmari", "Case 10 Zone mismatch");
+assert.strictEqual(addr10.cityType, "Outside Dhaka", "Case 10 CityType mismatch");
+console.log('  ✅ Case 10: Bengali Visarga & Boalmari, Faridpur parsed correctly');
+
+// Case 11: Outside hub Bengali script without explicit labels
+const addr11 = parseBDAddress("বোয়ালমারী, ফরিদপুর");
+assert.strictEqual(addr11.district, "Faridpur", "Case 11 District mismatch");
+assert.strictEqual(addr11.zone, "Boalmari", "Case 11 Zone mismatch");
+console.log('  ✅ Case 11: Boalmari, Faridpur in Bengali script parsed correctly');
+
+// Case 12: Major hub Bengali script (Agrabad, Chattogram)
+const addr12 = parseBDAddress("আগ্রাবাদ, চট্টগ্রাম");
+assert.strictEqual(addr12.district, "Chattogram", "Case 12 District mismatch");
+assert.strictEqual(addr12.zone, "Agrabad", "Case 12 Zone mismatch");
+console.log('  ✅ Case 12: Agrabad, Chattogram in Bengali script parsed correctly');
+
+// Case 13: Bengali numerals postcode [০-৯]
+const addr13 = parseBDAddress("বাসা ১২, রোড ৪, সেক্টর ৭, উত্তরা, ঢাকা - ১২১৬");
+assert.strictEqual(addr13.district, "Dhaka", "Case 13 District mismatch");
+assert.strictEqual(addr13.zone, "Uttara", "Case 13 Zone mismatch");
+assert.strictEqual(addr13.postcode, "1216", "Case 13 Bengali postcode mismatch");
+console.log('  ✅ Case 13: Bengali numerals postcode 1216 parsed correctly');
+
 // =========================================================================
 // Feature 5: Pathao Bulk Batch CSV Generation Tests
 // =========================================================================

@@ -3164,25 +3164,22 @@
     if (!rawAddress || typeof rawAddress !== "string") return "";
     let addr = rawAddress.trim().replace(/[\r\n\t]+/g, ", ").replace(/\s{2,}/g, " ");
     addr = addr.replace(/(?:\+?88)?01[3-9]\d{8}\b/g, "").trim();
+    addr = addr.replace(/(?:\+?৮৮)?০১[৩-৯][০-৯]{8}/g, "").trim();
     addr = addr.replace(/[\w.+-]+@[\w-]+\.[\w.-]+\b/g, "").trim();
-    // House: "House # 5", "House 5", "H# 5", "H-5", "House no. 5" -> "House 5"
+
+    // Standardize English abbreviations
     addr = addr.replace(/\b(?:House(?:\s*(?:no|num|number))?|Hse|Hous|Hs|H)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "House $1");
-
-    // Road: "Road # 11", "Road 11", "R# 11", "R-11", "Road no. 11" -> "Road 11"
     addr = addr.replace(/\b(?:Road(?:\s*(?:no|num|number))?|Rood|Rd|Ro|R)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Road $1");
-
-    // Sector: "Sector # 4", "Sector 4", "Sec-4", "Sec# 4" -> "Sector 4"
     addr = addr.replace(/\b(?:Sector(?:\s*(?:no|num|number))?|Sect|Sec)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Sector $1");
-
-    // Block: "Block # C", "Block-C", "Blk C", "Block C" -> "Block C"
     addr = addr.replace(/\b(?:Block(?:\s*(?:no|num|number))?|Blck|Blk)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Block ${val.toUpperCase()}`);
-
-    // Flat / Apartment: "Flat # 4A", "Flat-4A", "Apt# 3B", "Apartment 3B", "Flat 4A" -> "Flat 4A"
     addr = addr.replace(/\b(?:Apartment|Flat(?:\s*(?:no|num|number))?|Flt|Apt|Fl)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Flat ${val.toUpperCase()}`);
-    addr = addr.replace(/(?:গ্রাম|Vill|Village)[\s:]*([^\s,;]+)/gi, "গ্রাম: $1");
-    addr = addr.replace(/(?:ডাকঘর|পোস্ট|পোঃ|Post|P\.?O\.?)[\s:]*([^\s,;]+)/gi, "ডাকঘর: $1");
-    addr = addr.replace(/(?:থানা|উপজেলা|Thana|Upazila)[\s:]*([^\s,;]+)/gi, "থানা: $1");
-    addr = addr.replace(/(?:জেলা|District|Dist)[\s:]*([^\s,;]+)/gi, "জেলা: $1");
+
+    // Bengali common labels (cleanly including ঃ / : without corrupting)
+    addr = addr.replace(/(?:গ্রাম|Vill|Village)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "গ্রাম: $1");
+    addr = addr.replace(/(?:ডাকঘর|পোস্ট|পোঃ|পো:|Post|P\.?O\.?)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "ডাকঘর: $1");
+    addr = addr.replace(/(?:থানা|উপজেলা|Thana|Upazila|Upozila)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "থানা: $1");
+    addr = addr.replace(/(?:জেলা|District|Dist|Zilla)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "জেলা: $1");
+
     addr = addr.replace(/[;\\]+/g, ",").replace(/\s*,\s*/g, ", ").replace(/,\s*,+/g, ", ").replace(/^[,.\s-]+|[,.\s-]+$/g, "");
     let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
     if (!parseBD && typeof require !== "undefined") {
@@ -3191,11 +3188,22 @@
     const parsed = parseBD ? parseBD(rawAddress) : null;
     addr = addr.replace(/(?:[,;\s]+\bBD[-_\s]?[0-6]?\d\b)+/gi, "");
     if (parsed && parsed.district) {
-      const distEscaped = parsed.district.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       if (parsed.postcode) {
         addr = addr.replace(new RegExp(`[-:,]?\\s*\\b${parsed.postcode}\\b`, "g"), "");
+        const bgDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+        const bgPc = parsed.postcode.split('').map(c => bgDigits[parseInt(c, 10)] || c).join('');
+        addr = addr.replace(new RegExp(`[-:,]?\\s*${bgPc}`, "g"), "");
       }
-      addr = addr.replace(new RegExp(`(?:[,\\s]+${distEscaped})+$`, "i"), "");
+
+      let distAliases = [parsed.district];
+      if (typeof BD_DISTRICTS !== "undefined") {
+        const dObj = BD_DISTRICTS.find(d => d.name === parsed.district);
+        if (dObj) distAliases = [dObj.name, ...dObj.aliases];
+      }
+      for (const a of distAliases) {
+        const esc = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        addr = addr.replace(new RegExp(`(?:[,\\s]+(?:জেলা[:\\sঃ]*)?${esc})+$`, "i"), "");
+      }
     }
     addr = addr.replace(/\b([a-z])([a-z0-9]*)\b/g, (match, first, rest) => {
       if (/^(?:and|of|in|at|to|near|opposite)$/i.test(match)) return match.toLowerCase();
@@ -3208,6 +3216,7 @@
   /**
    * Build complete modified full address for delivery labels & courier input.
    * Combines cleaned street address with properly resolved City/District, Zone, and Postcode.
+   * Unicode and alias-aware: avoids duplicating district or zone in either English or Bengali.
    */
   function buildFullAddress(rawAddress, parsedData) {
     let fn = null;
@@ -3238,26 +3247,55 @@
 
     if (!district && !zone) return base;
 
-    const baseLower = base.toLowerCase();
     let parts = [base];
 
+    // Helper match function
+    const hasWord = (text, word) => {
+      if (!text || !word) return false;
+      const esc = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = `(?:^|[\\s,;:\\/\\\\_\\-\\(\\)\\[\\]{}।ঃ|#])${esc}(?:ে|ের|য়|য়)?(?:$|[\\s,;:\\/\\\\_\\-\\(\\)\\[\\]{}।ঃ|#0-9])`;
+      return new RegExp(pattern, "i").test(text);
+    };
+
+    // Zone aliases
+    let zoneAliases = [zone];
+    if (typeof OTHER_CITY_ZONES !== "undefined" && OTHER_CITY_ZONES[district]) {
+      const fz = OTHER_CITY_ZONES[district].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === zone.toLowerCase());
+      if (fz && typeof fz === "object") zoneAliases = [fz.name, ...(fz.aliases || [])];
+    } else if (typeof DHAKA_ZONES !== "undefined") {
+      const fz = DHAKA_ZONES.find(z => (typeof z === "object" ? z.name : z).toLowerCase() === zone.toLowerCase());
+      if (fz && typeof fz === "object") zoneAliases = [fz.name, ...(fz.aliases || [])];
+    }
+
+    // District aliases
+    let distAliases = [district];
+    if (typeof BD_DISTRICTS !== "undefined") {
+      const fd = BD_DISTRICTS.find(d => d.name === district);
+      if (fd) distAliases = [fd.name, ...fd.aliases];
+    }
+
     if (zone && !/^(?:all|sadar|zone)$/i.test(zone)) {
-      const zoneLower = zone.toLowerCase();
-      if (!baseLower.includes(zoneLower)) {
+      const hasZone = zoneAliases.some(a => hasWord(base, a));
+      if (!hasZone) {
         parts.push(zone);
       }
     }
 
     if (district) {
-      const distLower = district.toLowerCase();
-      if (!baseLower.includes(distLower)) {
+      const hasDist = distAliases.some(a => hasWord(base, a));
+      if (!hasDist) {
         parts.push(district);
       }
     }
 
-    if (postcode && !baseLower.includes(postcode)) {
-      let last = parts.pop();
-      parts.push(`${last} - ${postcode}`);
+    if (postcode) {
+      const bgDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+      const bgPc = postcode.split('').map(c => bgDigits[parseInt(c, 10)] || c).join('');
+      const hasPc = base.includes(postcode) || base.includes(bgPc);
+      if (!hasPc) {
+        let last = parts.pop();
+        parts.push(`${last} - ${postcode}`);
+      }
     }
 
     let full = parts.filter(Boolean).join(", ");
@@ -3582,12 +3620,30 @@
             chipsRow.innerHTML = "";
             const currentValLower = (addrInput.value || "").toLowerCase();
 
-            const addChip = (label, valToInsert) => {
+            let allOtherZones = typeof OTHER_CITY_ZONES !== "undefined" ? OTHER_CITY_ZONES : {};
+            let dhakaZones = typeof DHAKA_ZONES !== "undefined" ? DHAKA_ZONES : [];
+            let allDistricts = typeof BD_DISTRICTS !== "undefined" ? BD_DISTRICTS : [];
+
+            if (typeof require !== "undefined") {
+              try {
+                const pMod = require("./parser.js");
+                if (pMod.OTHER_CITY_ZONES) allOtherZones = pMod.OTHER_CITY_ZONES;
+                if (pMod.DHAKA_ZONES) dhakaZones = pMod.DHAKA_ZONES;
+                if (pMod.BD_DISTRICTS) allDistricts = pMod.BD_DISTRICTS;
+              } catch (e) {}
+            }
+
+            const isAlreadyIn = (val, aliases = []) => {
+              const checkList = [val, ...(aliases || [])].filter(Boolean);
+              return checkList.some(a => currentValLower.includes(a.toLowerCase()));
+            };
+
+            const addChip = (label, valToInsert, aliases = []) => {
               if (!valToInsert) return;
               const chip = document.createElement("button");
               chip.type = "button";
               chip.className = "deen-ptc-chip";
-              const alreadyIn = currentValLower.includes(valToInsert.toLowerCase());
+              const alreadyIn = isAlreadyIn(valToInsert, aliases);
               chip.innerHTML = alreadyIn ? `✓ ${escapeHTML(label)}` : `+ ${escapeHTML(label)}`;
               chip.title = alreadyIn ? `'${valToInsert}' is in address box` : `Click to append '${valToInsert}' to address input box`;
               if (alreadyIn) {
@@ -3616,13 +3672,25 @@
             };
 
             if (parsed.district) {
-              addChip(parsed.district, parsed.district);
+              const dObj = allDistricts.find(d => d.name === parsed.district);
+              const distAliases = dObj ? [dObj.name, ...dObj.aliases] : [parsed.district];
+              addChip(parsed.district, parsed.district, distAliases);
             }
             if (parsed.zone && !/^(?:all|sadar|zone)$/i.test(parsed.zone)) {
-              addChip(parsed.zone, parsed.zone);
+              let zAliases = [parsed.zone];
+              if (allOtherZones[parsed.district]) {
+                const fz = allOtherZones[parsed.district].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === parsed.zone.toLowerCase());
+                if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
+              } else if (dhakaZones) {
+                const fz = dhakaZones.find(z => (typeof z === "object" ? z.name : z).toLowerCase() === parsed.zone.toLowerCase());
+                if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
+              }
+              addChip(parsed.zone, parsed.zone, zAliases);
             }
             if (parsed.postcode) {
-              addChip(parsed.postcode, parsed.postcode);
+              const bgDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+              const bgPc = parsed.postcode.split('').map(c => bgDigits[parseInt(c, 10)] || c).join('');
+              addChip(parsed.postcode, parsed.postcode, [parsed.postcode, bgPc]);
             }
           }
 
@@ -3696,6 +3764,19 @@
             let matchedCity = false;
             let matchedZone = false;
 
+            let allDistricts = typeof BD_DISTRICTS !== "undefined" ? BD_DISTRICTS : [];
+            let allOtherZones = typeof OTHER_CITY_ZONES !== "undefined" ? OTHER_CITY_ZONES : {};
+            let dhakaZones = typeof DHAKA_ZONES !== "undefined" ? DHAKA_ZONES : [];
+
+            if (typeof require !== "undefined") {
+              try {
+                const pMod = require("./parser.js");
+                if (pMod.BD_DISTRICTS) allDistricts = pMod.BD_DISTRICTS;
+                if (pMod.OTHER_CITY_ZONES) allOtherZones = pMod.OTHER_CITY_ZONES;
+                if (pMod.DHAKA_ZONES) dhakaZones = pMod.DHAKA_ZONES;
+              } catch (e) {}
+            }
+
             if (citySelect && parsed.district) {
               const options = Array.from(citySelect.options || []);
               const targetDist = parsed.district.toLowerCase();
@@ -3705,10 +3786,15 @@
                 try { getISO = require("./parser.js").getISOCodeFromDistrict; } catch (e) {}
               }
               const isoCode = (getISO ? getISO(parsed.district) : "").toLowerCase();
+
+              const dObj = allDistricts.find(d => d.name === parsed.district);
+              const distAliases = dObj ? [dObj.name, ...dObj.aliases] : [parsed.district];
+
               const opt = options.find(o => {
                 const t = (o.text || "").toLowerCase();
                 const v = (o.value || "").toLowerCase();
-                return t.includes(targetDist) || targetDist.includes(t) || (isoCode && (t.includes(isoCode) || v === isoCode));
+                const textMatch = distAliases.some(a => t.includes(a.toLowerCase()) || a.toLowerCase().includes(t));
+                return textMatch || (isoCode && (t.includes(isoCode) || v === isoCode));
               });
               if (opt) {
                 citySelect.value = opt.value;
@@ -3723,8 +3809,19 @@
             setTimeout(() => {
               if (zoneSelect && parsed.zone) {
                 const zOptions = Array.from(zoneSelect.options || []);
-                const targetZ = parsed.zone.toLowerCase();
-                const zOpt = zOptions.find(o => (o.text || "").toLowerCase().includes(targetZ) || targetZ.includes((o.text || "").toLowerCase()));
+                let zAliases = [parsed.zone];
+                if (allOtherZones[parsed.district]) {
+                  const fz = allOtherZones[parsed.district].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === parsed.zone.toLowerCase());
+                  if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
+                } else if (dhakaZones) {
+                  const fz = dhakaZones.find(z => (typeof z === "object" ? z.name : z).toLowerCase() === parsed.zone.toLowerCase());
+                  if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
+                }
+
+                const zOpt = zOptions.find(o => {
+                  const t = (o.text || "").toLowerCase();
+                  return zAliases.some(a => t.includes(a.toLowerCase()) || a.toLowerCase().includes(t));
+                });
                 if (zOpt) {
                   zoneSelect.value = zOpt.value;
                   zoneSelect.dispatchEvent(new Event("change", { bubbles: true }));

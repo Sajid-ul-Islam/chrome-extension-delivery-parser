@@ -1753,6 +1753,20 @@ assert(cleanAddr3.includes("গ্রাম: রামপুর"), "Bangla villa
 assert(cleanAddr3.includes("ডাকঘর: জয়দেবপুর"), "Bangla post office label must be preserved");
 assert(cleanAddr3.includes("থানা: গাজীপুর সদর"), "Bangla thana label must be preserved");
 
+const rawAddr4 = "গ্রামঃ কাশিমপুর, ডাকঘরঃ কাশিমপুর, থানাঃ বোয়ালমারী, জেলাঃ ফরিদপুর";
+const cleanAddr4 = normalizeAddressForPathao(rawAddr4);
+assert(!cleanAddr4.includes("ঃ"), "Visarga must be converted cleanly to colon without dangling characters");
+assert(cleanAddr4.includes("গ্রাম: কাশিমপুর"), "Cleaned address must preserve village");
+const fullAddr4 = buildFullAddress(rawAddr4);
+assert(fullAddr4.includes("Faridpur"), "Full address must include canonical district");
+assert(!fullAddr4.includes("Faridpur Sadar"), "Full address must NOT fall back to Sadar when Boalmari is detected");
+
+const fullAddrBoalmari = buildFullAddress("বোয়ালমারী, ফরিদপুর");
+assert.strictEqual(fullAddrBoalmari, "বোয়ালমারী, Faridpur", "Full address for বোয়ালমারী, ফরিদপুর must avoid duplicates");
+
+const fullAddrAgrabad = buildFullAddress("আগ্রাবাদ, চট্টগ্রাম");
+assert.strictEqual(fullAddrAgrabad, "আগ্রাবাদ, Chattogram", "Full address for আগ্রাবাদ, চট্টগ্রাম must avoid duplicates");
+
 const fullAddrISO = buildFullAddress("Holding 45, Boalmari, BD-15");
 assert.strictEqual(fullAddrISO, "Holding 45, Boalmari, Faridpur", "Full address must resolve BD-15 to Faridpur and combine street with district");
 
