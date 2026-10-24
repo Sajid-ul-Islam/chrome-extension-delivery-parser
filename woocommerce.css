@@ -901,29 +901,5 @@
   color: #0f172a;
 }
 
-.deen-ptc-rating-btn-wa {
-  background: #25d366;
-  color: #ffffff;
-  border-color: #1ebe5d;
-}
-
-.deen-ptc-rating-btn-wa:hover {
-  background: #128c7e;
-  border-color: #0e7063;
-  color: #ffffff;
-}
-
-.deen-ptc-rating-btn-wa.pulse-alert {
-  animation: deen-pulse-wa 1.5s infinite;
-  font-weight: 700;
-  background: #ef4444;
-  border-color: #dc2626;
-}
-
-@keyframes deen-pulse-wa {
-  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-  70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-}
 
 

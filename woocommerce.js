@@ -2447,7 +2447,6 @@
 
           <div class="deen-modal-template-tabs">
             <button type="button" class="deen-tab-btn deen-tab-active" data-tpl="order_details_confirm">🛍️ Details & Confirm</button>
-            <button type="button" class="deen-tab-btn" data-tpl="advance_fee">💰 Advance COD Fee</button>
             <button type="button" class="deen-tab-btn" data-tpl="confirm_order">✅ Simple Confirm</button>
             <button type="button" class="deen-tab-btn" data-tpl="high_risk_notice">⚠️ High Risk Notice</button>
           </div>
@@ -2532,27 +2531,11 @@
         ratingBadge.style.backgroundColor = rating.riskColor || (rating.riskLevel === "high" ? "#fee2e2" : "#dcfce7");
         ratingBadge.style.color = rating.riskLevel === "high" ? "#b91c1c" : (rating.riskLevel === "medium" ? "#b45309" : "#15803d");
 
-        // High risk auto-alert and advance fee tab recommendation
+        // High risk visual alert styling (preserves selected order details confirmation template)
         if (rating.riskLevel === "high" || (rating.successRate !== undefined && Number(rating.successRate) < 70)) {
           if (ratingBox) {
             ratingBox.style.background = "#fef2f2";
             ratingBox.style.borderColor = "#fca5a5";
-          }
-          const advTab = modal.querySelector(".deen-tab-btn[data-tpl='advance_fee']");
-          if (advTab && textarea && !textarea.dataset.userEdited) {
-            tabButtons.forEach(b => b.classList.remove("deen-tab-active"));
-            advTab.classList.add("deen-tab-active");
-            if (genReply) {
-              textarea.value = genReply("advance_fee", {
-                name: details.name,
-                phone: details.phone,
-                orderId: details.orderId,
-                cod: details.cod,
-                address: details.address,
-                items: items,
-                isOutsideDhaka: isOutside
-              }, config);
-            }
           }
         }
       }
@@ -3008,54 +2991,9 @@
     // Deprecated pathao dispatch payload helper (kept for testing reference)
     // syncToPathao(payload, { autoSwitch: true, userTriggered: true });
 
-    if (!document.getElementById("deen-single-order-wa-btn")) {
-      const waBtn = document.createElement("button");
-      waBtn.type = "button";
-      waBtn.id = "deen-single-order-wa-btn";
-      waBtn.className = "deen-wc-wa-btn single-order-btn";
-      waBtn.innerHTML = `<span>💬 WhatsApp Advance COD Request</span>`;
-      waBtn.style.marginLeft = "8px";
-
-      waBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        const currentPhone = normalizeBDPhone(phoneInput.value);
-        if (!currentPhone) {
-          alert("Please enter a valid Bangladeshi phone number first.");
-          return;
-        }
-
-        const firstName = (document.querySelector("#_billing_first_name") || {}).value || "";
-        const lastName = (document.querySelector("#_billing_last_name") || {}).value || "";
-        const fullName = `${firstName} ${lastName}`.trim();
-        const address1 = (document.querySelector("#_billing_address_1") || {}).value || "";
-        const city = (document.querySelector("#_billing_city") || {}).value || "";
-        const state = (document.querySelector("#_billing_state, #_shipping_state") || {}).value || "";
-        const total = (document.querySelector("#_order_total") || {}).value || "";
-        const orderId = (document.querySelector("#post_ID") || {}).value || "";
-
-        let genReply = typeof generateQuickReply === "function" ? generateQuickReply : null;
-        if (!genReply && typeof require !== "undefined") {
-          try { genReply = require("./parser.js").generateQuickReply; } catch (err) {}
-        }
-
-        getQuickReplyConfig((config) => {
-          const fullAddress = [address1, city, state].filter(Boolean).join(", ");
-          const msg = genReply ? genReply("advance_fee", {
-            name: fullName,
-            phone: currentPhone,
-            orderId: orderId,
-            cod: total ? Math.round(parseFloat(total)).toString() : "",
-            address: fullAddress
-          }, config) : `আসসালামু আলাইকুম ${fullName}! আপনার অর্ডার #${orderId} কনফার্ম করার জন্য ডেলিভারি চার্জ অগ্রিম বিকাশ করুন: ${config.bkashNumber}`;
-
-          injectWhatsAppMessage(msg, { phone: currentPhone, openChat: true });
-        });
-      });
-
-      if (phoneInput.parentElement) {
-        phoneInput.parentElement.appendChild(waBtn);
-      }
-    }
+    // Clean up any legacy single order WhatsApp COD button if present in DOM
+    const oldSingleWa = document.getElementById("deen-single-order-wa-btn");
+    if (oldSingleWa) oldSingleWa.remove();
 
     // Inject live customer rating pill on single order page
     if (!document.getElementById("deen-single-order-rating-pill") && phoneInput.parentElement) {
@@ -3352,7 +3290,10 @@
     const delEl = card.querySelector("#deen-ptc-delivered-count");
     const canEl = card.querySelector("#deen-ptc-cancelled-count");
     const srcEl = card.querySelector("#deen-ptc-source-tag");
-    const waBtn = card.querySelector("#deen-ptc-rating-btn-wa");
+
+    // Clean up any legacy WhatsApp COD button in rating card
+    const oldWaBtn = card.querySelector("#deen-ptc-rating-btn-wa");
+    if (oldWaBtn) oldWaBtn.remove();
 
     if (typeof card.classList !== "undefined") {
       card.classList.remove("rating-safe", "rating-moderate", "rating-danger");
@@ -3405,16 +3346,6 @@
     if (srcEl) {
       srcEl.textContent = (data.ratingGrade ? `⭐ ${data.ratingGrade} • ` : "") + (data.pathaoStats ? "Pathao Live" : (data.steadfastStats ? "Courier Network" : "Verified"));
     }
-
-    if (waBtn) {
-      if (data.riskLevel === "high") {
-        if (waBtn.classList) waBtn.classList.add("pulse-alert");
-        waBtn.title = "⚠️ High Return Risk: Click to ask for advance delivery fee!";
-      } else {
-        if (waBtn.classList) waBtn.classList.remove("pulse-alert");
-        waBtn.title = "Send WhatsApp Confirmation";
-      }
-    }
   }
 
   /**
@@ -3464,9 +3395,6 @@
               <button type="button" class="deen-ptc-rating-btn deen-ptc-rating-btn-refresh" id="deen-ptc-rating-btn-refresh" title="Re-check rating for this phone number">
                 🔄 Refresh
               </button>
-              <button type="button" class="deen-ptc-rating-btn deen-ptc-rating-btn-wa" id="deen-ptc-rating-btn-wa" title="Send WhatsApp Confirmation / Advance COD request">
-                💬 WhatsApp Ask COD
-              </button>
             </div>
           `;
 
@@ -3474,59 +3402,15 @@
             phoneInput.parentNode.insertBefore(ratingCard, phoneInput.nextSibling);
           }
 
+          // Clean up any legacy WhatsApp COD button if present in DOM
+          const oldWaBtn = ratingCard.querySelector("#deen-ptc-rating-btn-wa");
+          if (oldWaBtn) oldWaBtn.remove();
+
           const refreshBtn = ratingCard.querySelector("#deen-ptc-rating-btn-refresh");
           if (refreshBtn) {
             refreshBtn.addEventListener("click", (e) => {
               e.preventDefault();
               triggerPhoneRatingCheck(phoneInput.value, true);
-            });
-          }
-
-          const waBtn = ratingCard.querySelector("#deen-ptc-rating-btn-wa");
-          if (waBtn) {
-            waBtn.addEventListener("click", (e) => {
-              e.preventDefault();
-              const phoneVal = (phoneInput && phoneInput.value) || "";
-              let cleanPhone = normalizeBDPhone(phoneVal);
-              if (!cleanPhone && typeof require !== "undefined") {
-                try { cleanPhone = require("./phone-check.js").normalizeBDPhone(phoneVal); } catch (err) {}
-              }
-              if (!cleanPhone) {
-                alert("Please enter a valid phone number first.");
-                return;
-              }
-
-              const nameInput = modal.querySelector("#ptc_wc_shipping_name, [name='ptc_wc_shipping_name'], input[name*='name'], #name");
-              const nameVal = (nameInput && nameInput.value) || "Customer";
-
-              const codInput = modal.querySelector("#ptc_wc_amount_to_collect, [name='ptc_wc_amount_to_collect'], input[name*='amount'], input[name*='collect']");
-              let codVal = (codInput && codInput.value) || "";
-
-              const addrInputEl = modal.querySelector("#ptc_wc_shipping_address, [name='ptc_wc_shipping_address']");
-              const addrVal = (addrInputEl && addrInputEl.value) || "";
-
-              let orderIdVal = modal.dataset.orderId || "";
-              if (!orderIdVal) {
-                const activeBtn = document.querySelector(".ptc-open-modal-button.active, .ptc-open-modal-button[aria-expanded='true'], .ptc-open-modal-button[data-clicked='true']");
-                if (activeBtn) orderIdVal = activeBtn.dataset.orderId || "";
-              }
-
-              let genReply = typeof generateQuickReply === "function" ? generateQuickReply : null;
-              if (!genReply && typeof require !== "undefined") {
-                try { genReply = require("./parser.js").generateQuickReply; } catch (err) {}
-              }
-
-              getQuickReplyConfig((config) => {
-                const msg = genReply ? genReply("advance_fee", {
-                  name: nameVal,
-                  phone: cleanPhone,
-                  orderId: orderIdVal,
-                  cod: codVal ? Math.round(parseFloat(codVal)).toString() : "",
-                  address: addrVal
-                }, config) : `আসসালামু আলাইকুম ${nameVal}! আপনার অর্ডার #${orderIdVal} কনফার্ম করার জন্য ডেলিভারি চার্জ অগ্রিম বিকাশ করুন: ${config.bkashNumber}`;
-
-                injectWhatsAppMessage(msg, { phone: cleanPhone, openChat: true });
-              });
             });
           }
 

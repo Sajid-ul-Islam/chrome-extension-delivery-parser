@@ -1916,16 +1916,7 @@ const mockCard = {
     "#deen-ptc-rating-progress-fill": { style: {} },
     "#deen-ptc-delivered-count": { textContent: "" },
     "#deen-ptc-cancelled-count": { textContent: "" },
-    "#deen-ptc-source-tag": { textContent: "" },
-    "#deen-ptc-rating-btn-wa": {
-      classList: {
-        classes: new Set(),
-        add: function(c) { this.classes.add(c); },
-        remove: function(c) { this.classes.delete(c); },
-        contains: function(c) { return this.classes.has(c); }
-      },
-      title: ""
-    }
+    "#deen-ptc-source-tag": { textContent: "" }
   },
   querySelector: function(sel) {
     return this.elements[sel] || null;
@@ -1955,7 +1946,7 @@ assert.strictEqual(mockCard.querySelector("#deen-ptc-stat-rate").style.color, "#
 assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-progress-fill").style.width, "40%", "Progress fill must be 40%");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-delivered-count").textContent, "📦 Delivered: 4", "Delivered count must match 4");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-cancelled-count").textContent, "⚠️ Returned: 6", "Cancelled count must match 6");
-assert(mockCard.querySelector("#deen-ptc-rating-btn-wa").classList.contains("pulse-alert"), "High risk must add 'pulse-alert' to WhatsApp button");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-btn-wa"), null, "Redundant WhatsApp Ask COD button must be completely removed from Pathao rating card");
 
 // 24b. Test renderRatingState on Safe Customer
 const ptcSafeData = {
@@ -1975,7 +1966,7 @@ renderRatingState(mockCard, ptcSafeData);
 assert(mockCard.classList.contains("rating-safe"), "Safe customer must apply 'rating-safe' class");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").style.backgroundColor, "#10b981", "Badge color must be green");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-stat-rate").textContent, "95%", "Rate stat must be 95%");
-assert(!mockCard.querySelector("#deen-ptc-rating-btn-wa").classList.contains("pulse-alert"), "Safe customer must not have 'pulse-alert'");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-btn-wa"), null, "Safe customer must not have WhatsApp Ask COD button");
 
 // 24c. Test renderRatingState on New Customer (Clean History)
 const ptcNewCustomerData = {
@@ -2050,8 +2041,10 @@ initPathaoPluginAddressNormalizer();
 const injectedRatingCard = mockPhoneInput.parentNode.children.find(c => c.id === "deen-ptc-phone-rating");
 assert(injectedRatingCard, "Must automatically inject #deen-ptc-phone-rating next to phone input in Pathao modal");
 assert.strictEqual(injectedRatingCard.dataset.deenCheckedPhone, "01711223344", "Must record checked phone number");
+assert(!injectedRatingCard.innerHTML.includes("deen-ptc-rating-btn-wa"), "Pathao rating card must not render WhatsApp Ask COD button");
+assert(!injectedRatingCard.innerHTML.includes("WhatsApp Ask COD"), "Pathao rating card must not contain WhatsApp Ask COD text");
 
-console.log("  ✅ In-Popup Pathao Customer Rating card injection, live check, risk states, and WhatsApp COD action verified!");
+console.log("  ✅ In-Popup Pathao Customer Rating card injection, live check, risk states, and WhatsApp COD removal verified!");
 
 // -----------------------------------------------------------------------------
 // Test 25: Smart Outside Dhaka Detection, False-Dhaka 50 TK Correction & Hermes API
@@ -2150,6 +2143,8 @@ assert(wcCode26.includes("deen-order-rating-text"), "showOrderConfirmModal must 
 assert(wcCode26.includes("deen-order-rating-badge"), "showOrderConfirmModal must include deen-order-rating-badge");
 assert(wcCode26.includes("deen-order-rating-refresh-btn"), "showOrderConfirmModal must include deen-order-rating-refresh-btn");
 assert(wcCode26.includes("deen-single-order-rating-pill"), "injectSingleOrderPageButton must inject deen-single-order-rating-pill");
+assert(!wcCode26.includes("WhatsApp Ask COD"), "woocommerce.js must not contain WhatsApp Ask COD button");
+assert(!wcCode26.includes("WhatsApp Advance COD Request"), "woocommerce.js must not contain WhatsApp Advance COD Request button");
 assert(wcCode26.includes("200"), "woocommerce.js MutationObserver debounce must be 200ms");
 
 // Case 26c: Verify phone-check.js contains ৳90 / ৳50 sidebar advance fees and ratingGrade
