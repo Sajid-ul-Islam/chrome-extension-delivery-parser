@@ -715,10 +715,7 @@ ${paymentBlock}
             </div>
           ` : ''}
 
-          <div class="deen-modal-qr-grid">
-            <button class="deen-modal-qr-btn deen-qr-advance" id="deen-modal-btn-qr-advance" title="1-click Advance Delivery Fee Request">
-              <span>💰 Advance Fee</span>
-            </button>
+          <div class="deen-modal-qr-grid" style="grid-template-columns: 1fr 1fr;">
             <button class="deen-modal-qr-btn deen-qr-confirm" id="deen-modal-btn-qr-confirm" title="1-click Order Confirmation">
               <span>✅ Confirm Order</span>
             </button>
@@ -745,6 +742,10 @@ ${paymentBlock}
 
     const btnDone = modal.querySelector("#deen-modal-btn-done");
     if (btnDone) btnDone.addEventListener("click", removeRatingModal);
+
+    // Clean up any legacy advance fee / ask COD button
+    const oldAdvBtn = modal.querySelector("#deen-modal-btn-qr-advance");
+    if (oldAdvBtn) oldAdvBtn.remove();
 
     // WhatsApp Quick Reply button handlers
     const btnQrAdvance = modal.querySelector("#deen-modal-btn-qr-advance");

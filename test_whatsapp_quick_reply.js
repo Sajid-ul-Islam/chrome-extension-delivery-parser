@@ -2043,6 +2043,7 @@ assert(injectedRatingCard, "Must automatically inject #deen-ptc-phone-rating nex
 assert.strictEqual(injectedRatingCard.dataset.deenCheckedPhone, "01711223344", "Must record checked phone number");
 assert(!injectedRatingCard.innerHTML.includes("deen-ptc-rating-btn-wa"), "Pathao rating card must not render WhatsApp Ask COD button");
 assert(!injectedRatingCard.innerHTML.includes("WhatsApp Ask COD"), "Pathao rating card must not contain WhatsApp Ask COD text");
+assert(!injectedRatingCard.innerHTML.includes("deen-ptc-rating-actions"), "Pathao rating card must not contain obsolete bottom action bar");
 
 console.log("  ✅ In-Popup Pathao Customer Rating card injection, live check, risk states, and WhatsApp COD removal verified!");
 
@@ -2152,6 +2153,7 @@ const pcCode26 = fs.readFileSync(path.join(__dirname, "phone-check.js"), "utf8")
 assert(pcCode26.includes("💰 Adv ৳90"), "phone-check.js sidebar drawer must have 💰 Adv ৳90 tab");
 assert(pcCode26.includes("💰 Adv ৳50"), "phone-check.js sidebar drawer must have 💰 Adv ৳50 tab");
 assert(pcCode26.includes("data.ratingGrade"), "phone-check.js must display data.ratingGrade if available");
+assert(!pcCode26.includes("id=\"deen-modal-btn-qr-advance\""), "phone-check.js modal must not contain advance fee button");
 
 // Case 26d: Verify popup.js contains ratingGrade display
 const popupCode26 = fs.readFileSync(path.join(__dirname, "popup.js"), "utf8");

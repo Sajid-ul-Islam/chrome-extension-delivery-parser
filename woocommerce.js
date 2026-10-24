@@ -3355,19 +3355,28 @@
   function initPathaoPluginAddressNormalizer() {
     if (typeof document === "undefined") return;
 
+    // Unconditionally remove any obsolete WhatsApp COD buttons across all Pathao modals
+    document.querySelectorAll("#deen-ptc-rating-btn-wa, .deen-ptc-rating-btn-wa, [id*='rating-btn-wa']").forEach(b => b.remove());
+
     // 1. Single Order Pathao Modal (#ptc-custom-modal, #custom-modal, .ptc-modal)
     const modalCandidates = document.querySelectorAll(
       "#ptc-custom-modal, #custom-modal, .ptc-modal, [class*='pathao-modal'], [id*='pathao-modal']"
     );
 
     modalCandidates.forEach(modal => {
+      // Unconditionally remove any WhatsApp COD button in this modal
+      modal.querySelectorAll("#deen-ptc-rating-btn-wa, .deen-ptc-rating-btn-wa, [id*='rating-btn-wa']").forEach(b => b.remove());
+
       // Check for phone input to inject live Pathao customer rating card
       const phoneInput = modal.querySelector(
         "#ptc_wc_shipping_phone, [name='ptc_wc_shipping_phone'], input[name*='shipping_phone'], input[name*='phone'], input[type='tel'], #ptc-phone"
       );
       if (phoneInput) {
         let ratingCard = modal.querySelector("#deen-ptc-phone-rating");
-        if (!ratingCard) {
+        if (ratingCard) {
+          // Remove any obsolete buttons from existing card in DOM
+          ratingCard.querySelectorAll("#deen-ptc-rating-btn-wa, .deen-ptc-rating-btn-wa, [id*='rating-btn-wa'], .deen-ptc-rating-actions").forEach(b => b.remove());
+        } else {
           ratingCard = document.createElement("div");
           ratingCard.id = "deen-ptc-phone-rating";
           ratingCard.className = "deen-ptc-phone-rating";
@@ -3375,7 +3384,10 @@
           ratingCard.innerHTML = `
             <div class="deen-ptc-rating-header">
               <span class="deen-ptc-rating-title">🛡️ Pathao Courier Intelligence</span>
-              <span class="deen-ptc-rating-badge loading" id="deen-ptc-rating-badge">⏳ Checking...</span>
+              <div style="display: inline-flex; align-items: center; gap: 6px;">
+                <span class="deen-ptc-rating-badge loading" id="deen-ptc-rating-badge">⏳ Checking...</span>
+                <button type="button" class="deen-ptc-rating-btn deen-ptc-rating-btn-refresh" id="deen-ptc-rating-btn-refresh" title="Re-check rating for this phone number" style="padding: 2px 7px; font-size: 10px; line-height: 1.2;">🔄</button>
+              </div>
             </div>
             <div class="deen-ptc-rating-body" id="deen-ptc-rating-body">
               <div class="deen-ptc-rating-stats">
@@ -3385,26 +3397,17 @@
               <div class="deen-ptc-rating-progress-bar">
                 <div class="deen-ptc-rating-progress-fill" id="deen-ptc-rating-progress-fill" style="width: 20%;"></div>
               </div>
-              <div class="deen-ptc-rating-breakdown" id="deen-ptc-rating-breakdown">
+              <div class="deen-ptc-rating-breakdown" id="deen-ptc-rating-breakdown" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
                 <span id="deen-ptc-delivered-count">📦 Delivered: --</span>
                 <span id="deen-ptc-cancelled-count">⚠️ Returned: --</span>
                 <span id="deen-ptc-source-tag">Pathao Verified</span>
               </div>
-            </div>
-            <div class="deen-ptc-rating-actions">
-              <button type="button" class="deen-ptc-rating-btn deen-ptc-rating-btn-refresh" id="deen-ptc-rating-btn-refresh" title="Re-check rating for this phone number">
-                🔄 Refresh
-              </button>
             </div>
           `;
 
           if (phoneInput.parentNode) {
             phoneInput.parentNode.insertBefore(ratingCard, phoneInput.nextSibling);
           }
-
-          // Clean up any legacy WhatsApp COD button if present in DOM
-          const oldWaBtn = ratingCard.querySelector("#deen-ptc-rating-btn-wa");
-          if (oldWaBtn) oldWaBtn.remove();
 
           const refreshBtn = ratingCard.querySelector("#deen-ptc-rating-btn-refresh");
           if (refreshBtn) {

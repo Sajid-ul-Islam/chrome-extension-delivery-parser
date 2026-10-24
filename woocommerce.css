@@ -868,15 +868,9 @@
   font-size: 11px;
   color: #64748b;
   font-weight: 600;
-  padding-bottom: 8px;
-  border-bottom: 1px dashed #cbd5e1;
-  margin-bottom: 10px;
-}
-
-.deen-ptc-rating-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  padding-bottom: 0;
+  border-bottom: none;
+  margin-bottom: 0;
 }
 
 .deen-ptc-rating-btn {
