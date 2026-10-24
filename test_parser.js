@@ -1,4 +1,4 @@
-const { parseDeliveryData, parseBDAddress, generatePathaoBatchCSV } = require('./parser.js');
+const { parseDeliveryData, parseBDAddress, generatePathaoBatchCSV, normalizeAddressForPathao, buildFullAddress } = require('./parser.js');
 const assert = require('assert');
 
 const sampleStandard = `Cons. ID
@@ -150,6 +150,30 @@ assert.strictEqual(addr13.district, "Dhaka", "Case 13 District mismatch");
 assert.strictEqual(addr13.zone, "Uttara", "Case 13 Zone mismatch");
 assert.strictEqual(addr13.postcode, "1216", "Case 13 Bengali postcode mismatch");
 console.log('  ✅ Case 13: Bengali numerals postcode 1216 parsed correctly');
+
+// Case 14: Benapole, Sharsha, Jashore address with leading Home, Division Khulna & duplicate Benapole
+const rawBenapole = "Home Benapole city,thana sharsha,jela jashore Division khulna\nBenapole";
+const addr14 = parseBDAddress(rawBenapole);
+assert.strictEqual(addr14.district, "Jashore", "Case 14 District mismatch");
+assert.strictEqual(addr14.zone, "Sharsha", "Case 14 Zone mismatch");
+assert.strictEqual(addr14.cityType, "Outside Dhaka", "Case 14 CityType mismatch");
+const clean14 = normalizeAddressForPathao(rawBenapole);
+assert.strictEqual(clean14, "Benapole City, Thana: Sharsha", `Case 14 Clean mismatch: got '${clean14}'`);
+assert(!clean14.includes("Benaডাকঘর"), "Case 14 must not corrupt Benapole");
+const full14 = buildFullAddress(rawBenapole);
+assert.strictEqual(full14, "Benapole City, Thana: Sharsha, Jashore", `Case 14 Full mismatch: got '${full14}'`);
+console.log('  ✅ Case 14: Benapole, Sharsha, Jashore normalized & parsed without Benaডাকঘর corruption');
+
+// Case 15: Bengali Benapole address with leading বাসা, বিভাগ খুলনা & duplicate বেনাপোল
+const rawBenapoleBn = "বাসা বেনাপোল সিটি, থানা শার্শা, জেলা যশোর বিভাগ খুলনা\nবেনাপোল";
+const addr15 = parseBDAddress(rawBenapoleBn);
+assert.strictEqual(addr15.district, "Jashore", "Case 15 District mismatch");
+assert.strictEqual(addr15.zone, "Sharsha", "Case 15 Zone mismatch");
+const clean15 = normalizeAddressForPathao(rawBenapoleBn);
+assert.strictEqual(clean15, "বেনাপোল সিটি, থানা: শার্শা", `Case 15 Clean mismatch: got '${clean15}'`);
+const full15 = buildFullAddress(rawBenapoleBn);
+assert.strictEqual(full15, "বেনাপোল সিটি, থানা: শার্শা, Jashore", `Case 15 Full mismatch: got '${full15}'`);
+console.log('  ✅ Case 15: Bengali Benapole, Sharsha, Jashore normalized & parsed cleanly');
 
 // =========================================================================
 // Feature 5: Pathao Bulk Batch CSV Generation Tests

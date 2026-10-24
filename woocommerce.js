@@ -3163,24 +3163,106 @@
 
     if (!rawAddress || typeof rawAddress !== "string") return "";
     let addr = rawAddress.trim().replace(/[\r\n\t]+/g, ", ").replace(/\s{2,}/g, " ");
+
+    // 1. Remove leading Address Type labels
+    addr = addr.replace(/^(?:Home|Office|Delivery(?:\s*Address)?|Shipping(?:\s*Address)?|Address)[\s:,-]+(?![0-9#]|no\b|num\b|number\b|holding\b)/i, "");
+    addr = addr.replace(/^(?:Home|Office)\s+(?=[a-zA-Z\u0980-\u09FF])(?!(?:no|num|number|[0-9#]|holding)\b)/i, "");
+    addr = addr.replace(/^(?:বাসা|হোম|অফিস|ঠিকানা)[\s:,-]+(?![০-৯0-9#]|নং|নাম্বার|হোল্ডিং)/i, "");
+    addr = addr.replace(/^(?:বাসা|হোম|অফিস)\s+(?=[\u0980-\u09FFa-zA-Z])(?!(?:নং|নাম্বার|[০-৯0-9#]|হোল্ডিং))/i, "");
+
+    // 2. Remove accidental phone numbers
     addr = addr.replace(/(?:\+?88)?01[3-9]\d{8}\b/g, "").trim();
     addr = addr.replace(/(?:\+?৮৮)?০১[৩-৯][০-৯]{8}/g, "").trim();
+
+    // 3. Remove accidental email addresses
     addr = addr.replace(/[\w.+-]+@[\w-]+\.[\w.-]+\b/g, "").trim();
 
-    // Standardize English abbreviations
+    // 4. Standardize English abbreviations & labels (strict word boundaries \b)
     addr = addr.replace(/\b(?:House(?:\s*(?:no|num|number))?|Hse|Hous|Hs|H)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "House $1");
     addr = addr.replace(/\b(?:Road(?:\s*(?:no|num|number))?|Rood|Rd|Ro|R)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Road $1");
     addr = addr.replace(/\b(?:Sector(?:\s*(?:no|num|number))?|Sect|Sec)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Sector $1");
     addr = addr.replace(/\b(?:Block(?:\s*(?:no|num|number))?|Blck|Blk)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Block ${val.toUpperCase()}`);
     addr = addr.replace(/\b(?:Apartment|Flat(?:\s*(?:no|num|number))?|Flt|Apt|Fl)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Flat ${val.toUpperCase()}`);
 
-    // Bengali common labels (cleanly including ঃ / : without corrupting)
-    addr = addr.replace(/(?:গ্রাম|Vill|Village)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "গ্রাম: $1");
-    addr = addr.replace(/(?:ডাকঘর|পোস্ট|পোঃ|পো:|Post|P\.?O\.?)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "ডাকঘর: $1");
-    addr = addr.replace(/(?:থানা|উপজেলা|Thana|Upazila|Upozila)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "থানা: $1");
-    addr = addr.replace(/(?:জেলা|District|Dist|Zilla)[\s:ঃ]+([^\s,;।ঃ]+)/gi, "জেলা: $1");
+    // English location labels (strict word boundaries \b to prevent corrupting names like Benapole or Polash)
+    addr = addr.replace(/\b(?:Village|Vill)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "Village: $1");
+    addr = addr.replace(/\b(?:Post\s*Office|P\.O\.?|Post)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "Post: $1");
+    addr = addr.replace(/\b(?:Thana|Upazila|Upozila|P\.?S\.?)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "Thana: $1");
+    addr = addr.replace(/\b(?:District|Dist|Zilla|Zila|Jilla|Jela)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "District: $1");
 
+    // Bengali common labels (cleanly including ঃ / : without corrupting)
+    addr = addr.replace(/(?:^|[\s,;।])(?:গ্রাম)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " গ্রাম: $1");
+    addr = addr.replace(/(?:^|[\s,;।])(?:ডাকঘর|পোস্ট|পোঃ|পো:)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " ডাকঘর: $1");
+    addr = addr.replace(/(?:^|[\s,;।])(?:থানা|উপজেলা)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " থানা: $1");
+    addr = addr.replace(/(?:^|[\s,;।])(?:জেলা)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " জেলা: $1");
+
+    // 5. Remove redundant Division labels
+    addr = addr.replace(/(?:^|[,;\s]+)(?:Division|বিভাগ)[\s:ঃ#\-]+(?:Dhaka|Chattogram|Chittagong|Rajshahi|Khulna|Barishal|Barisal|Sylhet|Rangpur|Mymensingh|ঢাকা|চট্টগ্রাম|রাজশাহী|খুলনা|বরিশাল|সিলেট|রংপুর|ময়মনসিংহ)(?=\b|[,;\s।–-]|$)/gi, "");
+    addr = addr.replace(/(?:^|[,;\s]+)(?:Dhaka|Chattogram|Chittagong|Rajshahi|Khulna|Barishal|Barisal|Sylhet|Rangpur|Mymensingh|ঢাকা|চট্টগ্রাম|রাজশাহী|খুলনা|বরিশাল|সিলেট|রংপুর|ময়মনসিংহ)[\s:ঃ#\-]+(?:Division|বিভাগ)(?=\b|[,;\s।–-]|$)/gi, "");
+
+    // 6. Clean punctuation & extra commas
     addr = addr.replace(/[;\\]+/g, ",").replace(/\s*,\s*/g, ", ").replace(/,\s*,+/g, ", ").replace(/^[,.\s-]+|[,.\s-]+$/g, "");
+
+    // 7. Deduplicate segments (label-aware deduplication)
+    const segments = addr.split(/,\s*/);
+    const deduplicated = [];
+    function getSegLabel(s) {
+      const m = s.match(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i);
+      return m ? m[0].trim().toLowerCase().replace(/[:ঃ#\-]+$/, "") : "";
+    }
+    function getSegCore(s) {
+      return s.replace(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i, "").trim();
+    }
+    function getSegWords(s) {
+      return s.toLowerCase().split(/[\s,./#\-]+/).filter(w => w.length > 0);
+    }
+
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i].trim();
+      if (!seg) continue;
+      const segLabel = getSegLabel(seg);
+      const segCore = getSegCore(seg);
+      const segWords = getSegWords(segCore);
+      if (segWords.length === 0) continue;
+      let isDuplicate = false;
+
+      for (let j = 0; j < deduplicated.length; j++) {
+        const existing = deduplicated[j];
+        const existingLabel = getSegLabel(existing);
+        const existingCore = getSegCore(existing);
+        const existingWords = getSegWords(existingCore);
+
+        if (segLabel && existingLabel && segLabel !== existingLabel) {
+          continue;
+        }
+
+        if (segCore.toLowerCase() === existingCore.toLowerCase()) {
+          isDuplicate = true;
+          break;
+        }
+
+        if (!segLabel && segWords.length === 1 && !/^\d+$/.test(segWords[0]) && segWords[0].length >= 3) {
+          if (existingWords.includes(segWords[0])) {
+            isDuplicate = true;
+            break;
+          }
+        }
+
+        if (!existingLabel && existingWords.length === 1 && !/^\d+$/.test(existingWords[0]) && existingWords[0].length >= 3) {
+          if (segWords.includes(existingWords[0]) && segWords.length > 1) {
+            deduplicated[j] = seg;
+            isDuplicate = true;
+            break;
+          }
+        }
+      }
+      if (!isDuplicate) {
+        deduplicated.push(seg);
+      }
+    }
+    addr = deduplicated.join(", ");
+
+    // 8. Identify district & postcode
     let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
     if (!parseBD && typeof require !== "undefined") {
       try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
@@ -3202,7 +3284,7 @@
       }
       for (const a of distAliases) {
         const esc = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        addr = addr.replace(new RegExp(`(?:[,\\s]+(?:জেলা[:\\sঃ]*)?${esc})+$`, "i"), "");
+        addr = addr.replace(new RegExp(`(?:[-:,;\\s।]+(?:(?:জেলা|District|Dist|Zilla|Zila|Jilla|Jela)[:\\sঃ]*)?${esc})+[-:,;\\s।]*$`, "i"), "");
       }
     }
     addr = addr.replace(/\b([a-z])([a-z0-9]*)\b/g, (match, first, rest) => {

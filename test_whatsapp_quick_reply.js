@@ -1770,6 +1770,24 @@ assert.strictEqual(fullAddrAgrabad, "আগ্রাবাদ, Chattogram", "Ful
 const fullAddrISO = buildFullAddress("Holding 45, Boalmari, BD-15");
 assert.strictEqual(fullAddrISO, "Holding 45, Boalmari, Faridpur", "Full address must resolve BD-15 to Faridpur and combine street with district");
 
+// Test Benapole address cleaning (preventing Benaডাকঘর: Le corruption, stripping Home & Division, deduplicating segments)
+const rawBenapole = "Home Benapole city,thana sharsha,jela jashore Division khulna\nBenapole";
+const cleanBenapole = normalizeAddressForPathao(rawBenapole);
+assert.strictEqual(cleanBenapole, "Benapole City, Thana: Sharsha", `Expected clean Benapole address without Home, Benaডাকঘর: Le, or Division Khulna, got '${cleanBenapole}'`);
+assert(!cleanBenapole.includes("Benaডাকঘর"), "Benapole must never be corrupted with ডাকঘর");
+assert(!cleanBenapole.includes("Home"), "Leading Home tag must be stripped");
+assert(!cleanBenapole.includes("Division"), "Redundant Division must be stripped");
+assert(!cleanBenapole.includes("থানা"), "English thana label must remain in English");
+
+const fullBenapole = buildFullAddress(rawBenapole);
+assert.strictEqual(fullBenapole, "Benapole City, Thana: Sharsha, Jashore", `Expected full Benapole delivery address, got '${fullBenapole}'`);
+
+const rawBenapoleBn = "বাসা বেনাপোল সিটি, থানা শার্শা, জেলা যশোর বিভাগ খুলনা\nবেনাপোল";
+const cleanBenapoleBn = normalizeAddressForPathao(rawBenapoleBn);
+assert.strictEqual(cleanBenapoleBn, "বেনাপোল সিটি, থানা: শার্শা", `Expected clean Bengali Benapole address, got '${cleanBenapoleBn}'`);
+const fullBenapoleBn = buildFullAddress(rawBenapoleBn);
+assert.strictEqual(fullBenapoleBn, "বেনাপোল সিটি, থানা: শার্শা, Jashore", `Expected full Bengali Benapole address, got '${fullBenapoleBn}'`);
+
 console.log("  ✅ normalizeAddressForPathao & buildFullAddress transform raw abbreviations, strip noise, resolve ISO codes, and produce modified full addresses!");
 
 // 2. Test in-popup DOM normalizer injection and interactive features
