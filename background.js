@@ -4,7 +4,7 @@
 
 try {
   if (typeof importScripts === "function") {
-    importScripts("env.js");
+    importScripts("env.js", "parser.js");
   }
 } catch (e) {}
 
@@ -84,15 +84,14 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
           chrome.action.setBadgeBackgroundColor({ color: "#2563EB" });
         });
       } else if (info.menuItemId === "deen-send-to-pathao" && info.selectionText) {
-        const raw = info.selectionText.trim();
-        const digits = raw.replace(/[^\d+]/g, "");
-        const match = digits.match(/(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/);
-        let phone = raw.replace(/\D/g, "");
-        if (match && match[1]) {
-          phone = "0" + match[1];
-        } else if (phone.length >= 11) {
-          phone = phone.slice(-11);
-        }
+        const phone = (typeof normalizeBDPhone === "function" ? normalizeBDPhone(info.selectionText) : null) ||
+                      (() => {
+                        const raw = info.selectionText.trim();
+                        const digits = raw.replace(/[^\d+]/g, "");
+                        const match = digits.match(/(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/);
+                        let p = raw.replace(/\D/g, "");
+                        return match && match[1] ? "0" + match[1] : (p.length >= 11 ? p.slice(-11) : p);
+                      })();
 
         const payload = {
           phone: phone,
@@ -330,9 +329,11 @@ const RATING_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
  * Handle background customer rating & courier intelligence lookup
  */
 async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh = false) {
-  const digits = (rawPhone || "").replace(/\D/g, "");
-  let cleanPhone = digits.length >= 11 ? (digits.startsWith("880") ? digits.slice(2) : digits.slice(-11)) : digits;
-  if (!cleanPhone.startsWith("0")) cleanPhone = "0" + cleanPhone;
+  const cleanPhone = (typeof normalizeBDPhone === "function" ? normalizeBDPhone(rawPhone) : null) || (() => {
+    const digits = (rawPhone || "").replace(/\D/g, "");
+    let p = digits.length >= 11 ? (digits.startsWith("880") ? digits.slice(2) : digits.slice(-11)) : digits;
+    return p.startsWith("0") ? p : "0" + p;
+  })();
 
   // Check 10-minute cache if forceRefresh is not requested
   if (!forceRefresh) {

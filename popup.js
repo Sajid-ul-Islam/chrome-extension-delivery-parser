@@ -645,6 +645,9 @@ function checkPendingStorage() {
 }
 
 function escapeHTML(str) {
+  if (typeof window !== "undefined" && typeof window.escapeHTML === "function") {
+    return window.escapeHTML(str);
+  }
   if (!str) return "";
   return String(str)
     .replace(/&/g, "&amp;")

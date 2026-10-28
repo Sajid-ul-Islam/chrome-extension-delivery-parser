@@ -35,6 +35,11 @@
     }
   }
 
+  // Reference shared parser utilities when running in browser or Node.js
+  const _parser = (typeof window !== "undefined" ? window : null) ||
+                  (typeof globalThis !== "undefined" ? globalThis : null) ||
+                  (typeof require !== "undefined" ? (() => { try { return require("./parser.js"); } catch (e) { return {}; } })() : {});
+
   const BD_PHONE_SEARCH_REGEX = /(?:(?:\+|00)?880[\s.-]?)?0?(1[3-9][0-9]{2}[\s.-]?[0-9]{3}[\s.-]?[0-9]{3})\b/;
   const BD_PHONE_CLEAN_REGEX = /(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/;
 
@@ -42,41 +47,18 @@
    * Clean and normalize a Bangladeshi phone number to standard 11 digits (01XXXXXXXXX)
    */
   function normalizeBDPhone(raw) {
+    if (typeof _parser.normalizeBDPhone === "function") return _parser.normalizeBDPhone(raw);
     if (!raw || typeof raw !== "string") return null;
-
-    // 1. Try search regex on text (handles spaces/hyphens within numbers)
-    const searchMatch = raw.match(BD_PHONE_SEARCH_REGEX);
-    if (searchMatch && searchMatch[1]) {
-      const cleanDigits = searchMatch[1].replace(/\D/g, "");
-      if (cleanDigits.length === 10 && /^1[3-9]\d{8}$/.test(cleanDigits)) {
-        return "0" + cleanDigits;
-      }
-    }
-
-    // 2. Strip all non-digit and non-plus characters
     const digits = raw.replace(/[^\d+]/g, "");
     const cleanMatch = digits.match(BD_PHONE_CLEAN_REGEX);
-    if (cleanMatch && cleanMatch[1]) {
-      return "0" + cleanMatch[1];
-    }
-
-    // 3. Fallback checks for 11 or 13 digits
-    const onlyDigits = raw.replace(/\D/g, "");
-    if (onlyDigits.length === 11 && /^01[3-9]\d{8}$/.test(onlyDigits)) {
-      return onlyDigits;
-    } else if (onlyDigits.length === 13 && onlyDigits.startsWith("8801") && /^8801[3-9]\d{8}$/.test(onlyDigits)) {
-      return onlyDigits.slice(2);
-    } else if (onlyDigits.length === 14 && onlyDigits.startsWith("008801") && /^008801[3-9]\d{8}$/.test(onlyDigits)) {
-      return onlyDigits.slice(4);
-    }
-
-    return null;
+    return cleanMatch && cleanMatch[1] ? "0" + cleanMatch[1] : null;
   }
 
   /**
    * Convert Bengali digits [০-৯] to standard ASCII [0-9]
    */
   function bengaliToAsciiDigits(str) {
+    if (typeof _parser.bengaliToAsciiDigits === "function") return _parser.bengaliToAsciiDigits(str);
     if (!str) return "";
     const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
     return String(str).replace(/[০-৯]/g, d => bengaliDigits.indexOf(d));
@@ -86,44 +68,16 @@
    * Clean unescaped HTML entities in strings
    */
   function cleanHtmlEntities(str) {
+    if (typeof _parser.cleanHtmlEntities === "function") return _parser.cleanHtmlEntities(str);
     if (!str || typeof str !== "string") return "";
-    return str
-      .replace(/&times;/gi, "×")
-      .replace(/&amp;/gi, "&")
-      .replace(/&quot;/gi, '"')
-      .replace(/&#039;|&apos;/gi, "'")
-      .replace(/&lt;/gi, "<")
-      .replace(/&gt;/gi, ">")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&#2547;/gi, "৳")
-      .trim();
+    return str.replace(/&times;/gi, "×").replace(/&amp;/gi, "&").replace(/&quot;/gi, '"').replace(/&#039;|&apos;/gi, "'").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&nbsp;/gi, " ").replace(/&#2547;/gi, "৳").trim();
   }
 
   /**
    * Filter out WooCommerce admin metadata, action buttons, or standalone size rows
    */
   function isExcludedMetaOrButtonRow(row, itemName) {
-    if (row) {
-      if (typeof row.closest === "function") {
-        if (row.closest("table.wc-order-item-meta, table.display_meta, table.meta, .item-meta, .display_meta, .meta_items, tfoot")) {
-          return true;
-        }
-      }
-      if (typeof row.querySelector === "function") {
-        if (row.querySelector(".add_order_item_meta, .add-order-item-meta, button[class*='add_order_item']")) {
-          return true;
-        }
-      }
-    }
-    if (itemName) {
-      const clean = itemName.trim();
-      if (/^(?:Add meta|Add item|Add fee|Add shipping|Apply coupon|Refund|Tax|Shipping|Fee|Subtotal|Total|Custom meta)$/i.test(clean)) {
-        return true;
-      }
-      if (/^(?:XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|\d{1,3})$/i.test(clean)) {
-        return true;
-      }
-    }
+    if (typeof _parser.isExcludedMetaOrButtonRow === "function") return _parser.isExcludedMetaOrButtonRow(row, itemName);
     return false;
   }
 
@@ -825,6 +779,7 @@
   }
 
   function isInvalidCustomerName(name) {
+    if (typeof _parser.isInvalidCustomerName === "function") return _parser.isInvalidCustomerName(name);
     if (!name || typeof name !== "string") return true;
     const trimmed = name.trim().toLowerCase();
     return !trimmed ||
@@ -843,82 +798,8 @@
   }
 
   function parseWooCommerceAddressBlock(source) {
-    if (!source) return { name: "", phone: "", address: "", paymentMethod: "" };
-
-    let rawText = "";
-    if (typeof source === "string") {
-      rawText = source;
-    } else if (source.innerText) {
-      rawText = source.innerText;
-    } else if (source.textContent) {
-      rawText = source.textContent;
-    }
-
-    let phone = normalizeBDPhone(rawText) || "";
-    let name = "";
-    let paymentMethod = "";
-    const cleanTokens = [];
-    let addressStarted = false;
-
-    const rawLines = rawText.includes("\n")
-      ? rawText.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean)
-      : rawText.split(",").map(l => l.trim()).filter(Boolean);
-
-    for (let i = 0; i < rawLines.length; i++) {
-      let line = rawLines[i].trim();
-      if (!line) continue;
-
-      if (/^(?:Billing details|Billing|Shipping details|Shipping|বিলিং ডিটেইলস|বিলিং|শিপিং details|শিপিং)[:\s-]*$/i.test(line)) {
-        continue;
-      }
-      if (/^(?:Phone|Tel|Telephone|Mobile|ফোন|মোবাইল)[:\s-]*$/i.test(line)) {
-        continue;
-      }
-      if (/^(?:Email|E-mail|ইমেইল)[:\s-]*$/i.test(line) || /@/.test(line)) {
-        continue;
-      }
-      if (/^(?:Payment via|Payment method|পেমেন্ট মাধ্যম|পেমেন্ট)[:\s-]*$/i.test(line)) {
-        continue;
-      }
-      if (/^(?:Cash on delivery|COD|bKash|Nagad|Rocket|পেমেন্ট|ক্যাশ অন ডেলিভারি)$/i.test(line) ||
-          /^Payment via/i.test(line)) {
-        paymentMethod = line;
-        continue;
-      }
-
-      if (normalizeBDPhone(line) && line.replace(/[^\d+]/g, "").length >= 10) {
-        if (!phone) phone = normalizeBDPhone(line);
-        continue;
-      }
-
-      line = line.replace(/^(?:Billing details|Shipping details|Payment via|Phone|Email)[:\s,]*/gi, "").trim();
-      line = line.replace(/[,:\s]+(?:Payment via|Cash on delivery|Phone|Email).*$/gi, "").trim();
-      if (!line) continue;
-
-      const isAddressKeyword = /^(?:Road|House|Block|Sector|Village|Holding|Flat|Apt|Post|PO|Thana|District|Dist|বাসস্ট্যান্ড|স্টেশন|পোস্ট|পোঃ|সদর|থানা|উপজেলা|জেলা|গ্রাম|রোড|বাসা|বাড়ি)/i.test(line);
-      const isDistrictOrZone = /^(?:Dhaka|Chattogram|Chittagong|Sylhet|Khulna|Rajshahi|Barishal|Rangpur|Mymensingh|Gazipur|Narayanganj|Bagerhat|Cumilla|Comilla|Bogura|Bogra|Uttara|Mirpur|Banani|Gulshan|Dhanmondi|Mohammadpur)/i.test(line);
-      const hasNumberDigits = /\d{3,}/.test(line) || /^\d+$/.test(line);
-
-      if (isAddressKeyword || isDistrictOrZone || hasNumberDigits) {
-        addressStarted = true;
-      }
-
-      // Name can only be captured before any address lines start, and must not be invalid
-      if (!name && !addressStarted && !isInvalidCustomerName(line)) {
-        name = line;
-        continue;
-      }
-
-      addressStarted = true;
-      cleanTokens.push(line);
-    }
-
-    return {
-      name: name,
-      phone: phone,
-      address: cleanTokens.join(", "),
-      paymentMethod: paymentMethod
-    };
+    if (typeof _parser.parseWooCommerceAddressBlock === "function") return _parser.parseWooCommerceAddressBlock(source);
+    return { name: "", phone: "", address: "", paymentMethod: "" };
   }
 
   /**
@@ -1239,367 +1120,16 @@
    * Extract item name combined with size / variation attributes
    */
   function extractItemNameWithSize(nameEl, context) {
-    if (typeof require !== "undefined") {
-      try {
-        const pExtract = require("./parser.js").extractItemNameWithSize;
-        if (typeof pExtract === "function") return pExtract(nameEl, context);
-      } catch (e) {}
-    }
-
-    if (!nameEl) return "";
-    if (typeof nameEl === "string") {
-      let str = cleanHtmlEntities(nameEl.trim());
-      if (!str) return "";
-      let extraSize = "";
-      if (context && typeof context === "object") {
-        extraSize = (context.size || context.variation || context.attribute || context.variant || "").toString().trim();
-      }
-      if (str.includes("\n")) {
-        const lines = str.split("\n").map(l => cleanHtmlEntities(l.trim())).filter(Boolean);
-        let title = lines[0].replace(/^[-•*]\s*/, "").trim();
-        title = title.replace(/\s*(?:&times;|×|x|\*)\s*\d+$/i, "").trim();
-        const vars = [];
-        for (let i = 1; i < lines.length; i++) {
-          const line = lines[i];
-          if (/^(?:SKU|ID|Price|Qty|৳|BDT|Cost):?/i.test(line)) continue;
-          if (/^(?:Add meta|Add item|button)$/i.test(line)) continue;
-          const varM = line.match(/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]+(\S.*)$/i);
-          if (varM) {
-            const val = varM[1].trim();
-            if (val && !/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(val)) {
-              vars.push(line);
-            }
-          } else if (/^(?:XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|[2-5][0-9])$/i.test(line)) {
-            vars.push(`Size: ${line.toUpperCase()}`);
-          } else if (line.length < 30 && !/^\d+$/.test(line) && !/^(?:Refund|Shipping|Tax)/i.test(line)) {
-            vars.push(line);
-          }
-        }
-        if (extraSize && !vars.some(v => v.toLowerCase().includes(extraSize.toLowerCase()))) {
-          const cleanExtra = extraSize.replace(/^size[:\s]*/i, "").trim();
-          if (cleanExtra && !title.toLowerCase().includes(cleanExtra.toLowerCase())) {
-            vars.push(extraSize.startsWith("Size:") ? extraSize : `Size: ${extraSize}`);
-          }
-        }
-        const cleanVars = vars.filter(v => {
-          const trimmed = v.trim();
-          const valOnly = trimmed.replace(/^[^:]+:\s*/, "").trim();
-          if (!valOnly || /^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(trimmed)) return false;
-          if (title.toLowerCase().includes(trimmed.toLowerCase())) return false;
-          if (title.toLowerCase().includes(valOnly.toLowerCase())) return false;
-          return true;
-        });
-        if (cleanVars.length > 0) {
-          title = `${title} (${cleanVars.join(", ")})`;
-        }
-        title = title.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
-        return title;
-      }
-      str = str.replace(/\s*(?:&times;|×|x|\*)\s*\d+$/i, "").trim();
-      str = str.replace(/^[-•*]\s*/, "").trim();
-      if (extraSize) {
-        const cleanSize = extraSize.replace(/^size[:\s]*/i, "").trim();
-        if (!str.toLowerCase().includes(cleanSize.toLowerCase())) {
-          return `${str} (Size: ${cleanSize})`;
-        }
-      }
-      return str;
-    }
-
-    const el = nameEl;
-    const ctx = (context && typeof context.querySelectorAll === "function") ? context : el;
-
-    let title = "";
-    if (typeof el.querySelector === "function") {
-      const titleNode = el.querySelector(".wc-order-item-name, a.wc-order-item-name, a, strong, .product-name");
-      if (titleNode) {
-        title = (titleNode.textContent || titleNode.innerText || "").trim();
-      }
-    }
-    if (!title) {
-      const raw = (el.innerText || el.textContent || "").trim();
-      title = raw.split("\n")[0].trim();
-    }
-    title = cleanHtmlEntities(title);
-    title = title.replace(/\s*(?:&times;|×|x|\*)\s*\d+$/i, "").trim();
-    title = title.replace(/^[-•*]\s*/, "").trim();
-    if (!title) return "";
-
-    const vars = [];
-
-    if (typeof ctx.querySelectorAll === "function") {
-      const metas = ctx.querySelectorAll(".wc-order-item-meta li, .item-meta li");
-      metas.forEach(li => {
-        const lblEl = li.querySelector ? li.querySelector(".wc-item-meta-label, strong") : null;
-        const lbl = lblEl ? (lblEl.textContent || lblEl.innerText || "").replace(/:$/, "").trim() : "";
-        let val = (li.textContent || li.innerText || "").trim();
-        if (lbl && val.includes(lbl)) {
-          val = val.replace(lbl, "").replace(/^[:\s-]+/, "").trim();
-        }
-        if (/^(?:SKU|ID|Cost|Vendor|দাম|আইডি)/i.test(lbl)) return;
-        if (val && !/^(?:SKU|ID):/i.test(val)) {
-          if (lbl) {
-            vars.push(`${lbl}: ${val}`);
-          } else {
-            vars.push(val);
-          }
-        }
-      });
-
-      const dls = ctx.querySelectorAll("dl.variation");
-      dls.forEach(dl => {
-        const dts = dl.querySelectorAll ? dl.querySelectorAll("dt") : [];
-        const dds = dl.querySelectorAll ? dl.querySelectorAll("dd") : [];
-        for (let i = 0; i < Math.min(dts.length, dds.length); i++) {
-          const dt = (dts[i].textContent || "").replace(/:$/, "").trim();
-          const dd = (dds[i].textContent || "").trim();
-          if (/^(?:SKU|ID|Cost)/i.test(dt)) continue;
-          if (dd) {
-            vars.push(`${dt}: ${dd}`);
-          }
-        }
-      });
-
-      const varNodes = ctx.querySelectorAll(".wc-order-item-variation, .variation, .order-item-variation");
-      varNodes.forEach(vn => {
-        const vt = (vn.textContent || vn.innerText || "").trim();
-        if (vt && !/^(?:SKU|ID):/i.test(vt) && !vars.some(v => v.includes(vt))) {
-          vars.push(vt.replace(/^[:\s-]+/, "").trim());
-        }
-      });
-
-      const metaRows = ctx.querySelectorAll("table.wc-order-item-meta tr, table.display_meta tr");
-      metaRows.forEach(tr => {
-        const th = tr.querySelector("th");
-        const td = tr.querySelector("td");
-        if (th && td) {
-          const k = (th.textContent || "").replace(/:$/, "").trim();
-          const v = (td.textContent || "").trim();
-          if (k && v && !/^(?:SKU|ID|Cost)/i.test(k) && v.toLowerCase() !== k.toLowerCase()) {
-            vars.push(`${k}: ${v}`);
-          }
-        }
-      });
-    }
-
-    const fullText = (el.innerText || el.textContent || "").trim();
-    if (fullText.includes("\n")) {
-      const lines = fullText.split("\n").map(l => cleanHtmlEntities(l.trim())).filter(Boolean);
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i];
-        if (/^(?:SKU|ID|Price|Qty|৳|BDT|Cost):?/i.test(line)) continue;
-        if (/^(?:Add meta|Add item|button)$/i.test(line)) continue;
-        const varM = line.match(/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]+(\S.*)$/i);
-        if (varM) {
-          const val = varM[1].trim();
-          if (val && !/^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(val)) {
-            if (!vars.some(v => v.toLowerCase() === line.toLowerCase())) {
-              vars.push(line);
-            }
-          }
-        } else if (/^(?:XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|[2-5][0-9])$/i.test(line)) {
-          const sizeStr = `Size: ${line.toUpperCase()}`;
-          if (!vars.some(v => v.toLowerCase().includes(line.toLowerCase()))) {
-            vars.push(sizeStr);
-          }
-        }
-      }
-    }
-
-    const cleanVars = vars.filter((v, idx, arr) => {
-      if (!v) return false;
-      const trimmed = v.trim();
-      const valOnly = trimmed.replace(/^[^:]+:\s*/, "").trim();
-      if (!valOnly || /^(?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s-]*$/i.test(trimmed)) {
-        return false;
-      }
-      const lowerV = trimmed.toLowerCase();
-      if (title.toLowerCase().includes(lowerV)) return false;
-      if (title.toLowerCase().includes(valOnly.toLowerCase())) return false;
-      return arr.findIndex(x => x.toLowerCase() === lowerV) === idx;
-    });
-
-    let result = title;
-    if (cleanVars.length > 0) {
-      const combined = cleanVars.join(", ");
-      if (combined.startsWith("(") && combined.endsWith(")")) {
-        result = `${title} ${combined}`;
-      } else {
-        result = `${title} (${combined})`;
-      }
-    }
-    result = result.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
-    return result;
+    if (typeof _parser.extractItemNameWithSize === "function") return _parser.extractItemNameWithSize(nameEl, context);
+    return typeof nameEl === "string" ? nameEl : "";
   }
 
+  /**
+   * Normalize and sanitize customer and order details
+   */
   function normalizeCustomerAndOrderData(rawDetails) {
-    if (typeof require !== "undefined") {
-      try {
-        const pNorm = require("./parser.js").normalizeCustomerAndOrderData;
-        if (typeof pNorm === "function") return pNorm(rawDetails);
-      } catch (e) {}
-    }
-    const d = Object.assign({}, rawDetails || {});
-    
-    // Check if address has labels like "Billing details" or if name is invalid
-    let rawAddr = (d.address || "").trim();
-    let parsedBlock = null;
-    if (isInvalidCustomerName(d.name) || /Billing details|Payment via|Cash on delivery/i.test(rawAddr)) {
-      parsedBlock = parseWooCommerceAddressBlock(rawAddr);
-    }
-
-    let cleanPhone = normalizeBDPhone(d.phone || "");
-    if (!cleanPhone && parsedBlock && parsedBlock.phone) {
-      cleanPhone = parsedBlock.phone;
-    }
-
-    let name = (d.name || "").trim().replace(/\s+/g, " ");
-    if (isInvalidCustomerName(name) && parsedBlock && parsedBlock.name) {
-      name = parsedBlock.name;
-    }
-    name = name.replace(/^(?:Customer|Name|বিলিং|গ্রাহক|নাম)[:\s-]*/i, "").trim();
-    name = name.replace(/(?:\+?880|0)?1[3-9]\d{8}/g, "").replace(/\S+@\S+\.\S+/g, "").trim();
-
-    let address = parsedBlock && parsedBlock.address ? parsedBlock.address : rawAddr;
-    address = address.replace(/^(?:Billing details|Shipping details|Payment via|Phone|Email)[:\s,]*/gi, "")
-                     .replace(/[,:\s]+(?:Payment via|Cash on delivery|Phone|Email).*$/gi, "")
-                     .replace(/\s+/g, " ")
-                     .replace(/^,\s*|,\s*$/g, "")
-                     .trim();
-
-    let district = (d.district || "").trim();
-    let zone = (d.zone || "").trim();
-
-    const items = [];
-    let subtotalCalc = 0;
-    if (Array.isArray(d.items) && d.items.length > 0) {
-      d.items.forEach(it => {
-        let rawName = extractItemNameWithSize(it.name || it.title || "", it);
-        if (!rawName) return;
-        rawName = rawName.replace(/\s*\((?:Size|সাইজ|Color|কালার|রঙ|Fit|Variation|ভেরিয়েশন)[:\s]*\)/gi, "").trim();
-        if (isExcludedMetaOrButtonRow(null, rawName)) return;
-
-        const qty = parseInt(it.qty || it.quantity, 10) || 1;
-        let totalNum = 0;
-        if (it.total !== undefined && it.total !== null && it.total !== "") {
-          const numMatch = String(it.total).replace(/,/g, "").match(/[\d.]+/);
-          if (numMatch) totalNum = Math.round(parseFloat(numMatch[0]));
-        }
-
-        let unitPrice = 0;
-        if (it.unitPrice || it.price) {
-          const upMatch = String(it.unitPrice || it.price).replace(/,/g, "").match(/[\d.]+/);
-          if (upMatch) unitPrice = Math.round(parseFloat(upMatch[0]));
-        }
-        if (!unitPrice && totalNum > 0 && qty > 0) {
-          unitPrice = Math.round(totalNum / qty);
-        }
-        if (!totalNum && unitPrice > 0 && qty > 0) {
-          totalNum = unitPrice * qty;
-        }
-
-        subtotalCalc += totalNum;
-
-        items.push({
-          name: rawName,
-          qty: qty,
-          unitPrice: unitPrice > 0 ? unitPrice.toString() : "",
-          total: totalNum > 0 ? totalNum.toString() : ""
-        });
-      });
-    }
-
-    let cod = "";
-    if (d.cod !== undefined && d.cod !== null && d.cod !== "") {
-      let cleanCod = bengaliToAsciiDigits(String(d.cod)).replace(/^[৳BDT\s:Tk\.?]+/i, "").trim();
-      cleanCod = cleanCod.replace(/\.00$/, "");
-      if (cleanCod !== "0") cod = cleanCod;
-    }
-    if (!cod && subtotalCalc > 0) {
-      cod = subtotalCalc.toString();
-    }
-    if (!cod && d.cod !== undefined && d.cod !== null && d.cod !== "") {
-      cod = String(d.cod).trim();
-    }
-
-    const isOutside = (district && !district.toLowerCase().includes("dhaka")) ||
-                      (parsed.cityType && parsed.cityType !== "Inside Dhaka") ||
-                      (address && !address.toLowerCase().includes("dhaka"));
-
-    const insideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 50;
-    const outsideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 90;
-    const realDeliveryFee = isOutside ? outsideFee : insideFee;
-
-    // Auto-resolve single item price if total was missing but COD is known
-    if (items.length === 1 && (!items[0].total || items[0].total === "0" || !items[0].unitPrice)) {
-      const codNum = Number(cod);
-      if (codNum > 0) {
-        const resolvedTotal = (codNum > realDeliveryFee && realDeliveryFee > 0) ? (codNum - realDeliveryFee) : codNum;
-        if (!items[0].total || items[0].total === "0") {
-          items[0].total = resolvedTotal.toString();
-        }
-        if (!items[0].unitPrice || items[0].unitPrice === "0") {
-          items[0].unitPrice = Math.round(resolvedTotal / (items[0].qty || 1)).toString();
-        }
-        if (subtotalCalc === 0) {
-          subtotalCalc = resolvedTotal;
-        }
-      }
-    }
-
-    let finalSubtotal = subtotalCalc > 0 ? subtotalCalc.toString() : "";
-    if (!finalSubtotal || finalSubtotal === "0") {
-      if (items.length === 1 && items[0].total && Number(items[0].total) > 0) {
-        finalSubtotal = items[0].total;
-      } else if (cod && cod !== "0") {
-        finalSubtotal = cod;
-      } else {
-        finalSubtotal = "0";
-      }
-    }
-
-    // Intelligent Delivery Fee & Falsely Inside Dhaka Detection:
-    // If customer is outside Dhaka, but WooCommerce charged ৳50 (or subtotal was ৳1500 and COD was ৳1550),
-    // correct COD to Subtotal + ৳90 (1500 + 90 = 1590) so merchant is never underpaid!
-    let wasFalselyInside = false;
-    let finalCod = cod && cod !== "0" ? cod : "";
-
-    if (finalSubtotal && Number(finalSubtotal) > 0) {
-      const subNum = Number(finalSubtotal);
-      const codNum = Number(finalCod || 0);
-
-      if (isOutside) {
-        if (codNum === subNum + 50 || codNum === subNum + 70 || codNum === subNum) {
-          wasFalselyInside = (codNum === subNum + 50 || codNum === subNum + 70);
-          finalCod = (subNum + outsideFee).toString();
-        } else if (!finalCod || codNum === 0) {
-          finalCod = (subNum + outsideFee).toString();
-        }
-      } else {
-        if (!finalCod || codNum === 0) {
-          finalCod = (subNum + insideFee).toString();
-        }
-      }
-    }
-
-    if (!finalCod || finalCod === "0") {
-      finalCod = finalSubtotal !== "0" ? (Number(finalSubtotal) + realDeliveryFee).toString() : "0";
-    }
-
-    return Object.assign({}, d, {
-      orderId: (d.orderId || "").toString().trim().replace(/^#/, ""),
-      name: name || (d.name && !isInvalidCustomerName(d.name) ? d.name.trim() : "Customer"),
-      phone: cleanPhone || d.phone || "",
-      address: address,
-      district: district,
-      zone: zone,
-      items: items,
-      subtotal: finalSubtotal,
-      deliveryFee: realDeliveryFee,
-      cod: finalCod,
-      isOutsideDhaka: isOutside,
-      wasFalselyInsideDhaka: wasFalselyInside
-    });
+    if (typeof _parser.normalizeCustomerAndOrderData === "function") return _parser.normalizeCustomerAndOrderData(rawDetails);
+    return Object.assign({}, rawDetails || {});
   }
 
   function getQuickReplyConfig(callback) {
@@ -3153,238 +2683,17 @@
    * Cleans messy Bangladeshi customer checkout addresses into standard delivery format.
    */
   function normalizeAddressForPathao(rawAddress) {
-    let normFn = null;
-    if (typeof require !== "undefined") {
-      try {
-        normFn = require("./parser.js").normalizeAddressForPathao;
-      } catch (e) {}
-    }
-    if (typeof normFn === "function") {
-      return normFn(rawAddress);
-    }
-
-    if (!rawAddress || typeof rawAddress !== "string") return "";
-    let addr = rawAddress.trim().replace(/[\r\n\t]+/g, ", ").replace(/\s{2,}/g, " ");
-
-    // 1. Remove leading Address Type labels
-    addr = addr.replace(/^(?:Home|Office|Delivery(?:\s*Address)?|Shipping(?:\s*Address)?|Address)[\s:,-]+(?![0-9#]|no\b|num\b|number\b|holding\b)/i, "");
-    addr = addr.replace(/^(?:Home|Office)\s+(?=[a-zA-Z\u0980-\u09FF])(?!(?:no|num|number|[0-9#]|holding)\b)/i, "");
-    addr = addr.replace(/^(?:বাসা|হোম|অফিস|ঠিকানা)[\s:,-]+(?![০-৯0-9#]|নং|নাম্বার|হোল্ডিং)/i, "");
-    addr = addr.replace(/^(?:বাসা|হোম|অফিস)\s+(?=[\u0980-\u09FFa-zA-Z])(?!(?:নং|নাম্বার|[০-৯0-9#]|হোল্ডিং))/i, "");
-
-    // 2. Remove accidental phone numbers
-    addr = addr.replace(/(?:\+?88)?01[3-9]\d{8}\b/g, "").trim();
-    addr = addr.replace(/(?:\+?৮৮)?০১[৩-৯][০-৯]{8}/g, "").trim();
-
-    // 3. Remove accidental email addresses
-    addr = addr.replace(/[\w.+-]+@[\w-]+\.[\w.-]+\b/g, "").trim();
-
-    // 4. Standardize English abbreviations & labels (strict word boundaries \b)
-    addr = addr.replace(/\b(?:House(?:\s*(?:no|num|number))?|Hse|Hous|Hs|H)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "House $1");
-    addr = addr.replace(/\b(?:Road(?:\s*(?:no|num|number))?|Rood|Rd|Ro|R)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Road $1");
-    addr = addr.replace(/\b(?:Sector(?:\s*(?:no|num|number))?|Sect|Sec)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Sector $1");
-    addr = addr.replace(/\b(?:Block(?:\s*(?:no|num|number))?|Blck|Blk)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Block ${val.toUpperCase()}`);
-    addr = addr.replace(/\b(?:Apartment|Flat(?:\s*(?:no|num|number))?|Flt|Apt|Fl)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Flat ${val.toUpperCase()}`);
-
-    // English location labels (strict word boundaries \b to prevent corrupting names like Benapole or Polash)
-    addr = addr.replace(/\b(?:Village|Vill)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "Village: $1");
-    addr = addr.replace(/\b(?:Post\s*Office|P\.O\.?|Post)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "Post: $1");
-    addr = addr.replace(/\b(?:Thana|Upazila|Upozila|P\.?S\.?)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "Thana: $1");
-    addr = addr.replace(/\b(?:District|Dist|Zilla|Zila|Jilla|Jela)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "District: $1");
-
-    // Bengali common labels (cleanly including ঃ / : without corrupting)
-    addr = addr.replace(/(?:^|[\s,;।])(?:গ্রাম)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " গ্রাম: $1");
-    addr = addr.replace(/(?:^|[\s,;।])(?:ডাকঘর|পোস্ট|পোঃ|পো:)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " ডাকঘর: $1");
-    addr = addr.replace(/(?:^|[\s,;।])(?:থানা|উপজেলা)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " থানা: $1");
-    addr = addr.replace(/(?:^|[\s,;।])(?:জেলা)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " জেলা: $1");
-
-    // 5. Remove redundant Division labels
-    addr = addr.replace(/(?:^|[,;\s]+)(?:Division|বিভাগ)[\s:ঃ#\-]+(?:Dhaka|Chattogram|Chittagong|Rajshahi|Khulna|Barishal|Barisal|Sylhet|Rangpur|Mymensingh|ঢাকা|চট্টগ্রাম|রাজশাহী|খুলনা|বরিশাল|সিলেট|রংপুর|ময়মনসিংহ)(?=\b|[,;\s।–-]|$)/gi, "");
-    addr = addr.replace(/(?:^|[,;\s]+)(?:Dhaka|Chattogram|Chittagong|Rajshahi|Khulna|Barishal|Barisal|Sylhet|Rangpur|Mymensingh|ঢাকা|চট্টগ্রাম|রাজশাহী|খুলনা|বরিশাল|সিলেট|রংপুর|ময়মনসিংহ)[\s:ঃ#\-]+(?:Division|বিভাগ)(?=\b|[,;\s।–-]|$)/gi, "");
-
-    // 6. Clean punctuation & extra commas
-    addr = addr.replace(/[;\\]+/g, ",").replace(/\s*,\s*/g, ", ").replace(/,\s*,+/g, ", ").replace(/^[,.\s-]+|[,.\s-]+$/g, "");
-
-    // 7. Deduplicate segments (label-aware deduplication)
-    const segments = addr.split(/,\s*/);
-    const deduplicated = [];
-    function getSegLabel(s) {
-      const m = s.match(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i);
-      return m ? m[0].trim().toLowerCase().replace(/[:ঃ#\-]+$/, "") : "";
-    }
-    function getSegCore(s) {
-      return s.replace(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i, "").trim();
-    }
-    function getSegWords(s) {
-      return s.toLowerCase().split(/[\s,./#\-]+/).filter(w => w.length > 0);
-    }
-
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i].trim();
-      if (!seg) continue;
-      const segLabel = getSegLabel(seg);
-      const segCore = getSegCore(seg);
-      const segWords = getSegWords(segCore);
-      if (segWords.length === 0) continue;
-      let isDuplicate = false;
-
-      for (let j = 0; j < deduplicated.length; j++) {
-        const existing = deduplicated[j];
-        const existingLabel = getSegLabel(existing);
-        const existingCore = getSegCore(existing);
-        const existingWords = getSegWords(existingCore);
-
-        if (segLabel && existingLabel && segLabel !== existingLabel) {
-          continue;
-        }
-
-        if (segCore.toLowerCase() === existingCore.toLowerCase()) {
-          isDuplicate = true;
-          break;
-        }
-
-        if (!segLabel && segWords.length === 1 && !/^\d+$/.test(segWords[0]) && segWords[0].length >= 3) {
-          if (existingWords.includes(segWords[0])) {
-            isDuplicate = true;
-            break;
-          }
-        }
-
-        if (!existingLabel && existingWords.length === 1 && !/^\d+$/.test(existingWords[0]) && existingWords[0].length >= 3) {
-          if (segWords.includes(existingWords[0]) && segWords.length > 1) {
-            deduplicated[j] = seg;
-            isDuplicate = true;
-            break;
-          }
-        }
-      }
-      if (!isDuplicate) {
-        deduplicated.push(seg);
-      }
-    }
-    addr = deduplicated.join(", ");
-
-    // 8. Identify district & postcode
-    let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
-    if (!parseBD && typeof require !== "undefined") {
-      try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
-    }
-    const parsed = parseBD ? parseBD(rawAddress) : null;
-    addr = addr.replace(/(?:[,;\s]+\bBD[-_\s]?[0-6]?\d\b)+/gi, "");
-    if (parsed && parsed.district) {
-      if (parsed.postcode) {
-        addr = addr.replace(new RegExp(`[-:,]?\\s*\\b${parsed.postcode}\\b`, "g"), "");
-        const bgDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
-        const bgPc = parsed.postcode.split('').map(c => bgDigits[parseInt(c, 10)] || c).join('');
-        addr = addr.replace(new RegExp(`[-:,]?\\s*${bgPc}`, "g"), "");
-      }
-
-      let distAliases = [parsed.district];
-      if (typeof BD_DISTRICTS !== "undefined") {
-        const dObj = BD_DISTRICTS.find(d => d.name === parsed.district);
-        if (dObj) distAliases = [dObj.name, ...dObj.aliases];
-      }
-      for (const a of distAliases) {
-        const esc = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        addr = addr.replace(new RegExp(`(?:[-:,;\\s।]+(?:(?:জেলা|District|Dist|Zilla|Zila|Jilla|Jela)[:\\sঃ]*)?${esc})+[-:,;\\s।]*$`, "i"), "");
-      }
-    }
-    addr = addr.replace(/\b([a-z])([a-z0-9]*)\b/g, (match, first, rest) => {
-      if (/^(?:and|of|in|at|to|near|opposite)$/i.test(match)) return match.toLowerCase();
-      return first.toUpperCase() + rest;
-    });
-    addr = addr.replace(/\s*,\s*/g, ", ").replace(/,\s*,+/g, ", ").replace(/^[,.\s-]+|[,.\s-]+$/g, "").trim();
-    return addr || rawAddress.trim();
+    if (typeof _parser.normalizeAddressForPathao === "function") return _parser.normalizeAddressForPathao(rawAddress);
+    return (rawAddress || "").trim();
   }
 
   /**
    * Build complete modified full address for delivery labels & courier input.
    * Combines cleaned street address with properly resolved City/District, Zone, and Postcode.
-   * Unicode and alias-aware: avoids duplicating district or zone in either English or Bengali.
    */
   function buildFullAddress(rawAddress, parsedData) {
-    let fn = null;
-    if (typeof require !== "undefined") {
-      try {
-        fn = require("./parser.js").buildFullAddress;
-      } catch (e) {}
-    }
-    if (typeof fn === "function") {
-      return fn(rawAddress, parsedData);
-    }
-
-    if (!rawAddress || typeof rawAddress !== "string" || !rawAddress.trim()) return "";
-    let base = normalizeAddressForPathao(rawAddress);
-    let parsed = parsedData;
-    if (!parsed) {
-      let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
-      if (!parseBD && typeof require !== "undefined") {
-        try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
-      }
-      if (parseBD) parsed = parseBD(rawAddress);
-    }
-    if (!parsed) return base;
-
-    const district = (parsed.district || "").trim();
-    const zone = (parsed.zone || "").trim();
-    const postcode = (parsed.postcode || "").trim();
-
-    if (!district && !zone) return base;
-
-    let parts = [base];
-
-    // Helper match function
-    const hasWord = (text, word) => {
-      if (!text || !word) return false;
-      const esc = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const pattern = `(?:^|[\\s,;:\\/\\\\_\\-\\(\\)\\[\\]{}।ঃ|#])${esc}(?:ে|ের|য়|য়)?(?:$|[\\s,;:\\/\\\\_\\-\\(\\)\\[\\]{}।ঃ|#0-9])`;
-      return new RegExp(pattern, "i").test(text);
-    };
-
-    // Zone aliases
-    let zoneAliases = [zone];
-    if (typeof OTHER_CITY_ZONES !== "undefined" && OTHER_CITY_ZONES[district]) {
-      const fz = OTHER_CITY_ZONES[district].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === zone.toLowerCase());
-      if (fz && typeof fz === "object") zoneAliases = [fz.name, ...(fz.aliases || [])];
-    } else if (typeof DHAKA_ZONES !== "undefined") {
-      const fz = DHAKA_ZONES.find(z => (typeof z === "object" ? z.name : z).toLowerCase() === zone.toLowerCase());
-      if (fz && typeof fz === "object") zoneAliases = [fz.name, ...(fz.aliases || [])];
-    }
-
-    // District aliases
-    let distAliases = [district];
-    if (typeof BD_DISTRICTS !== "undefined") {
-      const fd = BD_DISTRICTS.find(d => d.name === district);
-      if (fd) distAliases = [fd.name, ...fd.aliases];
-    }
-
-    if (zone && !/^(?:all|sadar|zone)$/i.test(zone)) {
-      const hasZone = zoneAliases.some(a => hasWord(base, a));
-      if (!hasZone) {
-        parts.push(zone);
-      }
-    }
-
-    if (district) {
-      const hasDist = distAliases.some(a => hasWord(base, a));
-      if (!hasDist) {
-        parts.push(district);
-      }
-    }
-
-    if (postcode) {
-      const bgDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
-      const bgPc = postcode.split('').map(c => bgDigits[parseInt(c, 10)] || c).join('');
-      const hasPc = base.includes(postcode) || base.includes(bgPc);
-      if (!hasPc) {
-        let last = parts.pop();
-        parts.push(`${last} - ${postcode}`);
-      }
-    }
-
-    let full = parts.filter(Boolean).join(", ");
-    full = full.replace(/\s*,\s*/g, ", ").replace(/,\s*,+/g, ", ").trim();
-    return full || base;
+    if (typeof _parser.buildFullAddress === "function") return _parser.buildFullAddress(rawAddress, parsedData);
+    return (rawAddress || "").trim();
   }
 
   /**
@@ -3539,18 +2848,12 @@
   function initPathaoPluginAddressNormalizer() {
     if (typeof document === "undefined") return;
 
-    // Unconditionally remove any obsolete WhatsApp COD buttons across all Pathao modals
-    document.querySelectorAll("#deen-ptc-rating-btn-wa, .deen-ptc-rating-btn-wa, [id*='rating-btn-wa']").forEach(b => b.remove());
-
     // 1. Single Order Pathao Modal (#ptc-custom-modal, #custom-modal, .ptc-modal)
     const modalCandidates = document.querySelectorAll(
       "#ptc-custom-modal, #custom-modal, .ptc-modal, [class*='pathao-modal'], [id*='pathao-modal']"
     );
 
     modalCandidates.forEach(modal => {
-      // Unconditionally remove any WhatsApp COD button in this modal
-      modal.querySelectorAll("#deen-ptc-rating-btn-wa, .deen-ptc-rating-btn-wa, [id*='rating-btn-wa']").forEach(b => b.remove());
-
       // Check for phone input to inject live Pathao customer rating card
       const phoneInput = modal.querySelector(
         "#ptc_wc_shipping_phone, [name='ptc_wc_shipping_phone'], input[name*='shipping_phone'], input[name*='phone'], input[type='tel'], #ptc-phone"
@@ -3558,8 +2861,8 @@
       if (phoneInput) {
         let ratingCard = modal.querySelector("#deen-ptc-phone-rating");
         if (ratingCard) {
-          // Remove any obsolete buttons from existing card in DOM
-          ratingCard.querySelectorAll("#deen-ptc-rating-btn-wa, .deen-ptc-rating-btn-wa, [id*='rating-btn-wa'], .deen-ptc-rating-actions").forEach(b => b.remove());
+          const oldBtn = ratingCard.querySelector("#deen-ptc-rating-btn-wa, .deen-ptc-rating-actions");
+          if (oldBtn) oldBtn.remove();
         } else {
           ratingCard = document.createElement("div");
           ratingCard.id = "deen-ptc-phone-rating";

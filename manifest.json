@@ -82,7 +82,7 @@
         "http://merchant.pathao.com/*",
         "http://*.pathao.com/*"
       ],
-      "js": ["phone-check.js"],
+      "js": ["parser.js", "phone-check.js"],
       "css": ["phone-check.css"],
       "run_at": "document_idle"
     }

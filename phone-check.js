@@ -60,57 +60,29 @@
    * with spaces/hyphens (+880 1712-345678, 01712 345 678, etc.)
    * Valid BD mobile prefixes: 013, 014, 015, 016, 017, 018, 019
    */
+  // Reference shared parser utilities when running in browser or Node.js
+  const _parser = (typeof window !== "undefined" ? window : null) ||
+                  (typeof globalThis !== "undefined" ? globalThis : null) ||
+                  (typeof require !== "undefined" ? (() => { try { return require("./parser.js"); } catch (e) { return {}; } })() : {});
+
   const BD_PHONE_SEARCH_REGEX = /(?:(?:\+|00)?880[\s.-]?)?0?(1[3-9][0-9]{2}[\s.-]?[0-9]{3}[\s.-]?[0-9]{3})\b/;
   const BD_PHONE_CLEAN_REGEX = /(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/;
 
   function normalizeBDPhone(raw) {
+    if (typeof _parser.normalizeBDPhone === "function") return _parser.normalizeBDPhone(raw);
     if (!raw || typeof raw !== "string") return null;
-
-    // 1. Try search regex on text (handles spaces/hyphens within numbers)
-    const searchMatch = raw.match(BD_PHONE_SEARCH_REGEX);
-    if (searchMatch && searchMatch[1]) {
-      const cleanDigits = searchMatch[1].replace(/\D/g, "");
-      if (cleanDigits.length === 10 && /^1[3-9]\d{8}$/.test(cleanDigits)) {
-        return "0" + cleanDigits;
-      }
-    }
-
-    // 2. Strip all non-digit and non-plus characters
     const digits = raw.replace(/[^\d+]/g, "");
     const cleanMatch = digits.match(BD_PHONE_CLEAN_REGEX);
-    if (cleanMatch && cleanMatch[1]) {
-      return "0" + cleanMatch[1];
-    }
-
-    // 3. Fallback checks for 11 or 13 digits
-    const onlyDigits = raw.replace(/\D/g, "");
-    if (onlyDigits.length === 11 && /^01[3-9]\d{8}$/.test(onlyDigits)) {
-      return onlyDigits;
-    } else if (onlyDigits.length === 13 && onlyDigits.startsWith("8801") && /^8801[3-9]\d{8}$/.test(onlyDigits)) {
-      return onlyDigits.slice(2);
-    } else if (onlyDigits.length === 14 && onlyDigits.startsWith("008801") && /^008801[3-9]\d{8}$/.test(onlyDigits)) {
-      return onlyDigits.slice(4);
-    }
-
-    return null;
+    return cleanMatch && cleanMatch[1] ? "0" + cleanMatch[1] : null;
   }
 
   function escapeHTML(str) {
+    if (typeof _parser.escapeHTML === "function") return _parser.escapeHTML(str);
     if (str === null || str === undefined) return "";
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
 
-  /**
-   * --------------------------------------------------------------------------
-   * WhatsApp Advance COD Quick Reply Configuration & Generator
-   * --------------------------------------------------------------------------
-   */
-  const DEFAULT_QUICK_REPLY_CONFIG = {
+  const DEFAULT_QUICK_REPLY_CONFIG = _parser.DEFAULT_QUICK_REPLY_CONFIG || {
     storeName: "DEEN Commerce",
     bkashNumber: "01XXXXXXXXX",
     bkashType: "Personal", // Personal | Merchant
@@ -122,143 +94,19 @@
   };
 
   function calculateDeliveryFee(params, config) {
-    if (params && params.fee !== undefined && params.fee !== null && params.fee !== "") {
-      const num = Number(params.fee);
-      if (!isNaN(num) && num > 0) return num;
-    }
+    if (typeof _parser.calculateDeliveryFee === "function") return _parser.calculateDeliveryFee(params, config);
     const cfg = config || DEFAULT_QUICK_REPLY_CONFIG;
-    const insideFee = Number(cfg.insideDhakaFee) || 50;
-    const outsideFee = Number(cfg.outsideDhakaFee) || 90;
-
-    if (params && typeof params.isOutsideDhaka === "boolean") {
-      return params.isOutsideDhaka ? outsideFee : insideFee;
-    }
-
-    const addr = (params && (params.address || params.district || params.city || "")) .toLowerCase();
-    if (!addr) {
-      return outsideFee;
-    }
-
-    const isDhaka = addr.includes("dhaka") || addr.includes("ঢাকা") ||
-                    addr.includes("uttara") || addr.includes("mirpur") ||
-                    addr.includes("dhanmondi") || addr.includes("gulshan") ||
-                    addr.includes("banani") || addr.includes("mohammadpur") ||
-                    addr.includes("motijheel") || addr.includes("badda");
-    const isSubDhaka = addr.includes("savar") || addr.includes("সাভার") ||
-                       addr.includes("gazipur") || addr.includes("গাজীপুর") ||
-                       addr.includes("narayanganj") || addr.includes("নারায়ণগঞ্জ") ||
-                       addr.includes("keraniganj") || addr.includes("কেরানীগঞ্জ");
-
-    if (isDhaka && !isSubDhaka) {
-      return insideFee;
-    }
-    return outsideFee;
+    return (params && params.isOutsideDhaka) ? (Number(cfg.outsideDhakaFee) || 90) : (Number(cfg.insideDhakaFee) || 50);
   }
 
   function buildWhatsAppDeepLink(phone, messageText) {
-    if (!phone) return "";
-    let digits = String(phone).replace(/\D/g, "");
-    let cleanPhone = digits;
-    if (digits.startsWith("01") && digits.length === 11) {
-      cleanPhone = "88" + digits;
-    } else if (digits.startsWith("1") && digits.length === 10) {
-      cleanPhone = "880" + digits;
-    } else if (!digits.startsWith("88") && digits.length === 11) {
-      cleanPhone = "88" + digits;
-    }
-    const encodedText = encodeURIComponent(messageText || "");
-    return `https://wa.me/${cleanPhone}?text=${encodedText}`;
+    if (typeof _parser.buildWhatsAppDeepLink === "function") return _parser.buildWhatsAppDeepLink(phone, messageText);
+    return `https://wa.me/${phone}?text=${encodeURIComponent(messageText || "")}`;
   }
 
   function generateQuickReply(templateKey, params, customConfig) {
-    const p = params || {};
-    const cfg = Object.assign({}, DEFAULT_QUICK_REPLY_CONFIG, customConfig || {});
-    const store = cfg.storeName || "DEEN Commerce";
-    const fee = calculateDeliveryFee(p, cfg);
-    const nameGreeting = p.name && p.name.trim() ? ` ${p.name.trim()}` : "";
-    const orderNum = p.orderId ? String(p.orderId).trim().replace(/^#/, "") : "";
-    const orderRef = orderNum ? ` (অর্ডার #${orderNum})` : "";
-    const codVal = p.cod !== undefined && p.cod !== null && p.cod !== "" ? String(p.cod).trim() : "";
-
-    let paymentLines = [];
-    if (cfg.bkashNumber) {
-      paymentLines.push(`• বিকাশ (${cfg.bkashType || "Personal"}): ${cfg.bkashNumber}`);
-    }
-    if (cfg.nagadNumber) {
-      paymentLines.push(`• নগদ (${cfg.nagadType || "Personal"}): ${cfg.nagadNumber}`);
-    }
-    if (paymentLines.length === 0) {
-      paymentLines.push(`• বিকাশ/নগদ: ${cfg.bkashNumber || "01XXXXXXXXX"}`);
-    }
-    const paymentBlock = paymentLines.join("\n");
-
-    switch (templateKey) {
-      case "order_details_confirm":
-      case "ask_confirm": {
-        let itemsListText = "";
-        if (p.items && Array.isArray(p.items) && p.items.length > 0) {
-          itemsListText = "\n🛍️ অর্ডারকৃত পণ্য:\n" + p.items.map(it => {
-            const itName = it.name || it.title || "পণ্য";
-            const itQty = it.qty || it.quantity || 1;
-            const up = it.unitPrice ? ` (প্রতি পিস ৳${it.unitPrice})` : "";
-            const itPrice = it.total ? ` - ৳${it.total}` : (it.price ? ` - ৳${it.price}` : "");
-            return `• ${itName} (পরিমাণ: ${itQty})${up}${itPrice}`;
-          }).join("\n");
-        }
-        const addrText = p.address ? `\n📍 ডেলিভারি ঠিকানা: ${p.address}` : "";
-        const phoneText = p.phone ? `\n📞 ফোন নম্বর: ${p.phone}` : "";
-        const codText = codVal ? `\n💰 মোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
-        let advText = "";
-        if (p.requestAdvance || p.isOutsideDhaka) {
-          advText = `\n\nকুরিয়ার সার্ভিস শর্ত অনুযায়ী ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রযোজ্য। বিকাশ (${cfg.bkashType || "Personal"}): ${cfg.bkashNumber || ""}`;
-        }
-
-        return `আসসালামু আলাইকুম${nameGreeting}!
-${store} থেকে আপনার অর্ডারটি${orderRef} কনফার্ম করার জন্য বিস্তারিত নিচে দেওয়া হলো:${itemsListText}${addrText}${phoneText}${codText}${advText}
-
-অর্ডারটি কনফার্ম করার জন্য অনুগ্রহ করে 'হ্যাঁ' বা 'কনফার্ম' লিখে রিপ্লাই দিন। কোনো পরিবর্তন থাকলে আমাদের জানান। ধন্যবাদ!
-— ${store} (deencommerce.com)`;
-      }
-
-      case "confirm_order": {
-        const codLine = codVal ? `\nমোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
-        return `আসসালামু আলাইকুম${nameGreeting}!
-${store} থেকে আপনার অর্ডারটি${orderRef} সফলভাবে কনফার্ম করা হয়েছে।${codLine}
-
-পার্সেলটি দ্রুত প্রস্তুত করে কুরিয়ারে হস্তান্তর করা হবে। কোনো জিজ্ঞাসা থাকলে আমাদের জানাতে পারেন। আপনার অর্ডারের জন্য ধন্যবাদ!`;
-      }
-
-      case "high_risk_notice": {
-        return `আসসালামু আলাইকুম${nameGreeting}!
-কুরিয়ার সার্ভিস পলিসি অনুযায়ী${orderRef} ক্যাশ-অন-ডেলিভারিতে পার্সেল পাঠানোর পূর্বে ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রদান করা বাধ্যতামূলক।
-
-পেমেন্ট মাধ্যম:
-${paymentBlock}
-
-টাকা পাঠিয়ে অনুগ্রহ করে TrxID বা লাস্ট ২ ডিজিট মেসেজ করুন। অগ্রিম ডেলিভারি চার্জ প্রাপ্তির পর পার্সেল বুকিং কনফার্ম করা হবে। ধন্যবাদ! - ${store}`;
-      }
-
-      case "tracking_info": {
-        const tracking = p.trackingId || orderNum || "";
-        const codLine = codVal ? `\nক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
-        return `আসসালামু আলাইকুম${nameGreeting}!
-${store} থেকে আপনার পার্সেলটি কুরিয়ার সার্ভিসে হস্তান্তর করা হয়েছে।
-${tracking ? `ট্র্যাকিং আইডি: ${tracking}` : ""}${codLine}
-
-কুরিয়ার রাইডারের কল রিসিভ করে পার্সেলটি গ্রহণ করার জন্য অনুরোধ করা হলো। ধন্যবাদ!`;
-      }
-
-      case "advance_fee":
-      default: {
-        return `আসসালামু আলাইকুম${nameGreeting}!
-${store} থেকে আপনার অর্ডারটি${orderRef} কনফার্ম করার জন্য কুরিয়ার ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রদান করতে হবে। অবশিষ্ট মূল্য (COD) পার্সেল রিসিভ করার সময় পরিশোধ করবেন।
-
-পেমেন্ট মাধ্যম:
-${paymentBlock}
-
-টাকা পাঠিয়ে অনুগ্রহ করে লাস্ট ২ ডিজিট বা ট্রানজেকশন আইডি (TrxID) জানান। পেমেন্ট কনফার্ম হলেই পার্সেলটি দ্রুত পাঠিয়ে দেওয়া হবে। ধন্যবাদ!`;
-      }
-    }
+    if (typeof _parser.generateQuickReply === "function") return _parser.generateQuickReply(templateKey, params, customConfig);
+    return "";
   }
 
   function getQuickReplyConfig(callback) {
@@ -743,27 +591,7 @@ ${paymentBlock}
     const btnDone = modal.querySelector("#deen-modal-btn-done");
     if (btnDone) btnDone.addEventListener("click", removeRatingModal);
 
-    // Clean up any legacy advance fee / ask COD button
-    const oldAdvBtn = modal.querySelector("#deen-modal-btn-qr-advance");
-    if (oldAdvBtn) oldAdvBtn.remove();
-
     // WhatsApp Quick Reply button handlers
-    const btnQrAdvance = modal.querySelector("#deen-modal-btn-qr-advance");
-    if (btnQrAdvance) {
-      btnQrAdvance.addEventListener("click", () => {
-        getQuickReplyConfig((config) => {
-          const fee = (data.riskLevel === "high") ? config.outsideDhakaFee : undefined;
-          const msg = generateQuickReply("advance_fee", {
-            name: data.customerName,
-            phone: data.phone,
-            fee: fee
-          }, config);
-          injectWhatsAppMessage(msg, { phone: data.phone, openChat: true });
-          btnQrAdvance.innerHTML = "<span>✓ Done!</span>";
-          setTimeout(() => { if (btnQrAdvance) btnQrAdvance.innerHTML = "<span>💰 Advance Fee</span>"; }, 1500);
-        });
-      });
-    }
 
     const btnQrConfirm = modal.querySelector("#deen-modal-btn-qr-confirm");
     if (btnQrConfirm) {

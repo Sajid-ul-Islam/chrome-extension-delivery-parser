@@ -45,6 +45,51 @@ function bengaliToAsciiDigits(str) {
   return String(str).replace(/[০-৯]/g, d => bengaliDigits.indexOf(d));
 }
 
+const BD_PHONE_SEARCH_REGEX = /(?:(?:\+|00)?880[\s.-]?)?0?(1[3-9][0-9]{2}[\s.-]?[0-9]{3}[\s.-]?[0-9]{3})\b/;
+const BD_PHONE_CLEAN_REGEX = /(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/;
+
+const normalizeBDPhone = function(raw) {
+  if (!raw || typeof raw !== "string") return null;
+
+  // 1. Try search regex on text (handles spaces/hyphens within numbers)
+  const searchMatch = raw.match(BD_PHONE_SEARCH_REGEX);
+  if (searchMatch && searchMatch[1]) {
+    const cleanDigits = searchMatch[1].replace(/\D/g, "");
+    if (cleanDigits.length === 10 && /^1[3-9]\d{8}$/.test(cleanDigits)) {
+      return "0" + cleanDigits;
+    }
+  }
+
+  // 2. Strip all non-digit and non-plus characters
+  const digits = raw.replace(/[^\d+]/g, "");
+  const cleanMatch = digits.match(BD_PHONE_CLEAN_REGEX);
+  if (cleanMatch && cleanMatch[1]) {
+    return "0" + cleanMatch[1];
+  }
+
+  // 3. Fallback checks for 11 or 13 digits
+  const onlyDigits = raw.replace(/\D/g, "");
+  if (onlyDigits.length === 11 && /^01[3-9]\d{8}$/.test(onlyDigits)) {
+    return onlyDigits;
+  } else if (onlyDigits.length === 13 && onlyDigits.startsWith("8801") && /^8801[3-9]\d{8}$/.test(onlyDigits)) {
+    return onlyDigits.slice(2);
+  } else if (onlyDigits.length === 14 && onlyDigits.startsWith("008801") && /^008801[3-9]\d{8}$/.test(onlyDigits)) {
+    return onlyDigits.slice(4);
+  }
+
+  return null;
+}
+
+function escapeHTML(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function parseAmount(line) {
   if (!line) return 0.0;
   const ascii = bengaliToAsciiDigits(String(line));
@@ -2593,20 +2638,9 @@ function normalizeCustomerAndOrderData(rawDetails) {
   }
 
   // 1. Phone number
-  let digits = String(d.phone || "").replace(/\D/g, "");
-  let cleanPhone = "";
-  if (digits.length === 11 && digits.startsWith("01")) {
-    cleanPhone = digits;
-  } else if (digits.length === 13 && digits.startsWith("8801")) {
-    cleanPhone = digits.slice(2);
-  } else if (digits.length === 10 && digits.startsWith("1")) {
-    cleanPhone = "0" + digits;
-  } else if (d.phone) {
-    const m = String(d.phone).match(/0?1[3-9]\d{8}/);
-    if (m) cleanPhone = m[0].startsWith("0") ? m[0] : "0" + m[0];
-  }
+  let cleanPhone = normalizeBDPhone(d.phone || "");
   if (!cleanPhone && parsedBlock && parsedBlock.phone) {
-    cleanPhone = parsedBlock.phone;
+    cleanPhone = normalizeBDPhone(parsedBlock.phone || "");
   }
 
   // 2. Customer Name (proper casing and clean)
@@ -2940,45 +2974,60 @@ ${paymentBlock}
   }
 }
 
-// Make functions accessible in content script and popup
+// Make functions accessible in content scripts, background worker, popup, and tests
+const PARSER_EXPORTS = {
+  cleanLines,
+  isConsignmentId,
+  getConsignmentId,
+  bengaliToAsciiDigits,
+  parseAmount,
+  parseDate,
+  parseStandardRecords,
+  extractFieldsFuzzy,
+  parseFuzzyRecords,
+  computeMetrics,
+  parseDeliveryData,
+  isWooCommerceText,
+  parseWooCommerceOrders,
+  exportToCSV,
+  exportToExcelXML,
+  exportToXLSX,
+  BD_DISTRICTS,
+  DHAKA_ZONES,
+  OTHER_CITY_ZONES,
+  parseBDAddress,
+  normalizeAddressForPathao,
+  generatePathaoBatchCSV,
+  exportPathaoBatchCSV,
+  normalizeBDPhone,
+  escapeHTML,
+  DEFAULT_QUICK_REPLY_CONFIG,
+  calculateDeliveryFee,
+  buildWhatsAppDeepLink,
+  generateQuickReply,
+  normalizeCustomerAndOrderData,
+  parseWooCommerceAddressBlock,
+  isInvalidCustomerName,
+  extractItemNameWithSize,
+  cleanHtmlEntities,
+  isExcludedMetaOrButtonRow,
+  BD_ISO_DISTRICTS,
+  detectDistrictFromISOCode,
+  getISOCodeFromDistrict,
+  matchWord,
+  buildFullAddress
+};
+
+if (typeof window !== "undefined") {
+  Object.assign(window, PARSER_EXPORTS);
+}
+if (typeof self !== "undefined") {
+  Object.assign(self, PARSER_EXPORTS);
+}
+if (typeof globalThis !== "undefined") {
+  Object.assign(globalThis, PARSER_EXPORTS);
+}
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = {
-    cleanLines,
-    isConsignmentId,
-    getConsignmentId,
-    parseAmount,
-    parseDate,
-    parseStandardRecords,
-    extractFieldsFuzzy,
-    parseFuzzyRecords,
-    computeMetrics,
-    parseDeliveryData,
-    isWooCommerceText,
-    parseWooCommerceOrders,
-    exportToCSV,
-    exportToExcelXML,
-    exportToXLSX,
-    BD_DISTRICTS,
-    DHAKA_ZONES,
-    OTHER_CITY_ZONES,
-    parseBDAddress,
-    normalizeAddressForPathao,
-    generatePathaoBatchCSV,
-    exportPathaoBatchCSV,
-    DEFAULT_QUICK_REPLY_CONFIG,
-    calculateDeliveryFee,
-    buildWhatsAppDeepLink,
-    generateQuickReply,
-    normalizeCustomerAndOrderData,
-    parseWooCommerceAddressBlock,
-    isInvalidCustomerName,
-    extractItemNameWithSize,
-    cleanHtmlEntities,
-    isExcludedMetaOrButtonRow,
-    BD_ISO_DISTRICTS,
-    detectDistrictFromISOCode,
-    getISOCodeFromDistrict,
-    matchWord,
-    buildFullAddress
-  };
+  module.exports = PARSER_EXPORTS;
 }
