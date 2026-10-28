@@ -2591,8 +2591,90 @@ if (waMsg19046) {
 
 console.log("  ✅ Order #19046 Inside Dhaka delivery fee addition verified: Subtotal ৳1494 + Delivery ৳50 = COD ৳1544!");
 
+// -----------------------------------------------------------------------------
+// Test 30: Free Shipping Orders (Do NOT Add Delivery Charge when Shipping is Free)
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 30: Testing Free Shipping Orders (Never Add Delivery Charge)...");
+
+// Case 30a: Inside Dhaka with explicit isFreeShipping: true
+const freeOrderInside = {
+  orderId: "19047",
+  name: "Rahim Ahmed",
+  phone: "01712345678",
+  address: "House 12, Road 4, Mirpur 10, Dhaka",
+  cod: "1494",
+  isFreeShipping: true,
+  items: [{ name: "DEEN High-End Whisker Faded Jeans - Slim Fit - 38", qty: 1, unitPrice: "1494", total: "1494" }]
+};
+
+const normFreeInside = wcIntegration.normalizeCustomerAndOrderData(freeOrderInside);
+assert.strictEqual(normFreeInside.isFreeShipping, true, "Must flag isFreeShipping: true");
+assert.strictEqual(normFreeInside.deliveryFee, 0, "Delivery fee must be 0 for Free Shipping");
+assert.strictEqual(normFreeInside.subtotal, "1494", "Subtotal must be 1494");
+assert.strictEqual(normFreeInside.cod, "1494", "Total COD must stay 1494 (NEVER add ৳50 for Free Shipping!)");
+
+// Case 30b: Outside Dhaka with shippingMethod: "Free shipping"
+const freeOrderOutside = {
+  orderId: "19048",
+  name: "Karim Mia",
+  phone: "01812345678",
+  address: "Kandirpar, Cumilla",
+  cod: "1500",
+  shippingMethod: "Free shipping",
+  items: [{ name: "Executive Panjabi - L", qty: 1, unitPrice: "1500", total: "1500" }]
+};
+
+const normFreeOutside = wcIntegration.normalizeCustomerAndOrderData(freeOrderOutside);
+assert.strictEqual(normFreeOutside.isFreeShipping, true, "Must detect free shipping from shippingMethod");
+assert.strictEqual(normFreeOutside.deliveryFee, 0, "Delivery fee must be 0 for Outside Dhaka Free Shipping");
+assert.strictEqual(normFreeOutside.cod, "1500", "Total COD must stay 1500 (NEVER add ৳90 for Free Shipping!)");
+
+// Case 30c: Order with notes mentioning 'ফ্রি ডেলিভারি'
+const freeOrderNotes = {
+  orderId: "19049",
+  name: "Salim Khan",
+  phone: "01912345678",
+  address: "Agrabad, Chattogram",
+  cod: "2000",
+  notes: "Customer applied coupon: ফ্রি ডেলিভারি",
+  items: [{ name: "Premium Attar", qty: 2, unitPrice: "1000", total: "2000" }]
+};
+
+const normFreeNotes = wcIntegration.normalizeCustomerAndOrderData(freeOrderNotes);
+assert.strictEqual(normFreeNotes.isFreeShipping, true, "Must detect free shipping from Bengali notes");
+assert.strictEqual(normFreeNotes.deliveryFee, 0, "Delivery fee must be 0");
+assert.strictEqual(normFreeNotes.cod, "2000", "COD must stay 2000");
+
+// Case 30d: Canvas rendering for Free Shipping order
+const drawnTexts30 = [];
+const mockCanvas30 = {
+  width: 0,
+  height: 0,
+  style: {},
+  getContext: () => ({
+    scale: () => {}, clearRect: () => {}, fillRect: () => {}, strokeRect: () => {},
+    fillText: (text) => drawnTexts30.push(text), strokeText: () => {},
+    measureText: (txt) => ({ width: (txt || "").length * 7 }),
+    beginPath: () => {}, moveTo: () => {}, lineTo: () => {}, quadraticCurveTo: () => {},
+    closePath: () => {}, stroke: () => {}, fill: () => {}, save: () => {}, restore: () => {},
+    drawImage: () => {}
+  }),
+  toBlob: (cb) => cb({ type: "image/png" })
+};
+
+global.document.createElement = (tag) => {
+  if (tag.toLowerCase() === "canvas") return mockCanvas30;
+  return mockElement(tag);
+};
+
+wcIntegration.renderOrderReceiptCanvas(freeOrderInside);
+assert(drawnTexts30.includes("Subtotal: ৳1494  •  Delivery: Free (৳0)"), "Canvas must show 'Delivery: Free (৳0)' for Free Shipping");
+assert(drawnTexts30.includes("৳1494"), "Canvas COD total must display ৳1494 (NOT ৳1544)");
+
+console.log("  ✅ Free Shipping orders (Inside/Outside/Notes/Canvas) verified: delivery charge is ৳0 and NEVER added to COD!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 29 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
+console.log("🎉 ALL 30 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
 console.log("==================================================");
 
 

@@ -277,6 +277,31 @@
       if (sum > 0) cod = Math.round(sum).toString();
     }
 
+    let isFreeShipping = false;
+    const shippingLines = orderData.shipping_lines || dataWrapper.shipping_lines || [];
+    if (Array.isArray(shippingLines) && shippingLines.length > 0) {
+      shippingLines.forEach(sl => {
+        const title = (sl.method_title || sl.title || "").trim();
+        const mId = (sl.method_id || "").trim();
+        if (/free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(title) ||
+            /free_shipping|free_delivery/i.test(mId)) {
+          isFreeShipping = true;
+        }
+      });
+    }
+    const couponLines = orderData.coupon_lines || dataWrapper.coupon_lines || [];
+    if (Array.isArray(couponLines) && couponLines.length > 0) {
+      couponLines.forEach(cl => {
+        const code = (cl.code || "").trim();
+        if (cl.free_shipping === true || /free\s*ship|free\s*delivery|ফ্রি/i.test(code)) {
+          isFreeShipping = true;
+        }
+      });
+    }
+    if (!isFreeShipping && dataWrapper.total_html && /free\s*shipping|free\s*delivery|ফ্রি/i.test(dataWrapper.total_html)) {
+      isFreeShipping = true;
+    }
+
     let parsed = { district: "", zone: "", streetAddress: address };
     let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
     if (!parseBD && typeof require !== "undefined") {
@@ -296,7 +321,8 @@
       zone: parsed.zone || "",
       items: items,
       cod: cod,
-      isOutsideDhaka: isOutside
+      isOutsideDhaka: isOutside,
+      isFreeShipping: isFreeShipping
     };
   }
 
@@ -462,6 +488,12 @@
       const isOutside = (parsed.district && !parsed.district.toLowerCase().includes("dhaka")) ||
                         (address && !address.toLowerCase().includes("dhaka"));
 
+      const isFreeShipping = /class=['"][^'"]*shipping[^'"]*['"][\s\S]*?(?:free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে)/i.test(rawHtml) ||
+                             /via\s+(?:Free\s*shipping|Free\s*delivery)/i.test(rawHtml) ||
+                             /name=['"](?:shipping_method_title|shipping_method)[^'"]*['"][^>]*value=['"][^'"]*(?:free_shipping|free shipping|free delivery)/i.test(rawHtml) ||
+                             /method_id=['"](?:free_shipping|free_delivery)['"]/i.test(rawHtml) ||
+                             /free\s*shipping/i.test(rawHtml);
+
       return {
         orderId: resolvedOrderId,
         name: name,
@@ -471,7 +503,8 @@
         zone: parsed.zone || "",
         items: items,
         cod: cod || (items.length > 0 ? items.reduce((a, b) => a + (Number(b.total) || 0), 0).toString() : "0"),
-        isOutsideDhaka: isOutside
+        isOutsideDhaka: isOutside,
+        isFreeShipping: isFreeShipping
       };
     }
 
@@ -659,6 +692,18 @@
     const isOutside = (parsed.district && !parsed.district.toLowerCase().includes("dhaka")) ||
                       (address && !address.toLowerCase().includes("dhaka"));
 
+    let isFreeShipping = false;
+    const shippingEl = doc.querySelector("#order_shipping_line_items, .woocommerce-order-totals tr.shipping, tr.shipping, .wc-order-totals tr.shipping, .order-totals tr.shipping");
+    if (shippingEl && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(shippingEl.textContent || "")) {
+      isFreeShipping = true;
+    }
+    if (!isFreeShipping) {
+      const fullDocText = doc.body ? (doc.body.textContent || "") : (doc.textContent || "");
+      if (/(?:via\s+Free\s*shipping|Free\s*shipping\s*\(৳?0\)|method_id['"]\s*:\s*['"]free_shipping['"])/i.test(fullDocText)) {
+        isFreeShipping = true;
+      }
+    }
+
     return {
       orderId: resolvedOrderId,
       name: name,
@@ -668,7 +713,8 @@
       zone: parsed.zone || "",
       items: items,
       cod: cod,
-      isOutsideDhaka: isOutside
+      isOutsideDhaka: isOutside,
+      isFreeShipping: isFreeShipping
     };
   }
 
@@ -971,6 +1017,8 @@
       }
     }
 
+    const isFreeShipping = /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(text);
+
     return {
       phone: phone || "",
       name: customerName,
@@ -983,7 +1031,8 @@
       zone: parsed.zone || "",
       area: parsed.area || "",
       postcode: parsed.postcode || "",
-      streetAddress: parsed.streetAddress || normalizeDisplayAddress(address, customerName)
+      streetAddress: parsed.streetAddress || normalizeDisplayAddress(address, customerName),
+      isFreeShipping: isFreeShipping
     };
   }
 
@@ -1377,6 +1426,8 @@
     const isOutside = (parsed.district && !parsed.district.toLowerCase().includes("dhaka")) ||
                       (address && !address.toLowerCase().includes("dhaka"));
 
+    const isFreeShipping = /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(text);
+
     return {
       orderId,
       orderUrl,
@@ -1387,7 +1438,8 @@
       zone: parsed.zone || "",
       cod,
       items,
-      isOutsideDhaka: isOutside
+      isOutsideDhaka: isOutside,
+      isFreeShipping: isFreeShipping
     };
   }
 
@@ -1700,8 +1752,9 @@
 
     curY += 4;
     // Subtotal & Delivery Fee breakdown row
+    const isFree = details.isFreeShipping === true || details.deliveryFee === 0;
     const isOutside = details.isOutsideDhaka;
-    let feeCalc = isOutside ? (Number(cfg.outsideDhakaFee) || 90) : (Number(cfg.insideDhakaFee) || 50);
+    let feeCalc = isFree ? 0 : (isOutside ? (Number(cfg.outsideDhakaFee) || 90) : (Number(cfg.insideDhakaFee) || 50));
     ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     ctx.fillStyle = "#64748b";
     let subtotalVal = details.subtotal;
@@ -1714,12 +1767,12 @@
       }
     }
     // Safety guarantee: If COD was equal to subtotal (0 shipping added in WooCommerce),
-    // COD must include the delivery fee so the merchant is never underpaid!
-    if (subtotalVal && details.cod && Number(details.cod) === Number(subtotalVal) && Number(subtotalVal) > 0) {
+    // and NOT a free shipping order, COD must include the delivery fee so the merchant is never underpaid!
+    if (!isFree && subtotalVal && details.cod && Number(details.cod) === Number(subtotalVal) && Number(subtotalVal) > 0) {
       details.cod = (Number(subtotalVal) + feeCalc).toString();
     }
     const subtotalText = subtotalVal && subtotalVal !== "0" ? `Subtotal: ৳${subtotalVal}` : "";
-    const feeText = `Delivery (${isOutside ? "Outside Dhaka" : "Inside Dhaka"}): ৳${feeCalc}`;
+    const feeText = isFree ? "Delivery: Free (৳0)" : `Delivery (${isOutside ? "Outside Dhaka" : "Inside Dhaka"}): ৳${feeCalc}`;
     ctx.fillText(`${subtotalText}${subtotalText ? "  •  " : ""}${feeText}`, 36, curY + 10);
 
     curY += 20;
@@ -1915,7 +1968,7 @@
             </div>
             <div class="deen-info-item">
               <span class="deen-info-lbl">Delivery Fee</span>
-              <span class="deen-info-val">${isOutside ? "Outside Dhaka (৳" + (config.outsideDhakaFee || 90) + ")" : "Inside Dhaka (৳" + (config.insideDhakaFee || 50) + ")"}</span>
+              <span class="deen-info-val" id="deen-modal-delivery-val">${details.isFreeShipping ? "🎁 Free Delivery (৳0)" : (isOutside ? "Outside Dhaka (৳" + (config.outsideDhakaFee || 90) + ")" : "Inside Dhaka (৳" + (config.insideDhakaFee || 50) + ")")}</span>
             </div>
             ${details.wasFalselyInsideDhaka ? `
             <div class="deen-info-item full-width" style="background: #fff7ed; border-left: 3px solid #ea580c; padding: 6px 10px; border-radius: 4px; font-size: 11px; color: #9a3412;">
@@ -1946,7 +1999,12 @@
           <div class="deen-modal-items-section">
             <div class="deen-items-header" style="display: flex; justify-content: space-between; align-items: center;">
               <span>Ordered Products (${items.length})</span>
-              ${details.subtotal ? `<span style="color: #EA580C; font-size: 11px; font-weight: 600;">Subtotal: ৳${escapeHTML(details.subtotal)}</span>` : ""}
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" id="deen-modal-free-delivery-toggle" style="background: ${details.isFreeShipping ? '#dcfce7' : '#f8fafc'}; color: ${details.isFreeShipping ? '#166534' : '#64748b'}; border: 1px solid ${details.isFreeShipping ? '#86efac' : '#cbd5e1'}; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; cursor: pointer;">
+                  ${details.isFreeShipping ? "✅ Free Delivery: ON" : "🎁 Free Delivery: OFF"}
+                </button>
+                ${details.subtotal ? `<span style="color: #EA580C; font-size: 11px; font-weight: 600;">Subtotal: ৳${escapeHTML(details.subtotal)}</span>` : ""}
+              </div>
             </div>
             <div class="deen-items-table-wrapper">
               ${items.length > 0 ? `
@@ -2085,6 +2143,51 @@
         ratingRefreshBtn.addEventListener("click", () => {
           if (ratingText) ratingText.textContent = `🔄 Refreshing Pathao rating for ${details.phone}...`;
           fetchCustomerRatingBackground(details.phone, updateRatingUI, true);
+        });
+      }
+
+      // Free Delivery 1-Click Toggle
+      const freeToggleBtn = modal.querySelector("#deen-modal-free-delivery-toggle");
+      if (freeToggleBtn) {
+        freeToggleBtn.addEventListener("click", () => {
+          details.isFreeShipping = !details.isFreeShipping;
+          const subVal = Number(details.subtotal) || (items.reduce((acc, it) => acc + (Number(it.total) || 0), 0));
+          const standardFee = isOutside ? (Number(config.outsideDhakaFee) || 90) : (Number(config.insideDhakaFee) || 50);
+          if (details.isFreeShipping) {
+            details.deliveryFee = 0;
+            details.cod = subVal > 0 ? subVal.toString() : details.cod;
+            freeToggleBtn.style.background = "#dcfce7";
+            freeToggleBtn.style.color = "#166534";
+            freeToggleBtn.style.borderColor = "#86efac";
+            freeToggleBtn.textContent = "✅ Free Delivery: ON";
+            const delValEl = modal.querySelector("#deen-modal-delivery-val");
+            if (delValEl) delValEl.textContent = "🎁 Free Delivery (৳0)";
+          } else {
+            details.deliveryFee = standardFee;
+            details.cod = (subVal > 0 ? subVal + standardFee : Number(details.cod) + standardFee).toString();
+            freeToggleBtn.style.background = "#f8fafc";
+            freeToggleBtn.style.color = "#64748b";
+            freeToggleBtn.style.borderColor = "#cbd5e1";
+            freeToggleBtn.textContent = "🎁 Free Delivery: OFF";
+            const delValEl = modal.querySelector("#deen-modal-delivery-val");
+            if (delValEl) delValEl.textContent = `${isOutside ? "Outside Dhaka" : "Inside Dhaka"} (৳${standardFee})`;
+          }
+          const codValEl = modal.querySelector(".cod-highlight");
+          if (codValEl) codValEl.textContent = `৳${details.cod}`;
+          if (genReply && textarea && !textarea.dataset.userEdited) {
+            const activeTab = modal.querySelector(".deen-tab-btn.deen-tab-active");
+            const tpl = activeTab ? activeTab.dataset.tpl : "order_details_confirm";
+            textarea.value = genReply(tpl, {
+              name: details.name,
+              phone: details.phone,
+              orderId: details.orderId,
+              cod: details.cod,
+              address: details.address,
+              items: items,
+              isOutsideDhaka: isOutside,
+              isFreeShipping: details.isFreeShipping
+            }, config);
+          }
         });
       }
 

@@ -96,6 +96,7 @@
   function calculateDeliveryFee(params, config) {
     if (typeof _parser.calculateDeliveryFee === "function") return _parser.calculateDeliveryFee(params, config);
     const cfg = config || DEFAULT_QUICK_REPLY_CONFIG;
+    if (params && (params.isFreeShipping === true || params.freeShipping === true || params.hasFreeShipping === true)) return 0;
     return (params && params.isOutsideDhaka) ? (Number(cfg.outsideDhakaFee) || 90) : (Number(cfg.insideDhakaFee) || 50);
   }
 

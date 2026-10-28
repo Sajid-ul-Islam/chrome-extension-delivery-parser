@@ -2992,9 +2992,20 @@ function normalizeCustomerAndOrderData(rawDetails) {
                     (parsed.cityType && parsed.cityType !== "Inside Dhaka") ||
                     (address && !address.toLowerCase().includes("dhaka"));
 
+  // Free Shipping Detection: check explicit flag or shipping method / title / notes mentioning free shipping
+  const isFreeShipping = Boolean(
+    d.isFreeShipping === true ||
+    d.freeShipping === true ||
+    d.hasFreeShipping === true ||
+    (typeof d.shippingMethod === "string" && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(d.shippingMethod)) ||
+    (typeof d.shippingTitle === "string" && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(d.shippingTitle)) ||
+    (typeof d.shipping === "string" && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(d.shipping)) ||
+    (typeof d.notes === "string" && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(d.notes))
+  );
+
   const insideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 50;
   const outsideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 90;
-  const realDeliveryFee = isOutside ? outsideFee : insideFee;
+  const realDeliveryFee = isFreeShipping ? 0 : (isOutside ? outsideFee : insideFee);
 
   // Auto-resolve single item price if total was missing but COD is known
   if (items.length === 1 && (!items[0].total || items[0].total === "0" || !items[0].unitPrice)) {
@@ -3034,7 +3045,11 @@ function normalizeCustomerAndOrderData(rawDetails) {
     const subNum = Number(finalSubtotal);
     const codNum = Number(finalCod || 0);
 
-    if (isOutside) {
+    if (isFreeShipping) {
+      // Free Shipping order: do NOT add delivery charge! COD matches subtotal
+      finalCod = subNum.toString();
+      wasFalselyInside = false;
+    } else if (isOutside) {
       // Detected outside Dhaka: if COD matches subtotal + 50 (or legacy 70) or equals subtotal (0 shipping)
       if (codNum === subNum + 50 || codNum === subNum + 70 || codNum === subNum) {
         wasFalselyInside = (codNum === subNum + 50 || codNum === subNum + 70);
@@ -3066,7 +3081,8 @@ function normalizeCustomerAndOrderData(rawDetails) {
     deliveryFee: realDeliveryFee,
     cod: finalCod,
     isOutsideDhaka: isOutside,
-    wasFalselyInsideDhaka: wasFalselyInside
+    wasFalselyInsideDhaka: wasFalselyInside,
+    isFreeShipping: isFreeShipping
   });
 }
 
@@ -3074,9 +3090,12 @@ function normalizeCustomerAndOrderData(rawDetails) {
  * Calculate appropriate delivery fee based on address, district, or explicit parameters
  */
 function calculateDeliveryFee(params, config) {
+  if (params && (params.isFreeShipping === true || params.freeShipping === true || params.hasFreeShipping === true)) {
+    return 0;
+  }
   if (params && params.fee !== undefined && params.fee !== null && params.fee !== "") {
     const num = Number(params.fee);
-    if (!isNaN(num) && num > 0) return num;
+    if (!isNaN(num) && num >= 0) return num;
   }
   const cfg = config || DEFAULT_QUICK_REPLY_CONFIG;
   const insideFee = Number(cfg.insideDhakaFee) || 50;
