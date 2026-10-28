@@ -51,13 +51,16 @@ The 2x Retina Order Receipt canvas rendered by `renderOrderReceiptCanvas`:
 - Must never display `-` or `0` for valid products, quantities, unit prices, or delivery charges.
 - Must preserve product titles with sizes (e.g. `Tom Tailor Jeans - Regular Fit - 36 (Size: 36)`).
 
-### Invariant 7: Delivery Fee & Outside Dhaka Detection
+### Invariant 7: Delivery Fee, Free Shipping Threshold & Outside Dhaka Detection
 - Inside Dhaka standard delivery: **৳50**
 - Outside Dhaka standard delivery: **৳90**
+- **Free Shipping Threshold Policy**: Free Shipping applies **ONLY when product cost / subtotal is more than ৳2,500** (`subtotal >= 2500` or `subtotal > 2500`).
+  - **Orders ≥ ৳2500**: Legitimate Free Shipping orders (e.g. 0 shipping in WooCommerce, shipping method `Free shipping`, coupon `free_shipping`, or notes `ফ্রি ডেলিভারি`) preserve **৳0 delivery fee** (`COD = Subtotal`, canvas draws `Delivery: Free (৳0)`).
+  - **Orders < ৳2500**: Disqualified from automatic free shipping even if WooCommerce had 0 shipping or selected free delivery. Standard delivery fee is automatically added to COD (**+৳50 inside Dhaka**, **+৳90 outside Dhaka**) so the merchant is never underpaid.
+  - **Manual Merchant Override**: The 1-click `🎁 Free Delivery` toggle in the order confirmation modal (`forceFreeShipping: true`) is always honored regardless of subtotal.
 - **0 Shipping / COD Equal to Subtotal Addition**: When an order arrives where WooCommerce added 0 shipping (`codNum === subNum`, e.g. Subtotal ৳1494 and COD ৳1494), the system automatically adds the delivery fee:
   - Inside Dhaka: `Subtotal + ৳50` (e.g. `1494 + 50 = ৳1544` as in Order #19046).
   - Outside Dhaka: `Subtotal + ৳90` (e.g. `1500 + 90 = ৳1590`).
-- **Free Shipping Protection**: When an order legitimately has Free Shipping (detected via `isFreeShipping`, shipping method `Free shipping`, coupon `free_shipping`, customer notes like `ফ্রি ডেলিভারি`, or 1-click Free Delivery toggle in modal), the system **preserves ৳0 delivery fee** and never adds ৳50 or ৳90 (`COD = Subtotal`, canvas draws `Delivery: Free (৳0)`).
 - **False-Dhaka 50 TK Correction**: When a customer outside Dhaka falsely selected inside-Dhaka delivery (paying only ৳50), the system corrects COD to `Subtotal + ৳90` (e.g. `1500 + 90 = 1590`) so the merchant is never underpaid.
 
 ### Invariant 8: 100% 64 Districts Coverage, Reverse Zone Inference & Online Geocoding Fallback

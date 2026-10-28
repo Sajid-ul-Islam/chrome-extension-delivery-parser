@@ -2526,6 +2526,7 @@ const DEFAULT_QUICK_REPLY_CONFIG = {
   nagadType: "Personal", // Personal | Merchant
   insideDhakaFee: 50,
   outsideDhakaFee: 90,
+  freeShippingThreshold: 2500, // Free shipping only when product subtotal > 2500
   customNote: ""
 };
 
@@ -2992,8 +2993,12 @@ function normalizeCustomerAndOrderData(rawDetails) {
                     (parsed.cityType && parsed.cityType !== "Inside Dhaka") ||
                     (address && !address.toLowerCase().includes("dhaka"));
 
-  // Free Shipping Detection: check explicit flag or shipping method / title / notes mentioning free shipping
-  const isFreeShipping = Boolean(
+  const insideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 50;
+  const outsideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 90;
+  const freeThreshold = Number(DEFAULT_QUICK_REPLY_CONFIG.freeShippingThreshold) || 2500;
+
+  // Initial free shipping signal from WooCommerce metadata, coupons, or notes
+  const hasFreeSignal = Boolean(
     d.isFreeShipping === true ||
     d.freeShipping === true ||
     d.hasFreeShipping === true ||
@@ -3003,15 +3008,15 @@ function normalizeCustomerAndOrderData(rawDetails) {
     (typeof d.notes === "string" && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(d.notes))
   );
 
-  const insideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 50;
-  const outsideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 90;
-  const realDeliveryFee = isFreeShipping ? 0 : (isOutside ? outsideFee : insideFee);
+  // Manual merchant force override (e.g. 1-click toggle in modal)
+  const isForceFree = Boolean(d.forceFreeShipping === true || d.userTriggeredFreeShipping === true);
+  const standardDeliveryFee = isOutside ? outsideFee : insideFee;
 
   // Auto-resolve single item price if total was missing but COD is known
   if (items.length === 1 && (!items[0].total || items[0].total === "0" || !items[0].unitPrice)) {
     const codNum = Number(cod);
     if (codNum > 0) {
-      const resolvedTotal = (codNum > realDeliveryFee && realDeliveryFee > 0) ? (codNum - realDeliveryFee) : codNum;
+      const resolvedTotal = (codNum > standardDeliveryFee && standardDeliveryFee > 0) ? (codNum - standardDeliveryFee) : codNum;
       if (!items[0].total || items[0].total === "0") {
         items[0].total = resolvedTotal.toString();
       }
@@ -3035,18 +3040,23 @@ function normalizeCustomerAndOrderData(rawDetails) {
     }
   }
 
-  // Intelligent Delivery Fee & Falsely Inside Dhaka Detection:
-  // If customer is outside Dhaka, but WooCommerce charged ৳50 (or subtotal was ৳1500 and COD was ৳1550),
-  // correct COD to Subtotal + ৳90 (1500 + 90 = 1590) so the merchant is never underpaid!
+  // Intelligent Delivery Fee & Free Shipping Qualification:
+  // Business Rule: Free Shipping ONLY applies when product cost > 2500 (or explicit merchant manual override)
   let wasFalselyInside = false;
   let finalCod = cod && cod !== "0" ? cod : "";
+  let isFreeShipping = false;
+  let realDeliveryFee = standardDeliveryFee;
 
   if (finalSubtotal && Number(finalSubtotal) > 0) {
     const subNum = Number(finalSubtotal);
     const codNum = Number(finalCod || 0);
+    const meetsFreeThreshold = subNum > freeThreshold || subNum >= 2500;
+
+    isFreeShipping = isForceFree || (meetsFreeThreshold && (hasFreeSignal || codNum === subNum || !finalCod || codNum === 0));
+    realDeliveryFee = isFreeShipping ? 0 : standardDeliveryFee;
 
     if (isFreeShipping) {
-      // Free Shipping order: do NOT add delivery charge! COD matches subtotal
+      // Free Shipping order: product cost > 2500, do NOT add delivery charge! COD matches subtotal
       finalCod = subNum.toString();
       wasFalselyInside = false;
     } else if (isOutside) {
@@ -3090,14 +3100,25 @@ function normalizeCustomerAndOrderData(rawDetails) {
  * Calculate appropriate delivery fee based on address, district, or explicit parameters
  */
 function calculateDeliveryFee(params, config) {
-  if (params && (params.isFreeShipping === true || params.freeShipping === true || params.hasFreeShipping === true)) {
+  const cfg = config || DEFAULT_QUICK_REPLY_CONFIG;
+  const freeThreshold = Number(cfg.freeShippingThreshold) || 2500;
+  const subVal = params ? (Number(params.subtotal) || 0) : 0;
+
+  // Merchant manual override
+  if (params && (params.forceFreeShipping === true || params.userTriggeredFreeShipping === true)) {
+    return 0;
+  }
+  // Free Shipping only when product cost > 2500
+  if (params && (params.isFreeShipping === true || params.freeShipping === true || params.hasFreeShipping === true) && (subVal >= freeThreshold || !subVal)) {
+    return 0;
+  }
+  if (subVal >= freeThreshold && params && (params.isFreeShipping || params.cod === params.subtotal)) {
     return 0;
   }
   if (params && params.fee !== undefined && params.fee !== null && params.fee !== "") {
     const num = Number(params.fee);
     if (!isNaN(num) && num >= 0) return num;
   }
-  const cfg = config || DEFAULT_QUICK_REPLY_CONFIG;
   const insideFee = Number(cfg.insideDhakaFee) || 50;
   const outsideFee = Number(cfg.outsideDhakaFee) || 90;
 

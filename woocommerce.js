@@ -1152,6 +1152,7 @@
     nagadType: "Personal",
     insideDhakaFee: 50,
     outsideDhakaFee: 90,
+    freeShippingThreshold: 2500,
     customNote: ""
   };
 
@@ -1751,8 +1752,8 @@
     });
 
     curY += 4;
-    // Subtotal & Delivery Fee breakdown row
-    const isFree = details.isFreeShipping === true || details.deliveryFee === 0;
+    // Subtotal & Delivery Fee breakdown row (Free shipping only if product cost >= 2500 or merchant force override)
+    const isFree = details.isFreeShipping === true || (details.deliveryFee === 0 && (Number(details.subtotal) >= (Number(cfg.freeShippingThreshold) || 2500) || details.forceFreeShipping === true));
     const isOutside = details.isOutsideDhaka;
     let feeCalc = isFree ? 0 : (isOutside ? (Number(cfg.outsideDhakaFee) || 90) : (Number(cfg.insideDhakaFee) || 50));
     ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";

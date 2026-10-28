@@ -503,7 +503,7 @@ assert(confirmMsg.includes("DEEN Commerce"), "Must include store name");
 assert(confirmMsg.includes("Exclusive Panjabi (Navy Blue - L) (পরিমাণ: 2) (প্রতি পিস ৳1600) - ৳3200"), "Must include product 1 with qty, unit price & line total");
 assert(confirmMsg.includes("Premium Attar (12ml) (পরিমাণ: 1) (প্রতি পিস ৳650) - ৳650"), "Must include product 2 with qty, unit price & line total");
 assert(confirmMsg.includes("Road 7, Block F, Banani, Dhaka"), "Must include delivery address");
-assert(confirmMsg.includes("৳3900"), "Must include COD amount ৳3900 (Subtotal 3850 + Inside Dhaka Delivery 50)");
+assert(confirmMsg.includes("৳3850"), "Must include COD amount ৳3850 (Subtotal > 2500 qualifies for Free Shipping!)");
 assert(confirmMsg.includes("অর্ডারটি কনফার্ম করার জন্য অনুগ্রহ করে 'হ্যাঁ' বা 'কনফার্ম' লিখে রিপ্লাই দিন"), "Must include confirmation call to action");
 console.log("  ✅ Bengali WhatsApp confirmation message contains complete product list, address, COD, and confirmation CTA!");
 
@@ -2592,29 +2592,31 @@ if (waMsg19046) {
 console.log("  ✅ Order #19046 Inside Dhaka delivery fee addition verified: Subtotal ৳1494 + Delivery ৳50 = COD ৳1544!");
 
 // -----------------------------------------------------------------------------
-// Test 30: Free Shipping Orders (Do NOT Add Delivery Charge when Shipping is Free)
+// Test 30: Free Shipping Threshold Policy (Only Product Cost > ৳2500 Qualifies)
 // -----------------------------------------------------------------------------
-console.log("\n▶ Test 30: Testing Free Shipping Orders (Never Add Delivery Charge)...");
+console.log("\n▶ Test 30: Testing Free Shipping Threshold (Product Cost > ৳2500 Policy)...");
 
-// Case 30a: Inside Dhaka with explicit isFreeShipping: true
-const freeOrderInside = {
+// Case 30a: Order with Product Cost > ৳2500 (e.g. ৳2988: 2 items of 1494) -> Qualifies for Free Shipping
+const freeOrderOverThreshold = {
   orderId: "19047",
   name: "Rahim Ahmed",
   phone: "01712345678",
   address: "House 12, Road 4, Mirpur 10, Dhaka",
-  cod: "1494",
+  cod: "2988",
   isFreeShipping: true,
-  items: [{ name: "DEEN High-End Whisker Faded Jeans - Slim Fit - 38", qty: 1, unitPrice: "1494", total: "1494" }]
+  items: [
+    { name: "DEEN High-End Whisker Faded Jeans - Slim Fit - 38", qty: 2, unitPrice: "1494", total: "2988" }
+  ]
 };
 
-const normFreeInside = wcIntegration.normalizeCustomerAndOrderData(freeOrderInside);
-assert.strictEqual(normFreeInside.isFreeShipping, true, "Must flag isFreeShipping: true");
-assert.strictEqual(normFreeInside.deliveryFee, 0, "Delivery fee must be 0 for Free Shipping");
-assert.strictEqual(normFreeInside.subtotal, "1494", "Subtotal must be 1494");
-assert.strictEqual(normFreeInside.cod, "1494", "Total COD must stay 1494 (NEVER add ৳50 for Free Shipping!)");
+const normFreeOver = wcIntegration.normalizeCustomerAndOrderData(freeOrderOverThreshold);
+assert.strictEqual(normFreeOver.isFreeShipping, true, "Order > 2500 TK must qualify for Free Shipping");
+assert.strictEqual(normFreeOver.deliveryFee, 0, "Delivery fee must be 0 for Free Shipping orders > 2500 TK");
+assert.strictEqual(normFreeOver.subtotal, "2988", "Subtotal must be 2988");
+assert.strictEqual(normFreeOver.cod, "2988", "Total COD must stay 2988 (NEVER add delivery charge for orders > 2500 TK)");
 
-// Case 30b: Outside Dhaka with shippingMethod: "Free shipping"
-const freeOrderOutside = {
+// Case 30b: Order with Product Cost < ৳2500 (৳1500) with shippingMethod: 'Free shipping' -> Disqualified, delivery fee added
+const underThresholdOrder = {
   orderId: "19048",
   name: "Karim Mia",
   phone: "01812345678",
@@ -2624,28 +2626,44 @@ const freeOrderOutside = {
   items: [{ name: "Executive Panjabi - L", qty: 1, unitPrice: "1500", total: "1500" }]
 };
 
-const normFreeOutside = wcIntegration.normalizeCustomerAndOrderData(freeOrderOutside);
-assert.strictEqual(normFreeOutside.isFreeShipping, true, "Must detect free shipping from shippingMethod");
-assert.strictEqual(normFreeOutside.deliveryFee, 0, "Delivery fee must be 0 for Outside Dhaka Free Shipping");
-assert.strictEqual(normFreeOutside.cod, "1500", "Total COD must stay 1500 (NEVER add ৳90 for Free Shipping!)");
+const normUnder = wcIntegration.normalizeCustomerAndOrderData(underThresholdOrder);
+assert.strictEqual(normUnder.isFreeShipping, false, "Order < 2500 TK must be disqualified from automatic free shipping");
+assert.strictEqual(normUnder.deliveryFee, 90, "Delivery fee must be ৳90 outside Dhaka when subtotal < 2500 TK");
+assert.strictEqual(normUnder.cod, "1590", "Total COD must include delivery fee ৳90 (1500 + 90 = 1590) so merchant is not underpaid");
 
-// Case 30c: Order with notes mentioning 'ফ্রি ডেলিভারি'
-const freeOrderNotes = {
+// Case 30c: Order < ৳2500 with Manual Merchant Override (forceFreeShipping: true) -> Merchant Override Honored
+const forceFreeOrder = {
   orderId: "19049",
+  name: "Jamil Hossain",
+  phone: "01612345678",
+  address: "Dhanmondi 27, Dhaka",
+  cod: "1494",
+  forceFreeShipping: true,
+  items: [{ name: "DEEN Slim Fit Jeans - 32", qty: 1, unitPrice: "1494", total: "1494" }]
+};
+
+const normForce = wcIntegration.normalizeCustomerAndOrderData(forceFreeOrder);
+assert.strictEqual(normForce.isFreeShipping, true, "Manual merchant override must grant free shipping even if < 2500 TK");
+assert.strictEqual(normForce.deliveryFee, 0, "Delivery fee must be 0 when merchant manually toggles free delivery");
+assert.strictEqual(normForce.cod, "1494", "Total COD must remain 1494 under manual merchant override");
+
+// Case 30d: Order > ৳2500 (৳3000) with Bengali coupon notes 'ফ্রি ডেলিভারি'
+const freeOrderNotes = {
+  orderId: "19050",
   name: "Salim Khan",
   phone: "01912345678",
   address: "Agrabad, Chattogram",
-  cod: "2000",
+  cod: "3000",
   notes: "Customer applied coupon: ফ্রি ডেলিভারি",
-  items: [{ name: "Premium Attar", qty: 2, unitPrice: "1000", total: "2000" }]
+  items: [{ name: "Premium Attar", qty: 3, unitPrice: "1000", total: "3000" }]
 };
 
 const normFreeNotes = wcIntegration.normalizeCustomerAndOrderData(freeOrderNotes);
-assert.strictEqual(normFreeNotes.isFreeShipping, true, "Must detect free shipping from Bengali notes");
+assert.strictEqual(normFreeNotes.isFreeShipping, true, "Must grant free shipping when subtotal >= 2500 and notes indicate free delivery");
 assert.strictEqual(normFreeNotes.deliveryFee, 0, "Delivery fee must be 0");
-assert.strictEqual(normFreeNotes.cod, "2000", "COD must stay 2000");
+assert.strictEqual(normFreeNotes.cod, "3000", "COD must stay 3000");
 
-// Case 30d: Canvas rendering for Free Shipping order
+// Case 30e: Canvas rendering for Free Shipping order (> 2500 TK)
 const drawnTexts30 = [];
 const mockCanvas30 = {
   width: 0,
@@ -2667,11 +2685,11 @@ global.document.createElement = (tag) => {
   return mockElement(tag);
 };
 
-wcIntegration.renderOrderReceiptCanvas(freeOrderInside);
-assert(drawnTexts30.includes("Subtotal: ৳1494  •  Delivery: Free (৳0)"), "Canvas must show 'Delivery: Free (৳0)' for Free Shipping");
-assert(drawnTexts30.includes("৳1494"), "Canvas COD total must display ৳1494 (NOT ৳1544)");
+wcIntegration.renderOrderReceiptCanvas(freeOrderOverThreshold);
+assert(drawnTexts30.includes("Subtotal: ৳2988  •  Delivery: Free (৳0)"), "Canvas must show 'Delivery: Free (৳0)' for Free Shipping > 2500 TK");
+assert(drawnTexts30.includes("৳2988"), "Canvas COD total must display ৳2988 (NOT adding delivery charge)");
 
-console.log("  ✅ Free Shipping orders (Inside/Outside/Notes/Canvas) verified: delivery charge is ৳0 and NEVER added to COD!");
+console.log("  ✅ Free Shipping threshold policy verified: only orders > ৳2500 (or merchant manual override) receive Free Shipping!");
 
 console.log("\n==================================================");
 console.log("🎉 ALL 30 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
