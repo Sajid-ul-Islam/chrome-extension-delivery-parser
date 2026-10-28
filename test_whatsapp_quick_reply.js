@@ -2337,8 +2337,185 @@ assert(!modalHtml.includes("Titas, Cumilla, Titas"), "Order confirm modal must n
 
 console.log("  ✅ Address deduplication & normalization in Details modal & Receipt screenshot verified 100%!");
 
+// -----------------------------------------------------------------------------
+// Test 28: Pathao Modal Address Normalizer, Smart Guess & Titas / Cumilla Resolution
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 28: Testing Pathao Modal Address Normalizer, Smart Guess & Titas / Cumilla Resolution...");
+
+const bgWorker = require('./background.js');
+assert.strictEqual(typeof bgWorker.handleOnlineAddressGuess, "function", "background must export handleOnlineAddressGuess");
+
+// Case 28a: Fast path local guess for Noyakandi Bazar, Titas
+let guessResult28 = null;
+bgWorker.handleOnlineAddressGuess("Noyakandi Bazar, Titas,", (res) => {
+  guessResult28 = res;
+});
+assert(guessResult28, "handleOnlineAddressGuess must return a result");
+assert.strictEqual(guessResult28.success, true, "Guess must succeed");
+assert.strictEqual(guessResult28.district, "Cumilla", `Expected district 'Cumilla', got '${guessResult28.district}'`);
+assert.strictEqual(guessResult28.zone, "Titas", `Expected zone 'Titas', got '${guessResult28.zone}'`);
+assert.strictEqual(guessResult28.fullAddress, "Noyakandi Bazar, Titas, Cumilla", `Expected full address 'Noyakandi Bazar, Titas, Cumilla', got '${guessResult28.fullAddress}'`);
+assert.strictEqual(guessResult28.source, "Local Engine", "Must resolve locally via reverse zone index");
+
+// Case 28b: Pathao Modal DOM simulation with Smart Guess button & interactive chips
+const mockModalElements = {};
+const listeners28 = {};
+
+const mockAddrInput = {
+  value: "Noyakandi Bazar, Titas,",
+  dataset: {},
+  parentNode: {
+    insertBefore: (newChild, refChild) => {
+      mockModalElements["#deen-ptc-address-helper"] = newChild;
+    }
+  },
+  dispatchEvent: (ev) => {},
+  addEventListener: (name, cb) => { listeners28[name] = cb; }
+};
+
+const mockCitySelect28 = {
+  options: [
+    { value: "", text: "Select City" },
+    { value: "1", text: "Dhaka" },
+    { value: "2", text: "Cumilla" }
+  ],
+  value: "",
+  dispatchEvent: () => {}
+};
+
+const mockZoneSelect28 = {
+  options: [
+    { value: "", text: "Select Zone" },
+    { value: "101", text: "Cumilla Sadar" },
+    { value: "102", text: "Titas" }
+  ],
+  value: "",
+  dispatchEvent: () => {}
+};
+
+let helperChildren = [];
+const mockHelperDiv = {
+  id: "deen-ptc-address-helper",
+  className: "deen-ptc-address-helper",
+  _html: "",
+  set innerHTML(html) {
+    this._html = html;
+  },
+  get innerHTML() {
+    return this._html;
+  },
+  querySelector: (sel) => {
+    if (sel === "#deen-ptc-detected-text") {
+      if (!mockModalElements["#deen-ptc-detected-text"]) {
+        mockModalElements["#deen-ptc-detected-text"] = { innerHTML: "" };
+      }
+      return mockModalElements["#deen-ptc-detected-text"];
+    }
+    if (sel === "#deen-ptc-chips-row") {
+      if (!mockModalElements["#deen-ptc-chips-row"]) {
+        mockModalElements["#deen-ptc-chips-row"] = {
+          innerHTML: "",
+          appendChild: (c) => { helperChildren.push(c); }
+        };
+      }
+      return mockModalElements["#deen-ptc-chips-row"];
+    }
+    if (sel === "#deen-ptc-btn-full") {
+      if (!mockModalElements["#deen-ptc-btn-full"]) {
+        mockModalElements["#deen-ptc-btn-full"] = { addEventListener: (ev, cb) => { listeners28["full_click"] = cb; } };
+      }
+      return mockModalElements["#deen-ptc-btn-full"];
+    }
+    if (sel === "#deen-ptc-btn-guess") {
+      if (!mockModalElements["#deen-ptc-btn-guess"]) {
+        mockModalElements["#deen-ptc-btn-guess"] = { addEventListener: (ev, cb) => { listeners28["guess_click"] = cb; }, disabled: false };
+      }
+      return mockModalElements["#deen-ptc-btn-guess"];
+    }
+    if (sel === "#deen-ptc-btn-clean") {
+      if (!mockModalElements["#deen-ptc-btn-clean"]) {
+        mockModalElements["#deen-ptc-btn-clean"] = { addEventListener: (ev, cb) => { listeners28["clean_click"] = cb; } };
+      }
+      return mockModalElements["#deen-ptc-btn-clean"];
+    }
+    if (sel === "#deen-ptc-btn-match") {
+      if (!mockModalElements["#deen-ptc-btn-match"]) {
+        mockModalElements["#deen-ptc-btn-match"] = {
+          addEventListener: (ev, cb) => { listeners28["match_click"] = cb; },
+          click: () => { if (listeners28["match_click"]) listeners28["match_click"]({ preventDefault: () => {} }); }
+        };
+      }
+      return mockModalElements["#deen-ptc-btn-match"];
+    }
+    if (sel === "#deen-ptc-btn-revert") {
+      if (!mockModalElements["#deen-ptc-btn-revert"]) {
+        mockModalElements["#deen-ptc-btn-revert"] = { style: { display: "none" }, addEventListener: (ev, cb) => { listeners28["revert_click"] = cb; } };
+      }
+      return mockModalElements["#deen-ptc-btn-revert"];
+    }
+    if (sel === "#deen-ptc-status-hint") {
+      if (!mockModalElements["#deen-ptc-status-hint"]) {
+        mockModalElements["#deen-ptc-status-hint"] = { textContent: "" };
+      }
+      return mockModalElements["#deen-ptc-status-hint"];
+    }
+    return null;
+  }
+};
+
+const mockSingleModal = {
+  querySelector: (sel) => {
+    if (sel === "#deen-ptc-address-helper") return mockModalElements["#deen-ptc-address-helper"] || null;
+    if (sel.includes("phone")) return null;
+    if (sel.includes("shipping_address") || sel.includes("recipient_address") || sel === "#shipping_address") return mockAddrInput;
+    if (sel.includes("city")) return mockCitySelect28;
+    if (sel.includes("zone")) return mockZoneSelect28;
+    return null;
+  }
+};
+
+global.document.querySelectorAll = (sel) => {
+  if (sel.includes("ptc-open-modal-button")) return [];
+  if (sel.includes("modal")) return [mockSingleModal];
+  return [];
+};
+global.document.getElementById = (id) => {
+  return null;
+};
+global.document.createElement = (tag) => {
+  if (tag === "div") return mockHelperDiv;
+  return {
+    type: "",
+    className: "",
+    title: "",
+    style: {},
+    innerHTML: "",
+    addEventListener: () => {}
+  };
+};
+
+wcIntegration.initPathaoPluginAddressNormalizer();
+
+// Verify detection: must display City: Cumilla | Zone: Titas (NEVER Dhaka!)
+const detectedText = mockModalElements["#deen-ptc-detected-text"].innerHTML;
+assert(detectedText.includes("Cumilla"), `Detected city must be Cumilla, got: ${detectedText}`);
+assert(detectedText.includes("Titas"), `Detected zone must be Titas, got: ${detectedText}`);
+assert(!detectedText.includes("Dhaka"), `Must NOT default to Dhaka when Titas is present! Got: ${detectedText}`);
+
+// Verify Full Address Button click: completes to 'Noyakandi Bazar, Titas, Cumilla'
+assert(listeners28["full_click"], "Full Address button listener must be registered");
+listeners28["full_click"]({ preventDefault: () => {} });
+assert.strictEqual(mockAddrInput.value, "Noyakandi Bazar, Titas, Cumilla", `Address after Full Address click must be 'Noyakandi Bazar, Titas, Cumilla', got '${mockAddrInput.value}'`);
+
+// Verify Smart Guess Button click
+assert(listeners28["guess_click"], "Smart Guess button listener must be registered");
+listeners28["guess_click"]({ preventDefault: () => {} });
+assert(mockAddrInput.value.includes("Cumilla"), "Smart guess must ensure Cumilla is present");
+
+console.log("  ✅ Pathao modal helper accurately identified Cumilla & Titas, completed full address, and added Smart Guess button!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 27 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
+console.log("🎉 ALL 28 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
 console.log("==================================================");
 
 

@@ -2944,6 +2944,9 @@
             <button type="button" class="deen-ptc-btn deen-ptc-btn-full" id="deen-ptc-btn-full" title="Build & insert complete modified full address with City/District & Zone">
               📝 Full Address
             </button>
+            <button type="button" class="deen-ptc-btn deen-ptc-btn-guess" id="deen-ptc-btn-guess" title="Smart guess full location using OpenStreetMap & intelligent heuristics">
+              🌐 Smart Guess
+            </button>
             <button type="button" class="deen-ptc-btn deen-ptc-btn-clean" id="deen-ptc-btn-clean" title="Clean and normalize address formatting">
               ✨ Clean Address
             </button>
@@ -2962,6 +2965,7 @@
         }
 
         const fullBtn = helper.querySelector("#deen-ptc-btn-full");
+        const guessBtn = helper.querySelector("#deen-ptc-btn-guess");
         const cleanBtn = helper.querySelector("#deen-ptc-btn-clean");
         const matchBtn = helper.querySelector("#deen-ptc-btn-match");
         const revertBtn = helper.querySelector("#deen-ptc-btn-revert");
@@ -3021,9 +3025,8 @@
                   if (!addrInput.dataset.deenRawAddress) {
                     addrInput.dataset.deenRawAddress = addrInput.value;
                   }
-                  const cur = (addrInput.value || "").trim();
-                  const sep = cur && !cur.endsWith(",") ? ", " : " ";
-                  addrInput.value = cur ? `${cur}${sep}${valToInsert}` : valToInsert;
+                  const cur = (addrInput.value || "").trim().replace(/[,.\s-]+$/, "");
+                  addrInput.value = cur ? `${cur}, ${valToInsert}` : valToInsert;
                   addrInput.dispatchEvent(new Event("input", { bubbles: true }));
                   addrInput.dispatchEvent(new Event("change", { bubbles: true }));
                   updateDetectedDisplay();
@@ -3066,10 +3069,10 @@
         if (fullBtn) {
           fullBtn.addEventListener("click", (e) => {
             e.preventDefault();
-            const raw = addrInput.value || "";
-            if (!raw.trim()) return;
+            const raw = (addrInput.value || "").trim().replace(/[,.\s-]+$/, "");
+            if (!raw) return;
             if (!addrInput.dataset.deenRawAddress) {
-              addrInput.dataset.deenRawAddress = raw;
+              addrInput.dataset.deenRawAddress = addrInput.value;
             }
             const full = buildFullAddress(raw);
             addrInput.value = full;
@@ -3084,6 +3087,85 @@
           });
         }
 
+        if (guessBtn) {
+          guessBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            const raw = (addrInput.value || "").trim().replace(/[,.\s-]+$/, "");
+            if (!raw) return;
+            if (!addrInput.dataset.deenRawAddress) {
+              addrInput.dataset.deenRawAddress = addrInput.value;
+            }
+
+            let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
+            let buildFull = typeof buildFullAddress === "function" ? buildFullAddress : null;
+            if (typeof require !== "undefined") {
+              try {
+                const pMod = require("./parser.js");
+                if (!parseBD) parseBD = pMod.parseBDAddress;
+                if (!buildFull) buildFull = pMod.buildFullAddress;
+              } catch (err) {}
+            }
+
+            const localParsed = parseBD ? parseBD(raw) : null;
+            const hasExplicitDhaka = /\b(?:dhaka|dacca|ঢাকা)\b/i.test(raw);
+
+            // Fast path: if local parse already detected a non-Dhaka district or explicit Dhaka
+            if (localParsed && ((localParsed.district && localParsed.district !== "Dhaka") || (localParsed.district === "Dhaka" && hasExplicitDhaka))) {
+              const full = buildFull ? buildFull(raw, localParsed) : raw;
+              addrInput.value = full;
+              addrInput.dispatchEvent(new Event("input", { bubbles: true }));
+              addrInput.dispatchEvent(new Event("change", { bubbles: true }));
+              updateDetectedDisplay();
+              if (matchBtn) matchBtn.click();
+              if (revertBtn && revertBtn.style) revertBtn.style.display = "inline-flex";
+              if (statusHint) {
+                statusHint.textContent = `🎯 Guessed: ${localParsed.district}${localParsed.zone ? ' > ' + localParsed.zone : ''}`;
+                setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3000);
+              }
+              return;
+            }
+
+            // Remote path: Query background service worker via OpenStreetMap Nominatim
+            if (statusHint) statusHint.textContent = "🌐 Guessing location...";
+            guessBtn.disabled = true;
+
+            const handleGuessResponse = (res) => {
+              guessBtn.disabled = false;
+              if (res && res.success && res.district) {
+                const full = res.fullAddress || (buildFull ? buildFull(raw, res) : raw);
+                addrInput.value = full;
+                addrInput.dispatchEvent(new Event("input", { bubbles: true }));
+                addrInput.dispatchEvent(new Event("change", { bubbles: true }));
+                updateDetectedDisplay();
+                if (matchBtn) matchBtn.click();
+                if (revertBtn && revertBtn.style) revertBtn.style.display = "inline-flex";
+                if (statusHint) {
+                  statusHint.textContent = `🎯 Guessed: ${res.district}${res.zone ? ' > ' + res.zone : ''} (${res.source || 'OSM'})`;
+                  setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3500);
+                }
+              } else {
+                if (statusHint) {
+                  statusHint.textContent = "ℹ️ Could not guess location online";
+                  setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3000);
+                }
+              }
+            };
+
+            if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+              chrome.runtime.sendMessage({ action: "guess_address_online", query: raw }, handleGuessResponse);
+            } else if (typeof require !== "undefined") {
+              try {
+                const bg = require("./background.js");
+                if (bg && bg.handleOnlineAddressGuess) {
+                  bg.handleOnlineAddressGuess(raw, handleGuessResponse);
+                }
+              } catch (err) {
+                guessBtn.disabled = false;
+              }
+            }
+          });
+        }
+
         if (cleanBtn) {
           cleanBtn.addEventListener("click", (e) => {
             e.preventDefault();
@@ -3092,7 +3174,7 @@
             if (!addrInput.dataset.deenRawAddress) {
               addrInput.dataset.deenRawAddress = raw;
             }
-            const cleaned = normalizeAddressForPathao(raw);
+            const cleaned = normalizeAddressForPathao(raw).replace(/[,.\s-]+$/, "");
             addrInput.value = cleaned;
             addrInput.dispatchEvent(new Event("input", { bubbles: true }));
             addrInput.dispatchEvent(new Event("change", { bubbles: true }));
@@ -3219,15 +3301,15 @@
       const rawCurrent = addrInput.value || "";
       if (rawCurrent.trim().length > 5 && addrInput.dataset.deenNormalized !== "true") {
         addrInput.dataset.deenRawAddress = rawCurrent;
-        const cleaned = normalizeAddressForPathao(rawCurrent);
+        const cleaned = normalizeAddressForPathao(rawCurrent).replace(/[,.\s-]+$/, "");
         if (cleaned && cleaned !== rawCurrent) {
           addrInput.value = cleaned;
           addrInput.dispatchEvent(new Event("input", { bubbles: true }));
           addrInput.dispatchEvent(new Event("change", { bubbles: true }));
           addrInput.dataset.deenNormalized = "true";
-          const revertBtn = helper.querySelector("#deen-ptc-btn-revert");
+          const revertBtn = helper && typeof helper.querySelector === "function" ? helper.querySelector("#deen-ptc-btn-revert") : null;
           if (revertBtn && revertBtn.style) revertBtn.style.display = "inline-flex";
-          const statusHint = helper.querySelector("#deen-ptc-status-hint");
+          const statusHint = helper && typeof helper.querySelector === "function" ? helper.querySelector("#deen-ptc-status-hint") : null;
           if (statusHint) {
             statusHint.textContent = "✨ Auto-cleaned for Pathao";
             setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3000);
@@ -3236,7 +3318,7 @@
           addrInput.dataset.deenNormalized = "true";
         }
 
-        const detectedEl = helper.querySelector("#deen-ptc-detected-text");
+        const detectedEl = helper && typeof helper.querySelector === "function" ? helper.querySelector("#deen-ptc-detected-text") : null;
         let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
         if (!parseBD && typeof require !== "undefined") {
           try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
@@ -3315,7 +3397,9 @@
     // 3. Reset normalization state when clicking "Send with Pathao" on a new order
     const openBtns = document.querySelectorAll(".ptc-open-modal-button");
     openBtns.forEach(btn => {
-      if (!btn.dataset.deenNormalizerBound) {
+      if (!btn) return;
+      if (!btn.dataset) btn.dataset = {};
+      if (!btn.dataset.deenNormalizerBound && typeof btn.addEventListener === "function") {
         btn.dataset.deenNormalizerBound = "true";
         btn.addEventListener("click", () => {
           setTimeout(() => {

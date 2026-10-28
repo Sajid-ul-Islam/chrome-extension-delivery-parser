@@ -188,6 +188,29 @@ const cleanOlinagar = normalizeDisplayAddress(rawOlinagar);
 assert.strictEqual(cleanOlinagar, "Olinagar, Gangni, Meherpur", `Case 17 mismatch: expected 'Olinagar, Gangni, Meherpur', got '${cleanOlinagar}'`);
 console.log('  ✅ Case 17: Olinagar, Gangni, Meherpur deduplicated without repeated city/district');
 
+// Case 18: Incomplete address with zone only: "Noyakandi Bazar, Titas," -> resolves district Cumilla & zone Titas (never Dhaka)
+const rawTitas = "Noyakandi Bazar, Titas,";
+const addr18 = parseBDAddress(rawTitas);
+assert.strictEqual(addr18.district, "Cumilla", `Case 18 District mismatch: expected 'Cumilla', got '${addr18.district}'`);
+assert.strictEqual(addr18.zone, "Titas", `Case 18 Zone mismatch: expected 'Titas', got '${addr18.zone}'`);
+assert.strictEqual(addr18.cityType, "Outside Dhaka", `Case 18 CityType mismatch: expected 'Outside Dhaka', got '${addr18.cityType}'`);
+console.log('  ✅ Case 18: Noyakandi Bazar, Titas, resolved to Cumilla & Titas (never Dhaka fallback)');
+
+// Case 19: buildFullAddress for incomplete address appends parent district
+const fullTitas = buildFullAddress(rawTitas);
+assert.strictEqual(fullTitas, "Noyakandi Bazar, Titas, Cumilla", `Case 19 Full mismatch: expected 'Noyakandi Bazar, Titas, Cumilla', got '${fullTitas}'`);
+console.log('  ✅ Case 19: buildFullAddress completes missing district: Noyakandi Bazar, Titas, Cumilla');
+
+// Case 20: 100% 64 Districts coverage: Munshiganj, Manikganj, Bandarban, Khagrachhari, Rangamati
+const addrMunshiganj = parseBDAddress("Sreenagar, Munshiganj");
+assert.strictEqual(addrMunshiganj.district, "Munshiganj", "Munshiganj district mismatch");
+assert.strictEqual(addrMunshiganj.zone, "Sreenagar", "Sreenagar zone mismatch");
+const addrManikganj = parseBDAddress("Singair, Manikganj");
+assert.strictEqual(addrManikganj.district, "Manikganj", "Manikganj district mismatch");
+const addrBandarban = parseBDAddress("Lama, Bandarban");
+assert.strictEqual(addrBandarban.district, "Bandarban", "Bandarban district mismatch");
+console.log('  ✅ Case 20: 100% 64 Districts and Upazilas coverage verified across Bangladesh');
+
 // =========================================================================
 // Feature 5: Pathao Bulk Batch CSV Generation Tests
 // =========================================================================

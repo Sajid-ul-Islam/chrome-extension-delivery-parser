@@ -49,16 +49,18 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
     });
   }
 
-  chrome.runtime.onInstalled.addListener(() => {
-    console.log("DEEN Delivery Parser Extension Installed.");
-    if (chrome.storage && chrome.storage.local) {
-      chrome.storage.local.remove(["pathao_autofill_data"]);
-    }
-    if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
-      chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
-    }
-    setupContextMenus();
-  });
+  if (chrome.runtime && chrome.runtime.onInstalled && chrome.runtime.onInstalled.addListener) {
+    chrome.runtime.onInstalled.addListener(() => {
+      console.log("DEEN Delivery Parser Extension Installed.");
+      if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.remove(["pathao_autofill_data"]);
+      }
+      if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+      }
+      setupContextMenus();
+    });
+  }
 
   // Purge expired autofill data on service worker startup (> 5 minutes old)
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
@@ -131,7 +133,8 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
   }
 
   // Handle messages from content scripts or popup
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (chrome.runtime && chrome.runtime.onMessage && chrome.runtime.onMessage.addListener) {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request && request.action === "sync_to_pathao") {
       if (request.data && chrome.storage && chrome.storage.local) {
         chrome.storage.local.set({ "pathao_autofill_data": request.data }, () => {
@@ -157,11 +160,15 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
     } else if (request && request.action === "fetch_customer_rating" && request.phone) {
       handleCustomerRatingRequest(request.phone, sendResponse, Boolean(request.forceRefresh));
       return true; // Keep message channel open for async response
+    } else if (request && request.action === "guess_address_online") {
+      handleOnlineAddressGuess(request.query, sendResponse);
+      return true; // Keep message channel open for async response
     } else {
       sendResponse({ status: "ignored" });
     }
     return false;
   });
+}
 }
 
 /**
@@ -754,6 +761,258 @@ function focusOrOpenPathao() {
       chrome.tabs.create({ url: PATHAO_CREATE_ORDER_URL, active: true });
     }
   });
+}
+
+// In-memory cache for online address guesses (query string -> result)
+const onlineAddressCache = new Map();
+
+/**
+ * Parses OpenStreetMap Nominatim response item into standardized Bangladesh district, zone, and postcode
+ */
+function parseNominatimAddressResult(item, originalQuery) {
+  if (!item || !item.address) return null;
+  const addr = item.address;
+
+  let parseBD = typeof parseBDAddress !== "undefined" ? parseBDAddress : null;
+  let isoDetect = typeof detectDistrictFromISOCode !== "undefined" ? detectDistrictFromISOCode : null;
+  let dists = typeof BD_DISTRICTS !== "undefined" ? BD_DISTRICTS : [];
+  let otherZones = typeof OTHER_CITY_ZONES !== "undefined" ? OTHER_CITY_ZONES : {};
+  let dhakaZones = typeof DHAKA_ZONES !== "undefined" ? DHAKA_ZONES : [];
+
+  if (typeof require !== "undefined") {
+    try {
+      const p = require("./parser.js");
+      if (!parseBD) parseBD = p.parseBDAddress;
+      if (!isoDetect) isoDetect = p.detectDistrictFromISOCode;
+      if (dists.length === 0) dists = p.BD_DISTRICTS;
+      if (Object.keys(otherZones).length === 0) otherZones = p.OTHER_CITY_ZONES;
+      if (dhakaZones.length === 0) dhakaZones = p.DHAKA_ZONES;
+    } catch (e) {}
+  }
+
+  let matchedDistrict = "";
+  let matchedZone = "";
+  let postcode = (addr.postcode || "").trim();
+
+  // 1. Check ISO 3166-2:BD code (e.g. BD-08 -> Cumilla, BD-26 -> Kishoreganj)
+  const isoCode = addr["ISO3166-2-lvl5"] || addr["ISO3166-2-lvl4"] || "";
+  if (isoCode && isoDetect) {
+    const fromIso = isoDetect(isoCode);
+    if (fromIso) matchedDistrict = fromIso;
+  }
+
+  // 2. Check state_district (e.g. "কুমিল্লা জেলা" or "Kishoreganj District")
+  if (!matchedDistrict && addr.state_district) {
+    const rawDist = addr.state_district.replace(/(?:জেলা|district|zila|zilla|jela)/gi, "").trim();
+    const dMatch = dists.find(d => d.name.toLowerCase() === rawDist.toLowerCase() || (d.aliases && d.aliases.some(a => a.toLowerCase() === rawDist.toLowerCase())));
+    if (dMatch) matchedDistrict = dMatch.name;
+  }
+
+  // 3. Check city / county / state
+  if (!matchedDistrict && addr.city) {
+    const dMatch = dists.find(d => d.name.toLowerCase() === addr.city.toLowerCase() || (d.aliases && d.aliases.some(a => a.toLowerCase() === addr.city.toLowerCase())));
+    if (dMatch) matchedDistrict = dMatch.name;
+  }
+
+  // 4. Resolve Zone from county (upazila), town, municipality, suburb, or name
+  const candidateZoneTexts = [
+    addr.county,
+    addr.town,
+    addr.municipality,
+    addr.suburb,
+    addr.village,
+    item.name
+  ].filter(Boolean);
+
+  if (matchedDistrict && otherZones[matchedDistrict]) {
+    for (const zText of candidateZoneTexts) {
+      const cleanZ = zText.replace(/(?:উপজেলা|upazila|thana|থানা|পৌরসভা|municipality)/gi, "").trim();
+      const zObj = otherZones[matchedDistrict].find(z => {
+        const zName = typeof z === "string" ? z : z.name;
+        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+        return zName.toLowerCase() === cleanZ.toLowerCase() || aliases.some(a => a.toLowerCase() === cleanZ.toLowerCase() || cleanZ.toLowerCase().includes(a.toLowerCase()));
+      });
+      if (zObj) {
+        matchedZone = typeof zObj === "string" ? zObj : zObj.name;
+        break;
+      }
+    }
+  }
+
+  // Check Dhaka zones if district is Dhaka
+  if ((!matchedDistrict || matchedDistrict === "Dhaka") && !matchedZone) {
+    for (const zText of candidateZoneTexts) {
+      const cleanZ = zText.replace(/(?:থানা|thana)/gi, "").trim();
+      const zObj = dhakaZones.find(z => {
+        const zName = typeof z === "string" ? z : z.name;
+        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+        return zName.toLowerCase() === cleanZ.toLowerCase() || aliases.some(a => a.toLowerCase() === cleanZ.toLowerCase());
+      });
+      if (zObj) {
+        matchedZone = typeof zObj === "string" ? zObj : zObj.name;
+        matchedDistrict = "Dhaka";
+        break;
+      }
+    }
+  }
+
+  // If zone still not matched from zones list, take the cleaned county/upazila name
+  if (!matchedZone && addr.county) {
+    matchedZone = addr.county.replace(/(?:উপজেলা|upazila|thana|থানা)/gi, "").trim();
+  }
+
+  if (!matchedDistrict && !matchedZone) return null;
+
+  // Build modified full address
+  let buildFull = typeof buildFullAddress !== "undefined" ? buildFullAddress : null;
+  if (!buildFull && typeof require !== "undefined") {
+    try { buildFull = require("./parser.js").buildFullAddress; } catch (e) {}
+  }
+
+  let fullAddress = "";
+  if (buildFull && originalQuery) {
+    fullAddress = buildFull(originalQuery, {
+      district: matchedDistrict,
+      zone: matchedZone,
+      postcode: postcode
+    });
+  }
+
+  return {
+    success: true,
+    district: matchedDistrict,
+    zone: matchedZone,
+    postcode: postcode,
+    fullAddress: fullAddress,
+    osmName: item.display_name || "",
+    source: "OpenStreetMap"
+  };
+}
+
+/**
+ * Handle background intelligent address guessing via local parser & OpenStreetMap Nominatim
+ */
+async function handleOnlineAddressGuess(rawQuery, sendResponse) {
+  if (!rawQuery || typeof rawQuery !== "string" || !rawQuery.trim()) {
+    sendResponse({ success: false, error: "Empty query" });
+    return;
+  }
+
+  const cleanQuery = rawQuery.trim().replace(/[\r\n\t]+/g, ", ").replace(/\s{2,}/g, " ").replace(/[,.\s-]+$/, "");
+  const cacheKey = cleanQuery.toLowerCase();
+
+  if (onlineAddressCache.has(cacheKey)) {
+    sendResponse(onlineAddressCache.get(cacheKey));
+    return;
+  }
+
+  // 1. Try local parse first if district is explicit or specific zone is recognized
+  let parseBD = typeof parseBDAddress !== "undefined" ? parseBDAddress : null;
+  let buildFull = typeof buildFullAddress !== "undefined" ? buildFullAddress : null;
+  if (typeof require !== "undefined") {
+    try {
+      const p = require("./parser.js");
+      if (!parseBD) parseBD = p.parseBDAddress;
+      if (!buildFull) buildFull = p.buildFullAddress;
+    } catch (e) {}
+  }
+
+  if (parseBD) {
+    const localParsed = parseBD(cleanQuery);
+    // If local parsed found a non-Dhaka district or if Dhaka was explicitly in the text
+    const hasExplicitDhaka = /\b(?:dhaka|dacca|ঢাকা)\b/i.test(cleanQuery);
+    if ((localParsed.district && localParsed.district !== "Dhaka") || (localParsed.district === "Dhaka" && hasExplicitDhaka)) {
+      const result = {
+        success: true,
+        district: localParsed.district,
+        zone: localParsed.zone,
+        postcode: localParsed.postcode || "",
+        fullAddress: buildFull ? buildFull(cleanQuery, localParsed) : cleanQuery,
+        source: "Local Engine"
+      };
+      onlineAddressCache.set(cacheKey, result);
+      sendResponse(result);
+      return;
+    }
+  }
+
+  // 2. Prepare search candidates for OpenStreetMap Nominatim
+  // Remove phone numbers, email, and extraneous labels
+  let sanitized = cleanQuery
+    .replace(/(?:\+?88)?01[3-9]\d{8}\b/g, "")
+    .replace(/\b(?:House|Road|Flat|Block|Holding|Vill|Village|Post|Thana|District|P\.O\.)[\s:,-]*[^\s,;]+/gi, "")
+    .replace(/[,.\s-]+$/, "")
+    .trim();
+
+  const segments = cleanQuery.split(/[,;\n]+/).map(s => s.trim().replace(/^[,.\s-]+|[,.\s-]+$/g, "")).filter(Boolean);
+  const candidates = [];
+  if (sanitized && sanitized.length >= 3) candidates.push(sanitized);
+
+  // Add individual segments (rightmost first, e.g. thana or bazar)
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const seg = segments[i];
+    if (seg.length >= 3 && !/^\d+$/.test(seg) && !candidates.includes(seg)) {
+      candidates.push(seg);
+    }
+  }
+
+  // Limit to 3 candidate searches
+  const toSearch = candidates.slice(0, 3);
+  let resolvedResult = null;
+
+  for (const candidate of toSearch) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(candidate + " Bangladesh")}&format=json&addressdetails=1&limit=1`;
+      let data = null;
+
+      if (typeof fetch === "function") {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        try {
+          const resp = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+              "User-Agent": "DEEN-Delivery-Parser/1.0 (contact@deencommerce.com)",
+              "Accept": "application/json"
+            }
+          });
+          clearTimeout(timeoutId);
+          if (resp.ok) {
+            data = await resp.json();
+          }
+        } catch (fetchErr) {
+          clearTimeout(timeoutId);
+        }
+      }
+
+      if (Array.isArray(data) && data.length > 0) {
+        const parsed = parseNominatimAddressResult(data[0], cleanQuery);
+        if (parsed && (parsed.district || parsed.zone)) {
+          resolvedResult = parsed;
+          break;
+        }
+      }
+    } catch (err) {}
+  }
+
+  if (resolvedResult) {
+    onlineAddressCache.set(cacheKey, resolvedResult);
+    sendResponse(resolvedResult);
+  } else {
+    sendResponse({
+      success: false,
+      error: "Could not guess address online via OpenStreetMap"
+    });
+  }
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    handleCustomerRatingRequest,
+    handleOnlineAddressGuess,
+    parseNominatimAddressResult,
+    onlineAddressCache
+  };
 }
 
 

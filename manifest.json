@@ -42,7 +42,8 @@
     "https://steadfast.com.bd/*",
     "https://*.steadfast.com.bd/*",
     "*://deencommerce.com/*",
-    "*://*.deencommerce.com/*"
+    "*://*.deencommerce.com/*",
+    "https://nominatim.openstreetmap.org/*"
   ],
   "web_accessible_resources": [
     {

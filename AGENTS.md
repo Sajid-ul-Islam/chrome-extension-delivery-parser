@@ -56,6 +56,11 @@ The 2x Retina Order Receipt canvas rendered by `renderOrderReceiptCanvas`:
 - Outside Dhaka standard delivery: **৳90**
 - **False-Dhaka 50 TK Correction**: When a customer outside Dhaka falsely selected inside-Dhaka delivery (paying only ৳50), the system corrects COD to `Subtotal + ৳90` (e.g. `1500 + 90 = 1590`) so the merchant is never underpaid.
 
+### Invariant 8: 100% 64 Districts Coverage, Reverse Zone Inference & Online Geocoding Fallback
+- `OTHER_CITY_ZONES` in [`parser.js`](file:///d:/Repo/chrome-extension-delivery-parser/parser.js) must cover 100% of all 64 Bangladesh districts and their ~495 upazilas with English and Bengali aliases.
+- When an incomplete address mentions a thana/upazila without the district name (e.g. `Titas`), the parser must infer the parent district (`Cumilla`) via reverse zone index and never fall back to Dhaka.
+- Intelligent Online Geocoding via `guess_address_online` in [`background.js`](file:///d:/Repo/chrome-extension-delivery-parser/background.js) queries OpenStreetMap Nominatim with `ISO3166-2-lvl5` code mapping as a fast, free fallback for obscure bazars or villages.
+
 ---
 
 ## 3. Automated Verification & Test Suites
@@ -74,12 +79,12 @@ node test_webmcp_integration.js
 ```
 
 ### Test Suite Directory:
-1. [`test_parser.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_parser.js) — Standard & fuzzy sequential token parsing, KPI computation, 17 address edge cases, and batch CSV export.
+1. [`test_parser.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_parser.js) — Standard & fuzzy sequential token parsing, KPI computation, 20 address edge cases, 100% 64 districts coverage, and batch CSV export.
 2. [`test_autofill_flow.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_autofill_flow.js) — Manifest schema, phone normalization, script loading, Pathao tables, exchange orders (`D-`), WooCommerce row extraction, and bulk queue advancement.
 3. [`test_popup_pathao_check.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_popup_pathao_check.js) — Background messaging, timeout fallbacks, popup UI sync.
 4. [`test_live_pathao_rating_parsing.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_live_pathao_rating_parsing.js) — Real Hermes API responses, multi-courier composite aggregation, token handling.
 5. [`test_universal_phone_e2e.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_universal_phone_e2e.js) — Universal phone detection, DOM highlight/copy triggers, sidebar drawer, floating pill.
-6. [`test_whatsapp_quick_reply.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_whatsapp_quick_reply.js) — Comprehensive 27-test suite for Order Receipt canvas, line items, AJAX fallbacks, real orders #17819, #18264, #18276, #18304, address deduplication & normalization (#19029), Pathao address normalizer, ISO district detection, and 10-minute caching.
+6. [`test_whatsapp_quick_reply.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_whatsapp_quick_reply.js) — Comprehensive 28-test suite for Order Receipt canvas, line items, AJAX fallbacks, real orders #17819, #18264, #18276, #18304, address deduplication & normalization (#19029), Pathao address normalizer, Smart Guess online geocoding, ISO district detection, and 10-minute caching.
 7. [`test_webmcp_integration.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_webmcp_integration.js) — WebMCP registry conformance, tool discovery, execution of all 7 tools, semantic hints (`readOnlyHint`, `consequentialHint`), and argument schema validation.
 
 ---

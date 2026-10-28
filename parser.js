@@ -1185,13 +1185,22 @@ const OTHER_CITY_ZONES = {
     { name: "Tomsom Bridge", aliases: ["tomsom bridge", "টমছম ব্রিজ"] },
     { name: "Shashangachha", aliases: ["shashangachha", "শাসনগাছা"] },
     { name: "EPZ", aliases: ["epz", "ইপিজেড"] },
+    { name: "Titas", aliases: ["titas", "তিতাস", "titas upazila", "তিতাস উপজেলা", "titas bazar", "তিতাস বাজার"] },
     { name: "Daudkandi", aliases: ["daudkandi", "দাউদকান্দি"] },
+    { name: "Homna", aliases: ["homna", "হোমনা"] },
+    { name: "Meghna", aliases: ["meghna", "মেঘনা"] },
+    { name: "Muradnagar", aliases: ["muradnagar", "মুরাদনগর"] },
     { name: "Chandina", aliases: ["chandina", "চান্দিনা"] },
     { name: "Laksam", aliases: ["laksam", "লাকসাম"] },
     { name: "Chauddagram", aliases: ["chauddagram", "চৌদ্দগ্রাম"] },
     { name: "Debidwar", aliases: ["debidwar", "দেবীদ্বার", "দেবিদ্বার"] },
+    { name: "Barura", aliases: ["barura", "বরুড়া", "বরুড়া"] },
     { name: "Burichang", aliases: ["burichang", "বুড়িচং", "বুড়িচং"] },
-    { name: "Cumilla Sadar", aliases: ["cumilla sadar", "কুমিল্লা সদর"] }
+    { name: "Brahmanpara", aliases: ["brahmanpara", "ব্রাহ্মণপাড়া", "ব্রাহ্মণপাড়া"] },
+    { name: "Monohargonj", aliases: ["monohargonj", "manoharganj", "মনোহরগঞ্জ"] },
+    { name: "Lalmai", aliases: ["lalmai", "লালমাই"] },
+    { name: "Cumilla Sadar", aliases: ["cumilla sadar", "কুমিল্লা সদর"] },
+    { name: "Cumilla Sadar Dakshin", aliases: ["cumilla sadar dakshin", "কুমিল্লা সদর দক্ষিণ"] }
   ],
   "Khulna": [
     { name: "Sonadanga", aliases: ["sonadanga", "সোনাডাঙ্গা"] },
@@ -1632,6 +1641,55 @@ const OTHER_CITY_ZONES = {
     { name: "Lalmonirhat Sadar", aliases: ["lalmonirhat sadar", "লালমনিরহাট সদর"] },
     { name: "Hatibandha", aliases: ["hatibandha", "হাতীবান্ধা", "হাতিবান্ধা"] },
     { name: "Patgram", aliases: ["patgram", "পাটগ্রাম"] }
+  ],
+  "Munshiganj": [
+    { name: "Munshiganj Sadar", aliases: ["munshiganj sadar", "মুন্সীগঞ্জ সদর", "মুন্সিগঞ্জ সদর"] },
+    { name: "Sreenagar", aliases: ["sreenagar", "শ্রীনগর"] },
+    { name: "Sirajdikhan", aliases: ["sirajdikhan", "সিরাজদিখান"] },
+    { name: "Louhajang", aliases: ["louhajang", "লৌহজং"] },
+    { name: "Tongibari", aliases: ["tongibari", "টঙ্গীবাড়ী", "টঙ্গিবাড়ি"] },
+    { name: "Gazaria", aliases: ["gazaria", "গজারিয়া", "গজারিয়া"] }
+  ],
+  "Manikganj": [
+    { name: "Manikganj Sadar", aliases: ["manikganj sadar", "মানিকগঞ্জ সদর"] },
+    { name: "Singair", aliases: ["singair", "সিংগাইর", "সিঙ্গাইর"] },
+    { name: "Saturia", aliases: ["saturia", "সাটুরিয়া", "সাটুরিয়া"] },
+    { name: "Shivalaya", aliases: ["shivalaya", "শিবালয়", "শিবালয়"] },
+    { name: "Harirampur", aliases: ["harirampur", "হরিরামপুর"] },
+    { name: "Ghior", aliases: ["ghior", "ঘিওর"] },
+    { name: "Daulatpur", aliases: ["manikganj daulatpur", "দৌলতপুর, মানিকগঞ্জ"] }
+  ],
+  "Bandarban": [
+    { name: "Bandarban Sadar", aliases: ["bandarban sadar", "বান্দরবান সদর"] },
+    { name: "Ruma", aliases: ["ruma", "রুমা"] },
+    { name: "Thanchi", aliases: ["thanchi", "থানচি"] },
+    { name: "Lama", aliases: ["lama", "লামা"] },
+    { name: "Alikadam", aliases: ["alikadam", "আলীকদম", "আলিকদম"] },
+    { name: "Rowangchhari", aliases: ["rowangchhari", "রোয়াংছড়ি", "রোয়াংছড়ি"] },
+    { name: "Naikhongchhari", aliases: ["naikhongchhari", "নাইক্ষ্যংছড়ি", "নাইক্ষ্যংছড়ি"] }
+  ],
+  "Khagrachhari": [
+    { name: "Khagrachhari Sadar", aliases: ["khagrachhari sadar", "খাগড়াছড়ি সদর", "খাগড়াছড়ি সদর"] },
+    { name: "Dighinala", aliases: ["dighinala", "দীঘিনালা"] },
+    { name: "Panchhari", aliases: ["panchhari", "পানছড়ি", "পানছড়ি"] },
+    { name: "Mahalchhari", aliases: ["mahalchhari", "মহালছড়ি", "মহালছড়ি"] },
+    { name: "Matiranga", aliases: ["matiranga", "মাটিরাঙ্গা"] },
+    { name: "Manikchhari", aliases: ["manikchhari", "মানিকছড়ি", "মানিকছড়ি"] },
+    { name: "Ramgarh", aliases: ["ramgarh", "রামগড়", "রামগড়"] },
+    { name: "Lakshmichhari", aliases: ["lakshmichhari", "লক্ষ্মীছড়ি", "লক্ষ্মীছড়ি"] },
+    { name: "Guimara", aliases: ["guimara", "গুইমারা"] }
+  ],
+  "Rangamati": [
+    { name: "Rangamati Sadar", aliases: ["rangamati sadar", "রাঙ্গামাটি সদর", "রাঙামাটি সদর"] },
+    { name: "Baghaichhari", aliases: ["baghaichhari", "বাঘাইছড়ি", "বাঘাইছড়ি"] },
+    { name: "Barkal", aliases: ["barkal", "বরকল"] },
+    { name: "Kawkhali", aliases: ["kawkhali", "কাউখালী", "কাউখালি"] },
+    { name: "Belaichhari", aliases: ["belaichhari", "বিলাইছড়ি", "বিলাইছড়ি"] },
+    { name: "Kaptai", aliases: ["kaptai", "কাপ্তাই"] },
+    { name: "Juraichhari", aliases: ["juraichhari", "জুরাইছড়ি", "জুরাইছড়ি"] },
+    { name: "Langadu", aliases: ["langadu", "লংগদু"] },
+    { name: "Naniarchar", aliases: ["naniarchar", "নানিয়ারচর", "নানিয়ারচর"] },
+    { name: "Rajasthali", aliases: ["rajasthali", "রাজস্থলী", "রাজস্থলি"] }
   ]
 };
 

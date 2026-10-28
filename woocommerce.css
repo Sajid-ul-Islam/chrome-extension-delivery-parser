@@ -274,6 +274,19 @@
   color: #ffffff;
 }
 
+.deen-ptc-btn-guess {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  border-color: #059669;
+  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.3);
+}
+
+.deen-ptc-btn-guess:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-1px);
+  color: #ffffff;
+}
+
 .deen-ptc-chip {
   background: #f8fafc;
   border: 1px solid #cbd5e1;
