@@ -359,7 +359,8 @@ wcIntegration.injectTableActionButtons();
 
 assert(!mockActionContainer.children.some(c => c.className === "deen-wc-pathao-btn"), "Redundant ⚡ Pathao dispatch button must be dropped");
 assert(mockActionContainer.children.some(c => c.className === "deen-wc-wa-btn"), "Must inject 💬 WhatsApp button");
-console.log("  ✅ Redundant Pathao dispatch button dropped while 1-Click 💬 WhatsApp button remains injected into WooCommerce order rows!");
+assert(mockActionContainer.children.some(c => c.className && c.className.includes("deen-table-rating-pill")), "Must inject 🛡️ live Courier Rating pill into table row");
+console.log("  ✅ Redundant Pathao dispatch button dropped while 1-Click 💬 WhatsApp button & 🛡️ Courier Rating pill are injected into WooCommerce order rows!");
 
 // -----------------------------------------------------------------------------
 // Test 9: Popup Settings Persistence & Storage Sync

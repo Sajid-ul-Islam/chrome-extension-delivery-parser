@@ -2583,7 +2583,7 @@
       const oldPathaoBtn = row.querySelector(".deen-wc-pathao-btn");
       if (oldPathaoBtn) oldPathaoBtn.remove();
 
-      if (row.querySelector(".deen-wc-wa-btn")) {
+      if (row.querySelector(".deen-wc-wa-btn") && row.querySelector(".deen-table-rating-pill")) {
         row.dataset.deenPathaoInjected = "true";
         return;
       }
@@ -2702,6 +2702,52 @@
 
           showOrderConfirmModal(details);
         });
+
+        // Live Courier Rating pill for table row
+        let ratingPill = row.querySelector(".deen-table-rating-pill");
+        if (!ratingPill) {
+          ratingPill = document.createElement("span");
+          ratingPill.className = "deen-table-rating-pill deen-rating-loading";
+          ratingPill.innerHTML = `🛡️ Checking...`;
+          ratingPill.title = `Checking Pathao & courier history for ${phone}... Click to view details`;
+
+          ratingPill.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            waBtn.click();
+          });
+
+          fetchCustomerRatingBackground(phone, (rating) => {
+            if (!rating) return;
+            if (ratingPill.parentElement === null) return;
+            if (ratingPill.classList && ratingPill.classList.remove) {
+              ratingPill.classList.remove("deen-rating-loading", "rating-safe", "rating-moderate", "rating-danger", "rating-new");
+            }
+
+            if (rating.riskLevel === "high") {
+              if (ratingPill.classList && ratingPill.classList.add) ratingPill.classList.add("rating-danger");
+              const returns = rating.cancelledCount || 0;
+              ratingPill.innerHTML = `🚨 High Risk (${returns})`;
+              ratingPill.title = `⚠️ High Return Risk: ${returns} returned parcels on record. Click to view order details & require advance payment.`;
+            } else if (rating.riskLevel === "medium") {
+              if (ratingPill.classList && ratingPill.classList.add) ratingPill.classList.add("rating-moderate");
+              const rate = rating.successRate !== undefined ? rating.successRate : 75;
+              ratingPill.innerHTML = `⚠️ ${rate}% Moderate`;
+              ratingPill.title = `⚠️ Moderate Risk: ${rating.cancelledCount || 0} returned parcels (${rate}% delivery rate). Click to view details.`;
+            } else if (rating.isNewCustomer) {
+              if (ratingPill.classList && ratingPill.classList.add) ratingPill.classList.add("rating-new");
+              ratingPill.innerHTML = `🆕 New Customer`;
+              ratingPill.title = `🆕 First time customer with 0 returns on record. Click to view details.`;
+            } else {
+              if (ratingPill.classList && ratingPill.classList.add) ratingPill.classList.add("rating-safe");
+              const rate = rating.successRate !== undefined ? rating.successRate : 100;
+              ratingPill.innerHTML = `🛡️ ${rate}% Safe`;
+              ratingPill.title = `✅ Safe Buyer: ${rating.deliveredCount || 0} delivered parcels (${rate}% delivery rate). Click to view details.`;
+            }
+          });
+
+          targetContainer.appendChild(ratingPill);
+        }
 
         // Add to container
         targetContainer.appendChild(waBtn);
