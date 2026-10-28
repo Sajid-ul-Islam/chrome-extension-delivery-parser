@@ -191,7 +191,13 @@ async function handleExtractFromCurrentTab() {
 
           if (validRows.length > 0) {
             const rowTexts = validRows.map(row => {
-              const cells = Array.from(row.querySelectorAll("td, th, [role='cell'], div[class*='cell']"));
+              let cells = Array.from(row.querySelectorAll("td, th"));
+              if (cells.length === 0) {
+                cells = Array.from(row.querySelectorAll("[role='cell'], [role='gridcell']"));
+              }
+              if (cells.length === 0) {
+                cells = Array.from(row.querySelectorAll("div[class*='cell']"));
+              }
               if (cells.length > 0) {
                 return cells.map(c => (c.innerText || "").trim()).filter(Boolean).join("\n");
               }
@@ -277,10 +283,25 @@ function handleParsePaste() {
  * Display parsed results (KPIs and table)
  */
 function displayResults(result) {
-  const { records, metrics, mode } = result;
-  currentRecords = records || [];
+  if (!result) return;
+  const records = result.records || [];
+  currentRecords = records;
   displayedRecords = currentRecords;
+
+  let metrics = result.metrics;
+  if (!metrics || typeof metrics.totalParcels !== "number") {
+    metrics = typeof computeMetrics === "function" ? computeMetrics(records) : {};
+  }
+  metrics.totalParcels = Number(metrics.totalParcels) || records.length;
+  metrics.paidCount = Number(metrics.paidCount) || 0;
+  metrics.unpaidCount = Number(metrics.unpaidCount) || 0;
+  metrics.unsentCount = Number(metrics.unsentCount) || 0;
+  metrics.dispatchedCount = Number(metrics.dispatchedCount) || 0;
+  metrics.totalCOD = Number(metrics.totalCOD) || 0;
+  metrics.netRevenue = Number(metrics.netRevenue) || 0;
   currentMetrics = metrics;
+
+  const mode = result.mode || "standard";
 
   const emptyEl = document.getElementById("empty-state");
   const resultsEl = document.getElementById("results-container");

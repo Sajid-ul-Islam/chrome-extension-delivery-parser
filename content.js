@@ -58,7 +58,13 @@
     const parcelRows = rows.filter(r => isConsignmentId(r.innerText || ""));
     if (parcelRows.length > 0) {
       const rowTexts = parcelRows.map(row => {
-        const cells = Array.from(row.querySelectorAll("td, [role='cell'], div[class*='cell']"));
+        let cells = Array.from(row.querySelectorAll("td, th"));
+        if (cells.length === 0) {
+          cells = Array.from(row.querySelectorAll("[role='cell'], [role='gridcell']"));
+        }
+        if (cells.length === 0) {
+          cells = Array.from(row.querySelectorAll("div[class*='cell']"));
+        }
         if (cells.length > 0) {
           return cells.map(c => (c.innerText || "").trim()).filter(Boolean).join("\n");
         }
@@ -83,17 +89,24 @@
   }
 
   function runParse() {
-    const text = extractPageText();
-    let res = parseDeliveryData(text);
-    if (!res || !res.records || res.records.length === 0) {
-      // Auto fallback to fuzzy if standard sequential tokens were not matched
-      res = parseDeliveryData(text, true);
+    try {
+      const text = extractPageText();
+      let res = parseDeliveryData(text);
+      if (!res || !res.records || res.records.length === 0) {
+        // Auto fallback to fuzzy if standard sequential tokens were not matched
+        res = parseDeliveryData(text, true);
+      }
+      cachedParsed = res || { records: [], metrics: { totalParcels: 0, paidCount: 0, unpaidCount: 0, totalCOD: 0, netRevenue: 0 }, mode: "none" };
+      return cachedParsed;
+    } catch (e) {
+      console.warn("runParse error:", e);
+      return { records: [], metrics: { totalParcels: 0, paidCount: 0, unpaidCount: 0, totalCOD: 0, netRevenue: 0 }, mode: "none" };
     }
-    cachedParsed = res;
-    return cachedParsed;
   }
 
   function renderWidget(container) {
+    if (!container) return;
+
     if (!isExpanded) {
       // Pill mode
       const result = cachedParsed || runParse();
@@ -115,8 +128,17 @@
       }
     } else {
       // Card mode
-      const result = runParse();
-      const { records, metrics } = result;
+      const result = runParse() || {};
+      const records = Array.isArray(result.records) ? result.records : [];
+      let metrics = result.metrics;
+      if (!metrics || typeof metrics.totalParcels !== "number") {
+        metrics = typeof computeMetrics === "function" ? computeMetrics(records) : {};
+      }
+      const totalParcels = Number(metrics.totalParcels) || records.length;
+      const paidCount = Number(metrics.paidCount) || 0;
+      const unpaidCount = Number(metrics.unpaidCount) || 0;
+      const totalCOD = Number(metrics.totalCOD) || 0;
+      const netRevenue = Number(metrics.netRevenue) || 0;
 
       container.innerHTML = `
         <div class="deen-card">
@@ -131,19 +153,19 @@
           <div class="deen-metrics-grid">
             <div class="deen-metric-box">
               <div class="deen-metric-label">Total Parcels</div>
-              <div class="deen-metric-val">${metrics.totalParcels}</div>
+              <div class="deen-metric-val">${totalParcels}</div>
             </div>
             <div class="deen-metric-box">
               <div class="deen-metric-label">Paid / Unpaid</div>
-              <div class="deen-metric-val">${metrics.paidCount} / ${metrics.unpaidCount}</div>
+              <div class="deen-metric-val">${paidCount} / ${unpaidCount}</div>
             </div>
             <div class="deen-metric-box">
               <div class="deen-metric-label">Total COD</div>
-              <div class="deen-metric-val green">৳${Math.round(metrics.totalCOD).toLocaleString()}</div>
+              <div class="deen-metric-val green">৳${Math.round(totalCOD).toLocaleString()}</div>
             </div>
             <div class="deen-metric-box">
               <div class="deen-metric-label">Net Revenue</div>
-              <div class="deen-metric-val blue">৳${Math.round(metrics.netRevenue).toLocaleString()}</div>
+              <div class="deen-metric-val blue">৳${Math.round(netRevenue).toLocaleString()}</div>
             </div>
           </div>
 
@@ -176,9 +198,15 @@
           showToast("No parcels detected on this page!");
           return;
         }
-        const todayStr = new Date().toISOString().split("T")[0];
-        exportToXLSX(records, `pathao_deliveries_${todayStr}.xlsx`);
-        showToast(`Exported ${records.length} parcels to Excel (.xlsx)!`);
+        try {
+          const todayStr = new Date().toISOString().split("T")[0];
+          exportToXLSX(records, `pathao_deliveries_${todayStr}.xlsx`);
+          showToast(`Exported ${records.length} parcels to Excel (.xlsx)!`);
+        } catch (e) {
+          console.error("Excel export error:", e);
+          exportToCSV(records, `pathao_deliveries_${new Date().toISOString().split("T")[0]}.csv`);
+          showToast(`Exported as CSV (Excel fallback)!`);
+        }
       });
 
       container.querySelector("#deen-btn-csv").addEventListener("click", () => {
@@ -186,9 +214,14 @@
           showToast("No parcels detected on this page!");
           return;
         }
-        const todayStr = new Date().toISOString().split("T")[0];
-        exportToCSV(records, `pathao_deliveries_${todayStr}.csv`);
-        showToast(`Exported ${records.length} parcels to CSV!`);
+        try {
+          const todayStr = new Date().toISOString().split("T")[0];
+          exportToCSV(records, `pathao_deliveries_${todayStr}.csv`);
+          showToast(`Exported ${records.length} parcels to CSV!`);
+        } catch (e) {
+          console.error("CSV export error:", e);
+          showToast("Failed to generate CSV.");
+        }
       });
 
       container.querySelector("#deen-btn-copy").addEventListener("click", () => {

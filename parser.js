@@ -19,11 +19,21 @@ const HEADER_TOKENS = new Set([
 function cleanLines(raw) {
   const lines = [];
   const rawLines = (raw || "").replace(/\t/g, "\n").split(/\r?\n/);
+  let lastConsId = null;
   for (let line of rawLines) {
     const val = line.trim();
     if (!val) continue;
-    if (val === "---" || /^[-=_*]{3,}$/.test(val)) continue;
+    if (val === "---" || /^[-=_*]{3,}$/.test(val)) {
+      lastConsId = null;
+      continue;
+    }
     if (HEADER_TOKENS.has(val)) continue;
+    if (isConsignmentId(val)) {
+      if (val === lastConsId) {
+        continue; // Discard accidental consecutive duplicate consignment ID
+      }
+      lastConsId = val;
+    }
     lines.push(val);
   }
   return lines;
