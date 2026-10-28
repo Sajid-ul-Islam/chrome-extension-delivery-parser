@@ -60,9 +60,16 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
     setupContextMenus();
   });
 
-  // Purge any stuck autofill data immediately on service worker start / reload
+  // Purge expired autofill data on service worker startup (> 5 minutes old)
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.remove(["pathao_autofill_data"]);
+    chrome.storage.local.get(["pathao_autofill_data"], (res) => {
+      if (res && res.pathao_autofill_data) {
+        const ts = res.pathao_autofill_data.timestamp || 0;
+        if (Date.now() - ts > 300 * 1000) {
+          chrome.storage.local.remove(["pathao_autofill_data"]);
+        }
+      }
+    });
   }
 
   // Handle context menu clicks
@@ -696,27 +703,32 @@ function findAndSyncPathaoTab(data, autoSwitch = false) {
 
       if (autoSwitch) {
         // If the target tab is not on the order creation page (e.g. on /orders/list), navigate directly to /create!
-        if (!targetTab.url || !targetTab.url.includes("/courier/orders/create")) {
+        const isAlreadyOnCreate = targetTab.url && targetTab.url.includes("/courier/orders/create");
+        if (!isAlreadyOnCreate) {
           chrome.tabs.update(targetTab.id, {
             url: PATHAO_CREATE_ORDER_URL,
             active: true
           });
+          // Newly loaded page content.js will read pathao_autofill_data from storage on load
         } else {
           chrome.tabs.update(targetTab.id, { active: true });
+          // Send autofill message to active Pathao tab safely
+          chrome.tabs.sendMessage(targetTab.id, {
+            action: "autofill_pathao_recipient",
+            data: data
+          }).catch(() => {});
         }
 
         if (targetTab.windowId) {
           chrome.windows.update(targetTab.windowId, { focused: true });
         }
+      } else {
+        // Send autofill message to Pathao tab safely
+        chrome.tabs.sendMessage(targetTab.id, {
+          action: "autofill_pathao_recipient",
+          data: data
+        }).catch(() => {});
       }
-
-      // Send autofill message to Pathao tab safely
-      chrome.tabs.sendMessage(targetTab.id, {
-        action: "autofill_pathao_recipient",
-        data: data
-      }).catch(() => {
-        // Tab might be loading or on an un-injected subpage
-      });
     } else if (autoSwitch) {
       // Pathao is not currently open, open directly to the order creation page!
       chrome.tabs.create({ url: PATHAO_CREATE_ORDER_URL, active: true });

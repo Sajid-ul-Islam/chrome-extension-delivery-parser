@@ -68,8 +68,7 @@
       "matches": [
         "*://deencommerce.com/wp-admin/*",
         "*://*.deencommerce.com/wp-admin/*",
-        "*://*/wp-admin/admin.php?page=wc-orders*",
-        "*://*/wp-admin/post.php?post=*&action=edit*"
+        "*://*/wp-admin/*"
       ],
       "js": ["parser.js", "woocommerce.js"],
       "css": ["woocommerce.css"],

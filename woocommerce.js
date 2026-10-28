@@ -2847,14 +2847,15 @@
 
     rows.forEach(row => {
       if (row.dataset.deenPathaoInjected) return;
-      // Mark as inspected immediately so future debounced cycles don't re-scan non-order rows
-      row.dataset.deenPathaoInjected = "true";
 
       // Remove any legacy/redundant Pathao button if present (built-in WooCommerce Pathao plugin is used)
       const oldPathaoBtn = row.querySelector(".deen-wc-pathao-btn");
       if (oldPathaoBtn) oldPathaoBtn.remove();
 
-      if (row.querySelector(".deen-wc-wa-btn")) return;
+      if (row.querySelector(".deen-wc-wa-btn")) {
+        row.dataset.deenPathaoInjected = "true";
+        return;
+      }
 
       // Use textContent to avoid expensive layout recalculation reflows on table rows
       const text = row.textContent || row.innerText || "";
@@ -2973,6 +2974,7 @@
 
         // Add to container
         targetContainer.appendChild(waBtn);
+        row.dataset.deenPathaoInjected = "true";
       }
     });
   }
@@ -3505,6 +3507,8 @@
     if (statText) {
       if (data.message) {
         statText.textContent = data.message;
+      } else if (data.pathaoStatus === "token_missing") {
+        statText.textContent = "⚠️ Pathao session inactive. Open https://merchant.pathao.com in another tab to link live data.";
       } else if (data.riskLevel === "high") {
         statText.textContent = `⚠️ High return risk (${data.cancelledCount} returns)! Advance delivery charge recommended before dispatch.`;
       } else if (data.riskLevel === "medium") {
