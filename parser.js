@@ -2178,6 +2178,196 @@ function buildFullAddress(rawAddress, parsedData) {
 }
 
 /**
+ * Smart Display Address Normalizer
+ * Standardizes messy customer checkout addresses, removes repeated tokens/place names
+ * (e.g. Noyakandi Bazar, Titas, Cumilla \n Titas \n Cumilla \n 3519 -> Noyakandi Bazar, Titas, Cumilla),
+ * strips checkout noise, removes standalone postcodes, and preserves authentic Bengali/English casing.
+ */
+function normalizeDisplayAddress(rawAddress, customerName) {
+  if (!rawAddress || typeof rawAddress !== "string") return "";
+
+  let text = rawAddress.trim()
+    .replace(/&times;/gi, "×")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#039;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/<br\s*\/?>/gi, ", ");
+
+  text = text.replace(/[\r\n\t]+/g, ", ");
+
+  // 1. Strip checkout labels & noise
+  text = text.replace(/^(?:Billing details|Shipping details|Billing|Shipping|Payment via|Phone|Email|Customer|Name|বিলিং|গ্রাহক|নাম)[:\s,-]*/gi, "");
+  text = text.replace(/[,:\s]+(?:Payment via|Cash on delivery|COD|bKash|Nagad|Rocket|Phone|Email).*$/gi, "");
+  text = text.replace(/^(?:Home|Office|Delivery(?:\s*Address)?|Shipping(?:\s*Address)?|Address)[\s:,-]+(?![0-9#]|no\b|num\b|number\b|holding\b)/gi, "");
+  text = text.replace(/^(?:Home|Office)\s+(?=[a-zA-Z\u0980-\u09FF])(?!(?:no|num|number|[0-9#]|holding)\b)/gi, "");
+  text = text.replace(/^(?:বাসা|হোম|অফিস|ঠিকানা)[\s:,-]+(?![০-৯0-9#]|নং|নাম্বার|হোল্ডিং)/gi, "");
+  text = text.replace(/^(?:বাসা|হোম|অফিস)\s+(?=[\u0980-\u09FFa-zA-Z])(?!(?:নং|নাম্বার|[০-৯0-9#]|হোল্ডিং))/gi, "");
+
+  // 2. Remove accidental phone numbers embedded in address
+  text = text.replace(/(?:\+?88)?01[3-9]\d{8}\b/g, "").trim();
+  text = text.replace(/(?:\+?৮৮)?০১[৩-৯][০-৯]{8}/g, "").trim();
+
+  // 3. Remove accidental email addresses embedded in address
+  text = text.replace(/[\w.+-]+@[\w-]+\.[\w.-]+\b/g, "").trim();
+
+  // 4. Standardize common abbreviations & labels in English (strict word boundaries \b)
+  text = text.replace(/\b(?:House(?:\s*(?:no|num|number))?|Hse|Hous|Hs|H)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "House $1");
+  text = text.replace(/\b(?:Road(?:\s*(?:no|num|number))?|Rood|Rd|Ro|R)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Road $1");
+  text = text.replace(/\b(?:Sector(?:\s*(?:no|num|number))?|Sect|Sec)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, "Sector $1");
+  text = text.replace(/\b(?:Block(?:\s*(?:no|num|number))?|Blck|Blk)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Block ${val.toUpperCase()}`);
+  text = text.replace(/\b(?:Apartment|Flat(?:\s*(?:no|num|number))?|Flt|Apt|Fl)[\s#.:/-]+([a-zA-Z0-9/-]+)\b/gi, (m, val) => `Flat ${val.toUpperCase()}`);
+
+  text = text.replace(/\b(?:Village|Vill)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "Village: $1");
+  text = text.replace(/\b(?:Post\s*Office|P\.O\.?|Post)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "Post: $1");
+  text = text.replace(/\b(?:Thana|Upazila|Upozila|P\.?S\.?)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "Thana: $1");
+  text = text.replace(/\b(?:District|Dist|Zilla|Zila|Jilla|Jela)\b[\s:,-]+([a-zA-Z0-9\u0980-\u09FF/-]+)/gi, "District: $1");
+
+  text = text.replace(/(?:^|[\s,;।])(?:গ্রাম)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " গ্রাম: $1");
+  text = text.replace(/(?:^|[\s,;।])(?:ডাকঘর|পোস্ট|পোঃ|পো:)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " ডাকঘর: $1");
+  text = text.replace(/(?:^|[\s,;।])(?:থানা|উপজেলা)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " থানা: $1");
+  text = text.replace(/(?:^|[\s,;।])(?:জেলা)[\s:ঃ#\-]+([^\s,;।ঃ]+)/gi, " জেলা: $1");
+
+  // 5. Remove redundant Division labels
+  text = text.replace(/(?:^|[,;\s]+)(?:Division|বিভাগ)[\s:ঃ#\-]+(?:Dhaka|Chattogram|Chittagong|Rajshahi|Khulna|Barishal|Barisal|Sylhet|Rangpur|Mymensingh|ঢাকা|চট্টগ্রাম|রাজশাহী|খুলনা|বরিশাল|সিলেট|রংপুর|ময়মনসিংহ)(?=\b|[,;\s।–-]|$)/gi, "");
+  text = text.replace(/(?:^|[,;\s]+)(?:Dhaka|Chattogram|Chittagong|Rajshahi|Khulna|Barishal|Barisal|Sylhet|Rangpur|Mymensingh|ঢাকা|চট্টগ্রাম|রাজশাহী|খুলনা|বরিশাল|সিলেট|রংপুর|ময়মনসিংহ)[\s:ঃ#\-]+(?:Division|বিভাগ)(?=\b|[,;\s।–-]|$)/gi, "");
+
+  // 6. Split by commas/semicolons and process segments
+  text = text.replace(/[;\\]+/g, ",").replace(/\s*,\s*/g, ", ");
+  const rawParts = text.split(",").map(s => s.trim()).filter(Boolean);
+
+  const result = [];
+
+  function getSegLabel(s) {
+    const m = s.match(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i);
+    return m ? m[0].trim().toLowerCase().replace(/[:ঃ#\-]+$/, "") : "";
+  }
+  function getSegCore(s) {
+    return s.replace(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i, "").trim();
+  }
+  function getSegWords(s) {
+    return s.toLowerCase().replace(/[^\w\u0980-\u09FF\s]/g, " ").split(/\s+/).filter(w => w.length > 0);
+  }
+
+  // Check if customerName is passed, and build words to filter
+  const custWords = customerName && typeof customerName === "string"
+    ? customerName.toLowerCase().replace(/[^\w\u0980-\u09FF\s]/g, " ").split(/\s+/).filter(w => w.length > 1)
+    : [];
+
+  for (let i = 0; i < rawParts.length; i++) {
+    let seg = rawParts[i].trim();
+    if (!seg) continue;
+
+    // Check if seg is an ISO code like BD-08, BD-15
+    if (/^bd[-_\s]?[0-6]?\d$/i.test(seg)) {
+      if (typeof detectDistrictFromISOCode === "function") {
+        const resolved = detectDistrictFromISOCode(seg);
+        if (resolved) {
+          seg = resolved;
+        } else {
+          continue;
+        }
+      } else {
+        continue;
+      }
+    }
+
+    // Check if seg is a standalone 4-digit postcode (e.g. 3519, 1216)
+    if (/^\d{4,5}$/.test(seg) || /^[০-৯]{4,5}$/.test(seg) || /^(?:postcode|postal\s*code|পোস্টকোড)[:\s-]*\d{4,5}$/i.test(seg)) {
+      // If we already have at least 1 address token, omit standalone postcode
+      if (result.length > 0) {
+        continue;
+      }
+    }
+
+    // Skip if seg exactly matches customer name
+    if (customerName && seg.toLowerCase() === customerName.trim().toLowerCase()) {
+      continue;
+    }
+    // Skip if seg is a customer name word when name was provided
+    if (custWords.length > 0 && custWords.length <= 3 && seg.toLowerCase().split(/\s+/).every(w => custWords.includes(w))) {
+      continue;
+    }
+
+    const segLabel = getSegLabel(seg);
+    const segCore = getSegCore(seg);
+    const segWords = getSegWords(segCore);
+    if (segWords.length === 0) continue;
+
+    let isDuplicate = false;
+
+    for (let j = 0; j < result.length; j++) {
+      const existing = result[j];
+      const existingLabel = getSegLabel(existing);
+      const existingCore = getSegCore(existing);
+      const existingWords = getSegWords(existingCore);
+
+      if (segLabel && existingLabel && segLabel !== existingLabel) {
+        continue;
+      }
+
+      // Exact match
+      if (segCore.toLowerCase() === existingCore.toLowerCase()) {
+        isDuplicate = true;
+        break;
+      }
+
+      // Single word token already contained in an existing token
+      if (!segLabel && segWords.length === 1 && !/^\d+$/.test(segWords[0]) && segWords[0].length >= 3) {
+        if (existingWords.includes(segWords[0])) {
+          isDuplicate = true;
+          break;
+        }
+      }
+
+      // If existing was single word without label, and new token is richer (multi-word) containing that word
+      if (!existingLabel && existingWords.length === 1 && !/^\d+$/.test(existingWords[0]) && existingWords[0].length >= 3) {
+        if (segWords.includes(existingWords[0]) && segWords.length > 1) {
+          result[j] = seg;
+          isDuplicate = true;
+          break;
+        }
+      }
+
+      // Labeled match: e.g. existing is "Thana: Sharsha" and seg is "Sharsha"
+      if (existingLabel && !segLabel && segWords.length === 1 && existingWords.includes(segWords[0])) {
+        isDuplicate = true;
+        break;
+      }
+      // Or existing was "Sharsha" and seg is "Thana: Sharsha"
+      if (!existingLabel && segLabel && existingWords.length === 1 && segWords.includes(existingWords[0])) {
+        result[j] = seg;
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (!isDuplicate) {
+      result.push(seg);
+    }
+  }
+
+  let full = result.join(", ");
+
+  // Title case English words (preserve Bengali)
+  full = full.replace(/\b([a-z])([a-z0-9]*)\b/g, (match, first, rest) => {
+    if (/^(?:and|of|in|at|to|near|opposite)$/i.test(match)) return match.toLowerCase();
+    return first.toUpperCase() + rest;
+  });
+
+  // Final clean
+  full = full
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/,\s*,+/g, ", ")
+    .replace(/^[,.\s-]+|[,.\s-]+$/g, "")
+    .trim();
+
+  return full;
+}
+
+/**
  * Generate Pathao Bulk Upload CSV string
  */
 function generatePathaoBatchCSV(orders) {
@@ -2377,10 +2567,12 @@ function parseWooCommerceAddressBlock(source) {
     cleanTokens.push(line);
   }
 
+  const displayAddress = normalizeDisplayAddress(cleanTokens.join(", "), name);
+
   return {
     name: name,
     phone: phone,
-    address: cleanTokens.join(", "),
+    address: displayAddress,
     paymentMethod: paymentMethod
   };
 }
@@ -2668,11 +2860,7 @@ function normalizeCustomerAndOrderData(rawDetails) {
 
   // 3. Address
   let address = parsedBlock && parsedBlock.address ? parsedBlock.address : rawAddr;
-  address = address.replace(/^(?:Billing details|Shipping details|Payment via|Phone|Email)[:\s,]*/gi, "")
-                   .replace(/[,:\s]+(?:Payment via|Cash on delivery|Phone|Email).*$/gi, "")
-                   .replace(/\s+/g, " ")
-                   .replace(/^,\s*|,\s*$/g, "")
-                   .trim();
+  address = normalizeDisplayAddress(address, name);
   let parsed = { district: "", zone: "", streetAddress: address };
   if (address && typeof parseBDAddress === "function") {
     parsed = parseBDAddress(address);
@@ -3025,7 +3213,8 @@ const PARSER_EXPORTS = {
   detectDistrictFromISOCode,
   getISOCodeFromDistrict,
   matchWord,
-  buildFullAddress
+  buildFullAddress,
+  normalizeDisplayAddress
 };
 
 if (typeof window !== "undefined") {

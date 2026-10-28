@@ -198,7 +198,7 @@
 
     const phone = normalizeBDPhone(billing.phone || orderData.phone || dataWrapper.phone || "");
     const addrParts = [billing.address_1, billing.address_2, billing.city, billing.state, billing.postcode].filter(Boolean);
-    let address = addrParts.join(", ");
+    let address = normalizeDisplayAddress(addrParts.join(", "), name);
     if (!address && dataWrapper.formatted_billing_address) {
       const pb = parseWooCommerceAddressBlock(dataWrapper.formatted_billing_address);
       if (pb.address) address = pb.address;
@@ -977,13 +977,13 @@
       orderId: orderId,
       orderUrl: orderUrl,
       cod: cod,
-      address: address,
+      address: normalizeDisplayAddress(address, customerName),
       items: items,
       district: parsed.district || "",
       zone: parsed.zone || "",
       area: parsed.area || "",
       postcode: parsed.postcode || "",
-      streetAddress: parsed.streetAddress || address
+      streetAddress: parsed.streetAddress || normalizeDisplayAddress(address, customerName)
     };
   }
 
@@ -1382,7 +1382,7 @@
       orderUrl,
       phone,
       name: customerName,
-      address,
+      address: normalizeDisplayAddress(address, customerName),
       district: parsed.district || "",
       zone: parsed.zone || "",
       cod,
@@ -1570,7 +1570,8 @@
     curY += 20;
     ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     ctx.fillStyle = "#334155";
-    const addrText = `Address: ${details.address || "Inside Dhaka"}`;
+    const cleanDisplayAddress = normalizeDisplayAddress(details.address, details.name);
+    const addrText = `Address: ${cleanDisplayAddress || "Inside Dhaka"}`;
     if (ctx.measureText && ctx.measureText(addrText).width > width - 48) {
       const words = addrText.split(" ");
       let l1 = "";
@@ -1851,6 +1852,7 @@
     if (existing) existing.remove();
 
     const details = normalizeCustomerAndOrderData(orderDetails);
+    details.address = normalizeDisplayAddress(details.address, details.name);
     const items = Array.isArray(details.items) ? details.items : [];
 
     let genReply = typeof generateQuickReply === "function" ? generateQuickReply : null;
@@ -2662,6 +2664,16 @@
   }
 
   /**
+   * Smart Display Address Normalizer
+   * Cleans messy customer checkout addresses, removes repeated tokens/place names,
+   * strips checkout noise, and removes standalone postcodes.
+   */
+  function normalizeDisplayAddress(rawAddress, customerName) {
+    if (typeof _parser.normalizeDisplayAddress === "function") return _parser.normalizeDisplayAddress(rawAddress, customerName);
+    return (rawAddress || "").trim();
+  }
+
+  /**
    * Helper to fetch customer courier rating from background service worker
    */
   function fetchCustomerRatingBackground(phone, callback, forceRefresh = false) {
@@ -3435,6 +3447,7 @@
       parseWooCommerceAjaxOrderDetails,
       normalizeAddressForPathao,
       buildFullAddress,
+      normalizeDisplayAddress,
       initPathaoPluginAddressNormalizer,
       fetchCustomerRatingBackground,
       renderRatingState,

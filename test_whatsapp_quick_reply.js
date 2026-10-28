@@ -810,6 +810,7 @@ const mockWhiteCanvas = {
     beginPath: () => {},
     moveTo: () => {},
     lineTo: () => {},
+    quadraticCurveTo: () => {},
     stroke: () => {},
     fill: () => {},
     closePath: () => {},
@@ -937,6 +938,7 @@ const mockReceiptCanvas = {
     beginPath: () => {},
     moveTo: () => {},
     lineTo: () => {},
+    quadraticCurveTo: () => {},
     stroke: () => {},
     fill: function () {
       if (this.fillStyle === "#FF6000") speechBubbleDrawn = true;
@@ -1163,6 +1165,7 @@ const mockReceiptCanvas18 = {
     beginPath: () => {},
     moveTo: () => {},
     lineTo: () => {},
+    quadraticCurveTo: () => {},
     stroke: () => {},
     fill: () => {},
     closePath: () => {},
@@ -1342,6 +1345,7 @@ const mockReceiptCanvas19 = {
     beginPath: () => {},
     moveTo: () => {},
     lineTo: () => {},
+    quadraticCurveTo: () => {},
     stroke: () => {},
     fill: () => {},
     closePath: () => {},
@@ -1466,6 +1470,7 @@ const mockReceiptCanvas20 = {
     beginPath: () => {},
     moveTo: () => {},
     lineTo: () => {},
+    quadraticCurveTo: () => {},
     stroke: () => {},
     fill: () => {},
     closePath: () => {},
@@ -1689,6 +1694,7 @@ const mockReceiptCanvas21 = {
     beginPath: () => {},
     moveTo: () => {},
     lineTo: () => {},
+    quadraticCurveTo: () => {},
     stroke: () => {},
     fill: () => {},
     closePath: () => {},
@@ -2206,8 +2212,133 @@ assert(popupCode26.includes("data.ratingGrade"), "popup.js must display data.rat
 
 console.log("  ✅ Customer rating caching, cross-feature propagation (modal, preview, single order, sidebar, popup), and ratingGrade verified!");
 
+// -----------------------------------------------------------------------------
+// Test 27: Testing Address Normalization & Deduplication in Details & Receipt Screenshot
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 27: Testing Address Normalization & Deduplication in Details Modal & Receipt Canvas...");
+
+const { normalizeDisplayAddress } = wcIntegration;
+assert.strictEqual(typeof normalizeDisplayAddress, "function", "normalizeDisplayAddress must be exported by woocommerce.js");
+
+// Case 27a: User concrete requirement - Noyakandi Bazar, Titas, Cumilla (stripping repeated Titas, Cumilla & postcode 3519)
+const rawNoyakandi = "Noyakandi Bazar , Titas,Cumilla\nTitas\nCumilla\n3519";
+const cleanNoyakandi = normalizeDisplayAddress(rawNoyakandi);
+assert.strictEqual(cleanNoyakandi, "Noyakandi Bazar, Titas, Cumilla", `Expected 'Noyakandi Bazar, Titas, Cumilla', got '${cleanNoyakandi}'`);
+assert(!cleanNoyakandi.includes("3519"), "Clean address must not include standalone postcode 3519");
+
+// Comma-separated variant of same address
+const rawNoyakandiComma = "Noyakandi Bazar , Titas,Cumilla, Titas, Cumilla, 3519";
+assert.strictEqual(normalizeDisplayAddress(rawNoyakandiComma), "Noyakandi Bazar, Titas, Cumilla");
+
+// Case 27b: Order #19029 - Olinagar, Gangni, Meherpur (stripping repeated Gangni, Meherpur)
+const rawOlinagar = "Olinagar, Gangni, Meherpur\nGangni\nMeherpur";
+const cleanOlinagar = normalizeDisplayAddress(rawOlinagar);
+assert.strictEqual(cleanOlinagar, "Olinagar, Gangni, Meherpur", `Expected 'Olinagar, Gangni, Meherpur', got '${cleanOlinagar}'`);
+
+// Case 27c: parseWooCommerceAddressBlock with repeated tokens
+const pbNoyakandi = wcIntegration.parseWooCommerceAddressBlock("John Doe\n" + rawNoyakandi);
+assert.strictEqual(pbNoyakandi.name, "John Doe", "Must extract customer name");
+assert.strictEqual(pbNoyakandi.address, "Noyakandi Bazar, Titas, Cumilla", "parseWooCommerceAddressBlock must return normalized address");
+
+// Case 27d: Receipt Canvas rendering with repeated address
+const drawnTexts = [];
+const mockReceiptCanvas27 = {
+  width: 0,
+  height: 0,
+  style: {},
+  getContext: () => ({
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    strokeStyle: "",
+    lineWidth: 1,
+    fillRect: () => {},
+    strokeRect: () => {},
+    clearRect: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    quadraticCurveTo: () => {},
+    stroke: () => {},
+    fill: () => {},
+    arc: () => {},
+    arcTo: () => {},
+    closePath: () => {},
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    scale: () => {},
+    drawImage: () => {},
+    measureText: (txt) => ({ width: (txt || "").length * 7 }),
+    fillText: (txt, x, y) => {
+      drawnTexts.push(txt);
+    }
+  }),
+  toDataURL: () => "data:image/png;base64,mock"
+};
+
+global.document.createElement = (tag) => {
+  if (tag.toLowerCase() === "canvas") return mockReceiptCanvas27;
+  return { style: {}, setAttribute: () => {}, appendChild: () => {}, addEventListener: () => {} };
+};
+
+const orderDetailsNoyakandi = {
+  orderId: "19030",
+  name: "Tanvir Ahmed",
+  phone: "01712345678",
+  address: rawNoyakandi,
+  cod: "1590",
+  items: [{ name: "Tom Tailor Jeans - Regular Fit - 36", qty: 1, unitPrice: "1500", total: "1500" }]
+};
+
+wcIntegration.renderOrderReceiptCanvas(orderDetailsNoyakandi);
+const drawnAddressLine = drawnTexts.find(t => t.startsWith("Address:"));
+assert(drawnAddressLine, "Receipt canvas must draw Address line");
+assert(drawnAddressLine.includes("Noyakandi Bazar, Titas, Cumilla"), `Canvas must render normalized address without duplicates, got '${drawnAddressLine}'`);
+assert(!drawnAddressLine.includes("3519"), `Canvas must NOT render standalone postcode 3519, got '${drawnAddressLine}'`);
+assert(!drawnAddressLine.includes("Titas, Cumilla, Titas"), `Canvas must NOT repeat Titas, got '${drawnAddressLine}'`);
+
+// Case 27e: Details & Options Modal DOM verification
+let modalHtml = "";
+const mockModalCard = {
+  id: "",
+  className: "",
+  set innerHTML(val) { modalHtml = val; },
+  get innerHTML() { return modalHtml; },
+  querySelector: () => null,
+  querySelectorAll: () => [],
+  appendChild: () => {},
+  addEventListener: () => {}
+};
+
+global.document.getElementById = (id) => {
+  if (id === "deen-order-confirm-modal") return null;
+  return null;
+};
+global.document.createElement = (tag) => {
+  if (tag.toLowerCase() === "canvas") return mockReceiptCanvas27;
+  return {
+    id: "",
+    className: "",
+    set innerHTML(val) { modalHtml = val; },
+    get innerHTML() { return modalHtml; },
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    appendChild: (c) => {},
+    addEventListener: () => {}
+  };
+};
+
+wcIntegration.showOrderConfirmModal(orderDetailsNoyakandi);
+assert(modalHtml.includes("Noyakandi Bazar, Titas, Cumilla"), "Order confirm modal must display normalized address");
+assert(!modalHtml.includes("3519"), "Order confirm modal must not contain standalone postcode 3519");
+assert(!modalHtml.includes("Titas, Cumilla, Titas"), "Order confirm modal must not duplicate place names");
+
+console.log("  ✅ Address deduplication & normalization in Details modal & Receipt screenshot verified 100%!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 26 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
+console.log("🎉 ALL 27 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
 console.log("==================================================");
 
 

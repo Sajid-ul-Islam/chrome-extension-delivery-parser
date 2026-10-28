@@ -1,4 +1,4 @@
-const { parseDeliveryData, parseBDAddress, generatePathaoBatchCSV, normalizeAddressForPathao, buildFullAddress } = require('./parser.js');
+const { parseDeliveryData, parseBDAddress, generatePathaoBatchCSV, normalizeAddressForPathao, buildFullAddress, normalizeDisplayAddress } = require('./parser.js');
 const assert = require('assert');
 
 const sampleStandard = `Cons. ID
@@ -174,6 +174,19 @@ assert.strictEqual(clean15, "বেনাপোল সিটি, থানা: �
 const full15 = buildFullAddress(rawBenapoleBn);
 assert.strictEqual(full15, "বেনাপোল সিটি, থানা: শার্শা, Jashore", `Case 15 Full mismatch: got '${full15}'`);
 console.log('  ✅ Case 15: Bengali Benapole, Sharsha, Jashore normalized & parsed cleanly');
+
+// Case 16: Address deduplication with repeated thana, district, and standalone postcode (e.g. Noyakandi Bazar, Titas, Cumilla)
+const rawNoyakandi = "Noyakandi Bazar , Titas,Cumilla\nTitas\nCumilla\n3519";
+const cleanNoyakandi = normalizeDisplayAddress(rawNoyakandi);
+assert.strictEqual(cleanNoyakandi, "Noyakandi Bazar, Titas, Cumilla", `Case 16 mismatch: expected 'Noyakandi Bazar, Titas, Cumilla', got '${cleanNoyakandi}'`);
+assert(!cleanNoyakandi.includes("3519"), "Case 16 must not append standalone postcode 3519");
+console.log('  ✅ Case 16: Noyakandi Bazar, Titas, Cumilla deduplicated & standalone postcode 3519 stripped');
+
+// Case 17: Address deduplication for Order #19029 (Olinagar, Gangni, Meherpur)
+const rawOlinagar = "Olinagar, Gangni, Meherpur\nGangni\nMeherpur";
+const cleanOlinagar = normalizeDisplayAddress(rawOlinagar);
+assert.strictEqual(cleanOlinagar, "Olinagar, Gangni, Meherpur", `Case 17 mismatch: expected 'Olinagar, Gangni, Meherpur', got '${cleanOlinagar}'`);
+console.log('  ✅ Case 17: Olinagar, Gangni, Meherpur deduplicated without repeated city/district');
 
 // =========================================================================
 // Feature 5: Pathao Bulk Batch CSV Generation Tests
