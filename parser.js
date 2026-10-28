@@ -2464,7 +2464,9 @@ function generatePathaoBatchCSV(orders) {
     const cod = order.cod !== undefined && order.cod !== "" ? order.cod : (order["COD Amount"] !== undefined ? order["COD Amount"] : 0);
     const itemType = order.type || order["Type"] === "Exchange" ? "Exchange" : "Parcel";
     const quantity = 1;
-    const instruction = orderId ? `Order #${orderId}` : "";
+    const baseInst = orderId ? `Order #${orderId}` : "";
+    const extraInst = order.instruction || order.instructions || order.notes || order.customerNote || order["Instruction"] || order["Special Instruction"] || "";
+    const instruction = [baseInst, extraInst].filter(Boolean).join(" - ");
 
     rows.push([
       escapeCSV(orderId),
@@ -2992,6 +2994,8 @@ function normalizeCustomerAndOrderData(rawDetails) {
   const outsideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 90;
   const freeThreshold = Number(DEFAULT_QUICK_REPLY_CONFIG.freeShippingThreshold) || 2500;
 
+  const notesText = (d.notes || d.customerNote || d.customer_note || d.instruction || "").trim();
+
   // Initial free shipping signal from WooCommerce metadata, coupons, or notes
   const hasFreeSignal = Boolean(
     d.isFreeShipping === true ||
@@ -3000,7 +3004,7 @@ function normalizeCustomerAndOrderData(rawDetails) {
     (typeof d.shippingMethod === "string" && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(d.shippingMethod)) ||
     (typeof d.shippingTitle === "string" && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(d.shippingTitle)) ||
     (typeof d.shipping === "string" && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(d.shipping)) ||
-    (typeof d.notes === "string" && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(d.notes))
+    (typeof notesText === "string" && /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(notesText))
   );
 
   // Manual merchant force override (e.g. 1-click toggle in modal)
@@ -3079,6 +3083,9 @@ function normalizeCustomerAndOrderData(rawDetails) {
     name: name || (d.name ? d.name.trim() : "Customer"),
     phone: cleanPhone || d.phone || "",
     address: address,
+    notes: notesText,
+    customerNote: notesText,
+    instruction: notesText || d.instruction || "",
     district: district,
     zone: zone,
     items: items,
@@ -3221,7 +3228,7 @@ function generateQuickReply(templateKey, params, customConfig) {
       const phoneText = p.phone ? `\n📞 ফোন নম্বর: ${p.phone}` : "";
       const codText = codVal ? `\n💰 মোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
       let advText = "";
-      if (p.requestAdvance || p.isOutsideDhaka) {
+      if (fee > 0 && (p.requestAdvance || p.isOutsideDhaka)) {
         advText = `\n\nকুরিয়ার সার্ভিস শর্ত অনুযায়ী ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রযোজ্য। বিকাশ (${cfg.bkashType || "Personal"}): ${cfg.bkashNumber || ""}`;
       }
 

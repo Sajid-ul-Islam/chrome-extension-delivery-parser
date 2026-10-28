@@ -27,7 +27,7 @@ When refactoring or adding features, you **MUST NEVER VIOLATE** these invariants
 ### Invariant 1: Preserve All Module Exports
 Automated test suites (`test_whatsapp_quick_reply.js`, `test_autofill_flow.js`, etc.) import functions directly from `woocommerce.js`, `phone-check.js`, and `parser.js`.
 - Always preserve `module.exports` in `woocommerce.js`:
-  - `extractRowOrderDetails`, `extractOrderDetailsFromModal`, `renderOrderReceiptCanvas`, `copyCanvasScreenshotToClipboard`, `downloadCanvasScreenshot`, `showOrderConfirmModal`, `injectOrderPreviewModalActions`, `getSelectedOrderRows`, `syncToPathao`, `initBulkDispatchBar`, `updateBulkDispatchBar`, `normalizeBDPhone`, `injectTableActionButtons`, `injectSingleOrderPageButton`, `injectWhatsAppMessage`, `getQuickReplyConfig`, `DEFAULT_QUICK_REPLY_CONFIG`, `normalizeCustomerAndOrderData`, `parseWooCommerceAddressBlock`, `isInvalidCustomerName`, `extractItemNameWithSize`, `bengaliToAsciiDigits`, `parseOrderEditPageHTML`, `fetchOrderDetailsViaEditPage`, `orderDetailsCache`, `DEEN_LOGO_BASE64`, `getWooCommerceAjaxConfig`, `parseWooCommerceAjaxOrderDetails`, `normalizeAddressForPathao`, `buildFullAddress`, `normalizeDisplayAddress`, `initPathaoPluginAddressNormalizer`, `fetchCustomerRatingBackground`, `renderRatingState`, `BD_ISO_DISTRICTS`, `detectDistrictFromISOCode`, `getISOCodeFromDistrict`.
+  - `extractRowOrderDetails`, `extractOrderDetailsFromModal`, `renderOrderReceiptCanvas`, `copyCanvasScreenshotToClipboard`, `downloadCanvasScreenshot`, `showOrderConfirmModal`, `injectOrderPreviewModalActions`, `getSelectedOrderRows`, `syncToPathao`, `initBulkDispatchBar`, `updateBulkDispatchBar`, `normalizeBDPhone`, `injectTableActionButtons`, `injectSingleOrderPageButton`, `injectWhatsAppMessage`, `getQuickReplyConfig`, `DEFAULT_QUICK_REPLY_CONFIG`, `normalizeCustomerAndOrderData`, `parseWooCommerceAddressBlock`, `isInvalidCustomerName`, `extractItemNameWithSize`, `bengaliToAsciiDigits`, `parseOrderEditPageHTML`, `fetchOrderDetailsViaEditPage`, `orderDetailsCache`, `inFlightOrderRequests`, `fetchWithTimeout`, `DEEN_LOGO_BASE64`, `getWooCommerceAjaxConfig`, `parseWooCommerceAjaxOrderDetails`, `normalizeAddressForPathao`, `buildFullAddress`, `normalizeDisplayAddress`, `initPathaoPluginAddressNormalizer`, `fetchCustomerRatingBackground`, `renderRatingState`, `BD_ISO_DISTRICTS`, `detectDistrictFromISOCode`, `getISOCodeFromDistrict`.
 - Always preserve `module.exports` in `phone-check.js`:
   - `normalizeBDPhone`, `escapeHTML`, `DEFAULT_QUICK_REPLY_CONFIG`, `calculateDeliveryFee`, `buildWhatsAppDeepLink`, `generateQuickReply`, `getQuickReplyConfig`, `injectWhatsAppMessage`.
 
@@ -72,7 +72,7 @@ The 2x Retina Order Receipt canvas rendered by `renderOrderReceiptCanvas`:
 
 ## 3. Automated Verification & Test Suites
 
-Before committing or pushing any change, **all 7 test suites must pass 100%**:
+Before committing or pushing any change, **all 8 test suites must pass 100%**:
 
 ```powershell
 # Run all test suites
@@ -82,7 +82,8 @@ node test_popup_pathao_check.js; `
 node test_live_pathao_rating_parsing.js; `
 node test_universal_phone_e2e.js; `
 node test_whatsapp_quick_reply.js; `
-node test_webmcp_integration.js
+node test_webmcp_integration.js; `
+node test_full_fetch_improvements.js
 ```
 
 ### Test Suite Directory:
@@ -91,8 +92,9 @@ node test_webmcp_integration.js
 3. [`test_popup_pathao_check.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_popup_pathao_check.js) — Background messaging, timeout fallbacks, popup UI sync.
 4. [`test_live_pathao_rating_parsing.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_live_pathao_rating_parsing.js) — Real Hermes API responses, multi-courier composite aggregation, token handling.
 5. [`test_universal_phone_e2e.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_universal_phone_e2e.js) — Universal phone detection, DOM highlight/copy triggers, sidebar drawer, floating pill.
-6. [`test_whatsapp_quick_reply.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_whatsapp_quick_reply.js) — Comprehensive 28-test suite for Order Receipt canvas, line items, AJAX fallbacks, real orders #17819, #18264, #18276, #18304, address deduplication & normalization (#19029), Pathao address normalizer, Smart Guess online geocoding, ISO district detection, and 10-minute caching.
+6. [`test_whatsapp_quick_reply.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_whatsapp_quick_reply.js) — Comprehensive 30-test suite for Order Receipt canvas, line items, AJAX fallbacks, real orders #17819, #18264, #18276, #18304, address deduplication & normalization (#19029), Pathao address normalizer, Smart Guess online geocoding, ISO district detection, and 10-minute caching.
 7. [`test_webmcp_integration.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_webmcp_integration.js) — WebMCP registry conformance, tool discovery, execution of all 7 tools, semantic hints (`readOnlyHint`, `consequentialHint`), and argument schema validation.
+8. [`test_full_fetch_improvements.js`](file:///d:/Repo/chrome-extension-delivery-parser/test_full_fetch_improvements.js) — Shipping priority over billing, address 2 preservation, customer notes extraction across AJAX, edit page, modal, and table row, concurrent fetch deduplication (`inFlightOrderRequests`), timeout protection, and free shipping advance charge omission.
 
 ---
 

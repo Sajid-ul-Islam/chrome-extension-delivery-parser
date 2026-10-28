@@ -115,6 +115,21 @@
 
   // In-memory cache for fetched authoritative order details (prevents repeated network requests)
   const orderDetailsCache = new Map();
+  const inFlightOrderRequests = new Map();
+  const ORDER_DETAILS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
+
+  /**
+   * Resilient network fetch with timeout protection (prevents hanging network requests)
+   */
+  function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+    if (typeof AbortController === "undefined") {
+      return fetch(url, options);
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const opts = Object.assign({}, options, { signal: controller.signal });
+    return fetch(url, opts).finally(() => clearTimeout(timer));
+  }
 
   /**
    * Discover WooCommerce Admin AJAX URL & Preview Nonce from DOM or window context
@@ -186,24 +201,37 @@
     const orderData = dataWrapper.data || dataWrapper;
 
     const resolvedId = String(orderData.id || dataWrapper.order_number || fallbackId || "").replace(/^#/, "").trim();
-    const billing = orderData.billing || {};
-    const fn = (billing.first_name || "").trim();
-    const ln = (billing.last_name || "").trim();
-    let name = `${fn} ${ln}`.trim();
-    if (!name && dataWrapper.formatted_billing_address) {
-      const pb = parseWooCommerceAddressBlock(dataWrapper.formatted_billing_address);
+    const shipping = orderData.shipping || dataWrapper.shipping || {};
+    const billing = orderData.billing || dataWrapper.billing || {};
+
+    const shipFn = (shipping.first_name || "").trim();
+    const shipLn = (shipping.last_name || "").trim();
+    const billFn = (billing.first_name || "").trim();
+    const billLn = (billing.last_name || "").trim();
+
+    let name = "";
+    if (shipFn || shipLn) name = `${shipFn} ${shipLn}`.trim();
+    if (!name || isInvalidCustomerName(name)) name = `${billFn} ${billLn}`.trim();
+    if ((!name || isInvalidCustomerName(name)) && (dataWrapper.formatted_shipping_address || dataWrapper.formatted_billing_address)) {
+      const pb = parseWooCommerceAddressBlock(dataWrapper.formatted_shipping_address || dataWrapper.formatted_billing_address);
       if (pb.name && !isInvalidCustomerName(pb.name)) name = pb.name;
     }
 
-    const phone = normalizeBDPhone(billing.phone || orderData.phone || dataWrapper.phone || "");
-    const addrParts = [billing.address_1, billing.address_2, billing.city, billing.state, billing.postcode].filter(Boolean);
+    const phone = normalizeBDPhone(shipping.phone || billing.phone || orderData.phone || dataWrapper.phone || "");
+
+    const shipParts = [shipping.address_1, shipping.address_2, shipping.city, shipping.state, shipping.postcode].filter(Boolean);
+    const billParts = [billing.address_1, billing.address_2, billing.city, billing.state, billing.postcode].filter(Boolean);
+    const addrParts = shipParts.length > 0 ? shipParts : billParts;
+
     let address = normalizeDisplayAddress(addrParts.join(", "), name);
-    if (!address && dataWrapper.formatted_billing_address) {
-      const pb = parseWooCommerceAddressBlock(dataWrapper.formatted_billing_address);
+    if (!address && (dataWrapper.formatted_shipping_address || dataWrapper.formatted_billing_address)) {
+      const pb = parseWooCommerceAddressBlock(dataWrapper.formatted_shipping_address || dataWrapper.formatted_billing_address);
       if (pb.address) address = pb.address;
       if (!name && pb.name && !isInvalidCustomerName(pb.name)) name = pb.name;
       if (!phone && pb.phone) phone = pb.phone;
     }
+
+    const customerNote = String(orderData.customer_note || dataWrapper.customer_note || orderData.notes || "").trim();
 
     let cod = "";
     if (orderData.total !== undefined && orderData.total !== null) {
@@ -316,6 +344,8 @@
       name: name,
       phone: phone,
       address: address,
+      notes: customerNote,
+      customerNote: customerNote,
       district: parsed.district || "",
       zone: parsed.zone || "",
       items: items,
@@ -356,24 +386,49 @@
                        rawHtml.match(/(?:^|[^\w&#])#(\d{3,8})/);
       if (pidMatch) resolvedOrderId = pidMatch[1].trim();
 
-      const fnMatch = rawHtml.match(/name=['"]_billing_first_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
-                      rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_billing_first_name['"]/i);
-      const lnMatch = rawHtml.match(/name=['"]_billing_last_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
-                      rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_billing_last_name['"]/i);
-      let name = `${fnMatch ? fnMatch[1] : ''} ${lnMatch ? lnMatch[1] : ''}`.trim();
+      const sfnMatch = rawHtml.match(/name=['"]_shipping_first_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
+                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_shipping_first_name['"]/i);
+      const slnMatch = rawHtml.match(/name=['"]_shipping_last_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
+                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_shipping_last_name['"]/i);
+      const bfnMatch = rawHtml.match(/name=['"]_billing_first_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
+                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_billing_first_name['"]/i);
+      const blnMatch = rawHtml.match(/name=['"]_billing_last_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
+                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_billing_last_name['"]/i);
+
+      let name = "";
+      if (sfnMatch || slnMatch) name = `${sfnMatch ? sfnMatch[1] : ''} ${slnMatch ? slnMatch[1] : ''}`.trim();
+      if (!name || isInvalidCustomerName(name)) {
+        name = `${bfnMatch ? bfnMatch[1] : ''} ${blnMatch ? blnMatch[1] : ''}`.trim();
+      }
       if (!name) {
         const strongM = rawHtml.match(/<div class=['"][^'"]*address[^'"]*['"][\s\S]*?<strong>([^<]+)<\/strong>/i);
         if (strongM) name = strongM[1].trim();
       }
 
-      const phoneMatch = rawHtml.match(/name=['"](?:_billing_phone|_shipping_phone)['"][^>]*value=['"]([^'"]+)['"]/i) ||
-                         rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"](?:_billing_phone|_shipping_phone)['"]/i) ||
+      const phoneMatch = rawHtml.match(/name=['"](?:_shipping_phone|_billing_phone)['"][^>]*value=['"]([^'"]+)['"]/i) ||
+                         rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"](?:_shipping_phone|_billing_phone)['"]/i) ||
                          rawHtml.match(/(?:01[3-9]\d{8})/);
       const phone = phoneMatch ? normalizeBDPhone(phoneMatch[1] || phoneMatch[0]) : "";
 
-      const a1Match = rawHtml.match(/name=['"]_billing_address_1['"][^>]*value=['"]([^'"]+)['"]/i);
-      const cityMatch = rawHtml.match(/name=['"]_billing_city['"][^>]*value=['"]([^'"]+)['"]/i);
-      const address = [a1Match ? a1Match[1] : "", cityMatch ? cityMatch[1] : ""].filter(Boolean).join(", ");
+      const sa1Match = rawHtml.match(/name=['"]_shipping_address_1['"][^>]*value=['"]([^'"]+)['"]/i);
+      const sa2Match = rawHtml.match(/name=['"]_shipping_address_2['"][^>]*value=['"]([^'"]+)['"]/i);
+      const scityMatch = rawHtml.match(/name=['"]_shipping_city['"][^>]*value=['"]([^'"]+)['"]/i);
+      const sstateMatch = rawHtml.match(/name=['"]_shipping_state['"][^>]*value=['"]([^'"]+)['"]/i);
+      const spostMatch = rawHtml.match(/name=['"]_shipping_postcode['"][^>]*value=['"]([^'"]+)['"]/i);
+
+      const ba1Match = rawHtml.match(/name=['"]_billing_address_1['"][^>]*value=['"]([^'"]+)['"]/i);
+      const ba2Match = rawHtml.match(/name=['"]_billing_address_2['"][^>]*value=['"]([^'"]+)['"]/i);
+      const bcityMatch = rawHtml.match(/name=['"]_billing_city['"][^>]*value=['"]([^'"]+)['"]/i);
+      const bstateMatch = rawHtml.match(/name=['"]_billing_state['"][^>]*value=['"]([^'"]+)['"]/i);
+      const bpostMatch = rawHtml.match(/name=['"]_billing_postcode['"][^>]*value=['"]([^'"]+)['"]/i);
+
+      const shipParts = [sa1Match ? sa1Match[1] : "", sa2Match ? sa2Match[1] : "", scityMatch ? scityMatch[1] : "", sstateMatch ? sstateMatch[1] : "", spostMatch ? spostMatch[1] : ""].filter(Boolean);
+      const billParts = [ba1Match ? ba1Match[1] : "", ba2Match ? ba2Match[1] : "", bcityMatch ? bcityMatch[1] : "", bstateMatch ? bstateMatch[1] : "", bpostMatch ? bpostMatch[1] : ""].filter(Boolean);
+      const address = (shipParts.length > 0 ? shipParts : billParts).join(", ");
+
+      const noteM = rawHtml.match(/name=['"](?:customer_note|order_comments)['"][^>]*>([\s\S]*?)<\/textarea>/i) ||
+                    rawHtml.match(/<div class=['"][^'"]*note_content[^'"]*['"][^>]*>([\s\S]*?)<\/div>/i);
+      const customerNote = noteM ? noteM[1].replace(/<[^>]+>/g, " ").trim() : "";
 
       const totMatch = rawHtml.match(/name=['"]_order_total['"][^>]*value=['"]([^'"]+)['"]/i) ||
                        rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_order_total['"]/i);
@@ -397,7 +452,8 @@
         if (/^<tr[^>]*class=['"][^'"]*(?:display_meta|meta_items|add_order_item)[^'"]*['"]/i.test(rowHtml.trim())) return;
         const nameM = rowHtml.match(/<a[^>]*class=['"][^'"]*wc-order-item-name[^'"]*['"][^>]*>([^<]+)<\/a>/i) ||
                       rowHtml.match(/class=['"][^'"]*wc-order-item-name[^'"]*['"][^>]*>([^<]+)</i) ||
-                      rowHtml.match(/class=['"][^'"]*wc-order-preview-table__column--product[^'"]*['"][^>]*>([\s\S]*?)<\/td>/i);
+                      rowHtml.match(/class=['"][^'"]*wc-order-preview-table__column--product[^'"]*['"][^>]*>([\s\S]*?)<\/td>/i) ||
+                      rowHtml.match(/<td[^>]*class=['"][^'"]*(?:name|column-name|column-item)[^'"]*['"][^>]*>([\s\S]*?)<\/td>/i);
         if (!nameM) return;
         let itemName = cleanHtmlEntities(nameM[1].replace(/<[^>]+>/g, " ").trim());
         itemName = itemName.replace(/\s*(?:&times;|×|x|\*)\s*\d+$/i, "").trim();
@@ -498,6 +554,8 @@
         name: name,
         phone: phone,
         address: address,
+        notes: customerNote,
+        customerNote: customerNote,
         district: parsed.district || "",
         zone: parsed.zone || "",
         items: items,
@@ -521,23 +579,28 @@
       }
     }
 
-    // 2. Customer details
+    // 2. Customer details (prioritizing shipping recipient when separate)
     let name = "";
     if (doc.querySelector) {
-      const fnInput = doc.querySelector("#_billing_first_name, input[name='_billing_first_name']");
-      const lnInput = doc.querySelector("#_billing_last_name, input[name='_billing_last_name']");
-      if (fnInput || lnInput) {
-        name = `${(fnInput ? fnInput.value : '')} ${(lnInput ? lnInput.value : '')}`.trim();
+      const sfn = doc.querySelector("#_shipping_first_name, input[name='_shipping_first_name']");
+      const sln = doc.querySelector("#_shipping_last_name, input[name='_shipping_last_name']");
+      const bfn = doc.querySelector("#_billing_first_name, input[name='_billing_first_name']");
+      const bln = doc.querySelector("#_billing_last_name, input[name='_billing_last_name']");
+      if (sfn || sln) {
+        name = `${(sfn ? sfn.value : '')} ${(sln ? sln.value : '')}`.trim();
+      }
+      if (!name || isInvalidCustomerName(name)) {
+        name = `${(bfn ? bfn.value : '')} ${(bln ? bln.value : '')}`.trim();
       }
       if (isInvalidCustomerName(name)) {
-        const strongName = doc.querySelector(".order_data_column address p strong, .woocommerce-order-data__billing strong");
+        const strongName = doc.querySelector(".order_data_column.shipping address p strong, .woocommerce-order-data__shipping strong, .order_data_column address p strong, .woocommerce-order-data__billing strong");
         if (strongName) name = (strongName.textContent || strongName.innerText || "").trim();
       }
     }
 
     let phone = "";
     if (doc.querySelector) {
-      const phoneInput = doc.querySelector("#_billing_phone, input[name='_billing_phone'], #_shipping_phone, input[name='_shipping_phone']");
+      const phoneInput = doc.querySelector("#_shipping_phone, input[name='_shipping_phone'], #_billing_phone, input[name='_billing_phone']");
       if (phoneInput && phoneInput.value) {
         phone = normalizeBDPhone(phoneInput.value) || "";
       }
@@ -546,28 +609,46 @@
         if (phoneLink) phone = normalizeBDPhone(phoneLink.getAttribute("href").replace("tel:", "")) || "";
       }
       if (!phone) {
-        const addrCol = doc.querySelector(".order_data_column, .address, address");
+        const addrCol = doc.querySelector(".order_data_column.shipping, .order_data_column, .address, address");
         if (addrCol) phone = normalizeBDPhone(addrCol.textContent || addrCol.innerText || "") || "";
       }
     }
 
     let address = "";
     if (doc.querySelector) {
-      const a1 = doc.querySelector("#_billing_address_1, input[name='_billing_address_1']");
-      const a2 = doc.querySelector("#_billing_address_2, input[name='_billing_address_2']");
-      const city = doc.querySelector("#_billing_city, input[name='_billing_city']");
-      if (a1 && a1.value) {
-        const parts = [a1.value, a2 ? a2.value : "", city ? city.value : ""].filter(Boolean);
-        address = parts.join(", ");
-      }
+      const sa1 = doc.querySelector("#_shipping_address_1, input[name='_shipping_address_1']");
+      const sa2 = doc.querySelector("#_shipping_address_2, input[name='_shipping_address_2']");
+      const scity = doc.querySelector("#_shipping_city, input[name='_shipping_city']");
+      const sstate = doc.querySelector("#_shipping_state, input[name='_shipping_state']");
+      const spost = doc.querySelector("#_shipping_postcode, input[name='_shipping_postcode']");
+
+      const ba1 = doc.querySelector("#_billing_address_1, input[name='_billing_address_1']");
+      const ba2 = doc.querySelector("#_billing_address_2, input[name='_billing_address_2']");
+      const bcity = doc.querySelector("#_billing_city, input[name='_billing_city']");
+      const bstate = doc.querySelector("#_billing_state, input[name='_billing_state']");
+      const bpost = doc.querySelector("#_billing_postcode, input[name='_billing_postcode']");
+
+      const shipParts = [sa1 ? sa1.value : "", sa2 ? sa2.value : "", scity ? scity.value : "", sstate ? sstate.value : "", spost ? spost.value : ""].filter(Boolean);
+      const billParts = [ba1 ? ba1.value : "", ba2 ? ba2.value : "", bcity ? bcity.value : "", bstate ? bstate.value : "", bpost ? bpost.value : ""].filter(Boolean);
+      const parts = shipParts.length > 0 ? shipParts : billParts;
+      if (parts.length > 0) address = parts.join(", ");
+
       if (!address) {
-        const addrEl = doc.querySelector(".order_data_column address, address");
+        const addrEl = doc.querySelector(".order_data_column.shipping address, .order_data_column address, address");
         if (addrEl) {
           const parsedBlock = parseWooCommerceAddressBlock(addrEl);
           if (parsedBlock.address) address = parsedBlock.address;
           if (parsedBlock.name && isInvalidCustomerName(name)) name = parsedBlock.name;
           if (parsedBlock.phone && !phone) phone = parsedBlock.phone;
         }
+      }
+    }
+
+    let customerNote = "";
+    if (doc.querySelector) {
+      const noteEl = doc.querySelector("#customer_note, textarea[name='customer_note'], textarea#order_comments, #excerpt, .woocommerce-Order-customer-note, .note_content");
+      if (noteEl) {
+        customerNote = (noteEl.value || noteEl.textContent || noteEl.innerText || "").trim();
       }
     }
 
@@ -708,6 +789,8 @@
       name: name,
       phone: phone,
       address: address,
+      notes: customerNote,
+      customerNote: customerNote,
       district: parsed.district || "",
       zone: parsed.zone || "",
       items: items,
@@ -740,6 +823,31 @@
       return;
     }
 
+    // Deduplicate concurrent requests for the same order ID
+    if (idKey && inFlightOrderRequests.has(idKey)) {
+      if (typeof callback === "function") {
+        inFlightOrderRequests.get(idKey).push(callback);
+      }
+      return;
+    }
+
+    const callbacks = [];
+    if (typeof callback === "function") {
+      callbacks.push(callback);
+    }
+    if (idKey) {
+      inFlightOrderRequests.set(idKey, callbacks);
+    }
+
+    function resolveAll(result, err) {
+      if (idKey) {
+        inFlightOrderRequests.delete(idKey);
+      }
+      callbacks.forEach(cb => {
+        try { cb(result, err); } catch (e) { console.error("Order fetch callback error:", e); }
+      });
+    }
+
     // Step 1: Try WooCommerce Admin AJAX endpoint if nonce is available
     const ajaxCfg = getWooCommerceAjaxConfig();
     if (ajaxCfg.nonce && idKey) {
@@ -748,7 +856,7 @@
         ? `${ajaxCfg.ajaxUrl}?action=woocommerce_get_order_details&order_id=${idKey}&security=${ajaxCfg.nonce}`
         : `${baseOrigin}${ajaxCfg.ajaxUrl}?action=woocommerce_get_order_details&order_id=${idKey}&security=${ajaxCfg.nonce}`;
 
-      fetch(ajaxEndpoint, { credentials: "same-origin" })
+      fetchWithTimeout(ajaxEndpoint, { credentials: "same-origin" }, 8000)
         .then(res => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
@@ -757,7 +865,7 @@
           const parsed = parseWooCommerceAjaxOrderDetails(json, idKey);
           if (parsed && parsed.items && parsed.items.length > 0) {
             orderDetailsCache.set(idKey, parsed);
-            if (typeof callback === "function") callback(parsed);
+            resolveAll(parsed);
             return;
           }
           fetchEditPageFallback();
@@ -782,7 +890,7 @@
         targetUrl = window.location.origin + targetUrl;
       }
 
-      fetch(targetUrl, { credentials: "same-origin" })
+      fetchWithTimeout(targetUrl, { credentials: "same-origin" }, 8000)
         .then(res => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.text();
@@ -792,7 +900,7 @@
           // If no items found and we attempted HPOS url, try classic post.php url as fallback
           if ((!parsed || !parsed.items || parsed.items.length === 0) && idKey && targetUrl.includes("page=wc-orders")) {
             const classicUrl = `${(typeof window !== "undefined" && window.location ? window.location.origin : "")}/wp-admin/post.php?post=${idKey}&action=edit`;
-            fetch(classicUrl, { credentials: "same-origin" })
+            fetchWithTimeout(classicUrl, { credentials: "same-origin" }, 8000)
               .then(cRes => cRes.ok ? cRes.text() : "")
               .then(cHtml => {
                 if (cHtml) {
@@ -804,10 +912,10 @@
                 if (parsed && idKey && parsed.items && parsed.items.length > 0) {
                   orderDetailsCache.set(idKey, parsed);
                 }
-                if (typeof callback === "function") callback(parsed);
+                resolveAll(parsed);
               })
-              .catch(() => {
-                if (typeof callback === "function") callback(parsed);
+              .catch(cErr => {
+                resolveAll(parsed, cErr);
               });
             return;
           }
@@ -815,10 +923,10 @@
           if (parsed && idKey && parsed.items && parsed.items.length > 0) {
             orderDetailsCache.set(idKey, parsed);
           }
-          if (typeof callback === "function") callback(parsed);
+          resolveAll(parsed);
         })
         .catch(err => {
-          if (typeof callback === "function") callback(null, err);
+          resolveAll(null, err);
         });
     }
   }
@@ -1016,7 +1124,13 @@
       }
     }
 
-    const isFreeShipping = /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(text);
+    let notes = "";
+    const notesEl = row.querySelector(".order_notes, .order-notes, [data-colname='Notes'], [data-colname='Note'], [data-colname='Order Notes'], [data-colname='Customer Note'], .customer-note, .note_content");
+    if (notesEl) {
+      notes = (notesEl.textContent || notesEl.innerText || "").trim();
+    }
+
+    const isFreeShipping = /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(text + " " + notes);
 
     return {
       phone: phone || "",
@@ -1025,6 +1139,8 @@
       orderUrl: orderUrl,
       cod: cod,
       address: normalizeDisplayAddress(address, customerName),
+      notes: notes,
+      customerNote: notes,
       items: items,
       district: parsed.district || "",
       zone: parsed.zone || "",
@@ -1426,7 +1542,15 @@
     const isOutside = (parsed.district && !parsed.district.toLowerCase().includes("dhaka")) ||
                       (address && !address.toLowerCase().includes("dhaka"));
 
-    const isFreeShipping = /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(text);
+    let notes = "";
+    const noteEl = modal.querySelector(
+      ".wc-order-preview-customer-note, .wc-order-preview-notes, .wc-order-preview-note, .order-preview-notes, .order-preview-customer-note, .customer-note, .wc-order-preview__section--customer-note, .wc-order-preview-customer-notes"
+    );
+    if (noteEl) {
+      notes = (noteEl.textContent || noteEl.innerText || "").trim();
+    }
+
+    const isFreeShipping = /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(text + " " + notes);
 
     return {
       orderId,
@@ -1434,6 +1558,8 @@
       phone,
       name: customerName,
       address: normalizeDisplayAddress(address, customerName),
+      notes: notes,
+      customerNote: notes,
       district: parsed.district || "",
       zone: parsed.zone || "",
       cod,
@@ -3628,6 +3754,8 @@
       parseOrderEditPageHTML,
       fetchOrderDetailsViaEditPage,
       orderDetailsCache,
+      inFlightOrderRequests,
+      fetchWithTimeout,
       DEEN_LOGO_BASE64,
       getWooCommerceAjaxConfig,
       parseWooCommerceAjaxOrderDetails,
