@@ -272,9 +272,10 @@
   function setReactInputValue(inputEl, value, shouldBlur = false) {
     if (!inputEl) return false;
 
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype, "value"
-    )?.set;
+    const proto = (typeof HTMLTextAreaElement !== "undefined" && inputEl instanceof HTMLTextAreaElement)
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype;
+    const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
     if (nativeSetter) {
       nativeSetter.call(inputEl, value);
     } else {
@@ -285,26 +286,6 @@
     inputEl.dispatchEvent(new Event("change", { bubbles: true }));
     if (shouldBlur) {
       inputEl.dispatchEvent(new Event("blur", { bubbles: true }));
-    }
-    return true;
-  }
-
-  function setReactTextareaValue(textareaEl, value, shouldBlur = false) {
-    if (!textareaEl) return false;
-
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype, "value"
-    )?.set;
-    if (nativeSetter) {
-      nativeSetter.call(textareaEl, value);
-    } else {
-      textareaEl.value = value;
-    }
-
-    textareaEl.dispatchEvent(new Event("input", { bubbles: true }));
-    textareaEl.dispatchEvent(new Event("change", { bubbles: true }));
-    if (shouldBlur) {
-      textareaEl.dispatchEvent(new Event("blur", { bubbles: true }));
     }
     return true;
   }

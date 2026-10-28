@@ -40,7 +40,6 @@
                   (typeof globalThis !== "undefined" ? globalThis : null) ||
                   (typeof require !== "undefined" ? (() => { try { return require("./parser.js"); } catch (e) { return {}; } })() : {});
 
-  const BD_PHONE_SEARCH_REGEX = /(?:(?:\+|00)?880[\s.-]?)?0?(1[3-9][0-9]{2}[\s.-]?[0-9]{3}[\s.-]?[0-9]{3})\b/;
   const BD_PHONE_CLEAN_REGEX = /(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/;
 
   /**
@@ -2596,7 +2595,7 @@
     const oldPathaoSingleBtn = document.getElementById("deen-single-order-pathao-btn");
     if (oldPathaoSingleBtn) oldPathaoSingleBtn.remove();
 
-    // Deprecated pathao dispatch payload helper (kept for testing reference)
+    // Invariant 3: Single order dispatch helper
     // syncToPathao(payload, { autoSwitch: true, userTriggered: true });
 
     // Clean up any legacy single order WhatsApp COD button if present in DOM
@@ -2650,7 +2649,7 @@
   /**
    * Modern Floating Toast Notification
    */
-  function showWCToast(htmlContent, actionText, onAction) {
+  function showWCToast(htmlContent, actionText, onAction, duration = 5000) {
     let container = document.getElementById("deen-wc-toast-container");
     if (!container) {
       container = document.createElement("div");
@@ -2694,13 +2693,13 @@
       container.appendChild(toast);
     }
 
-    // Auto remove after 5 seconds
+    // Auto remove after duration
     setTimeout(() => {
       if (toast.parentElement) {
         toast.classList.add("deen-toast-fading");
         setTimeout(() => toast.remove(), 300);
       }
-    }, 5000);
+    }, duration);
   }
 
   /**
@@ -3336,7 +3335,6 @@
 
             if (citySelect && parsed.district) {
               const options = Array.from(citySelect.options || []);
-              const targetDist = parsed.district.toLowerCase();
               let getISO = null;
               if (typeof getISOCodeFromDistrict === "function") getISO = getISOCodeFromDistrict;
               else if (typeof require !== "undefined") {
@@ -3531,11 +3529,6 @@
 
   function initBulkDispatchBar() {
     updateBulkDispatchBar();
-  }
-
-  function injectTopBulkActionButton() {
-    const existing = document.querySelectorAll(".deen-top-bulk-btn");
-    existing.forEach(el => el.remove());
   }
 
   // Initialize

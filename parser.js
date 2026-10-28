@@ -2007,6 +2007,22 @@ function parseBDAddress(rawAddress) {
 }
 
 /**
+ * Shared segment parsing helpers for address deduplication and normalization
+ */
+function getSegLabel(s) {
+  const m = s.match(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i);
+  return m ? m[0].trim().toLowerCase().replace(/[:ঃ#\-]+$/, "") : "";
+}
+
+function getSegCore(s) {
+  return s.replace(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i, "").trim();
+}
+
+function getSegWords(s) {
+  return s.toLowerCase().replace(/[^\w\u0980-\u09FF\s]/g, " ").split(/\s+/).filter(w => w.length > 0);
+}
+
+/**
  * Smart Address Normalizer for Pathao Courier
  * Cleans messy Bangladeshi customer checkout addresses into standard delivery format.
  */
@@ -2061,16 +2077,6 @@ function normalizeAddressForPathao(rawAddress) {
   // 7. Deduplicate segments (label-aware deduplication)
   const segments = addr.split(/,\s*/);
   const deduplicated = [];
-  function getSegLabel(s) {
-    const m = s.match(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i);
-    return m ? m[0].trim().toLowerCase().replace(/[:ঃ#\-]+$/, "") : "";
-  }
-  function getSegCore(s) {
-    return s.replace(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i, "").trim();
-  }
-  function getSegWords(s) {
-    return s.toLowerCase().split(/[\s,./#\-]+/).filter(w => w.length > 0);
-  }
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i].trim();
@@ -2297,17 +2303,6 @@ function normalizeDisplayAddress(rawAddress, customerName) {
   const rawParts = text.split(",").map(s => s.trim()).filter(Boolean);
 
   const result = [];
-
-  function getSegLabel(s) {
-    const m = s.match(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i);
-    return m ? m[0].trim().toLowerCase().replace(/[:ঃ#\-]+$/, "") : "";
-  }
-  function getSegCore(s) {
-    return s.replace(/^(?:thana|district|village|vill|post(?:\s*office)?|p\.?o\.?|গ্রাম|ডাকঘর|পোস্ট|পোঃ|পো:|থানা|উপজেলা|জেলা)[\s:ঃ#\-]+/i, "").trim();
-  }
-  function getSegWords(s) {
-    return s.toLowerCase().replace(/[^\w\u0980-\u09FF\s]/g, " ").split(/\s+/).filter(w => w.length > 0);
-  }
 
   // Check if customerName is passed, and build words to filter
   const custWords = customerName && typeof customerName === "string"

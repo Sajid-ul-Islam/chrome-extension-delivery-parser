@@ -65,7 +65,6 @@
                   (typeof globalThis !== "undefined" ? globalThis : null) ||
                   (typeof require !== "undefined" ? (() => { try { return require("./parser.js"); } catch (e) { return {}; } })() : {});
 
-  const BD_PHONE_SEARCH_REGEX = /(?:(?:\+|00)?880[\s.-]?)?0?(1[3-9][0-9]{2}[\s.-]?[0-9]{3}[\s.-]?[0-9]{3})\b/;
   const BD_PHONE_CLEAN_REGEX = /(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/;
 
   function normalizeBDPhone(raw) {
