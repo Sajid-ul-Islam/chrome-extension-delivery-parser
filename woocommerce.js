@@ -961,7 +961,7 @@
   function extractRowOrderDetails(row) {
     if (!row) return {};
 
-    const text = row.innerText || "";
+    const text = row.innerText || row.textContent || "";
     const cleanAsciiText = bengaliToAsciiDigits(text);
     let phone = normalizeBDPhone(text) || "";
 
@@ -995,6 +995,12 @@
       if (parsedBlock.name && !isInvalidCustomerName(parsedBlock.name)) customerName = parsedBlock.name;
       if (parsedBlock.address) address = parsedBlock.address;
       if (parsedBlock.phone && !phone) phone = parsedBlock.phone;
+    }
+
+    // Check cached phone for this order if not found in row address cell
+    if (!phone && orderId) {
+      const cachedPhone = getOrderPhoneCache(orderId);
+      if (cachedPhone) phone = cachedPhone;
     }
 
     // 3. Customer Name from customer_user column or order title (has highest priority when valid)
@@ -2624,6 +2630,95 @@
   const RATING_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
   const memoryRatingCache = {}; // In-memory fallback if localStorage is unavailable
 
+  const ORDER_PHONE_CACHE_KEY = "deen_order_phone_cache_v1";
+  const memoryOrderPhoneCache = {}; // In-memory fallback for order-to-phone mapping
+
+  /**
+   * Read cached phone number for an order ID
+   */
+  function getOrderPhoneCache(orderId) {
+    if (!orderId) return null;
+    const cleanId = String(orderId).replace(/^#/, "").trim();
+    if (!cleanId) return null;
+
+    let store = null;
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem(ORDER_PHONE_CACHE_KEY);
+        if (raw) store = JSON.parse(raw);
+      } catch (e) {}
+    } else {
+      store = memoryOrderPhoneCache;
+    }
+
+    if (!store || typeof store !== "object") return null;
+    return store[cleanId] || null;
+  }
+
+  /**
+   * Save order ID to phone number mapping in localStorage
+   */
+  function setOrderPhoneCache(orderId, phone) {
+    if (!orderId || !phone) return;
+    const cleanId = String(orderId).replace(/^#/, "").trim();
+    let cleanPhone = normalizeBDPhone(phone);
+    if (!cleanPhone && typeof require !== "undefined") {
+      try { cleanPhone = require("./phone-check.js").normalizeBDPhone(phone); } catch (e) {}
+    }
+    if (!cleanId || !cleanPhone) return;
+
+    let store = {};
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem(ORDER_PHONE_CACHE_KEY);
+        if (raw) store = JSON.parse(raw);
+      } catch (e) {}
+    } else {
+      store = memoryOrderPhoneCache;
+    }
+
+    if (!store || typeof store !== "object") store = {};
+    store[cleanId] = cleanPhone;
+
+    // Prune oldest if over 1000 orders
+    const keys = Object.keys(store);
+    if (keys.length > 1000) {
+      for (let i = 0; i < 200; i++) delete store[keys[i]];
+    }
+
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem(ORDER_PHONE_CACHE_KEY, JSON.stringify(store));
+      } catch (e) {}
+    }
+  }
+
+  /**
+   * Clear order ID to phone mapping cache
+   */
+  function clearOrderPhoneCache(orderId) {
+    if (orderId) {
+      const cleanId = String(orderId).replace(/^#/, "").trim();
+      if (!cleanId) return;
+      if (typeof localStorage !== "undefined") {
+        try {
+          const raw = localStorage.getItem(ORDER_PHONE_CACHE_KEY);
+          if (raw) {
+            const store = JSON.parse(raw);
+            delete store[cleanId];
+            localStorage.setItem(ORDER_PHONE_CACHE_KEY, JSON.stringify(store));
+          }
+        } catch (e) {}
+      }
+      delete memoryOrderPhoneCache[cleanId];
+    } else {
+      if (typeof localStorage !== "undefined") {
+        try { localStorage.removeItem(ORDER_PHONE_CACHE_KEY); } catch (e) {}
+      }
+      for (const k in memoryOrderPhoneCache) delete memoryOrderPhoneCache[k];
+    }
+  }
+
   /**
    * Read customer rating from 24-hour synchronous localStorage cache
    */
@@ -2924,32 +3019,11 @@
   }
 
   /**
-   * Render or update rating cell for a specific order table row
+   * Render rating cell UI for a verified phone number
    */
-  function renderOrderRatingCell(row, ratingCell) {
-    if (!row || !ratingCell) return;
-
-    let phone = "";
-    const telLink = typeof row.querySelector === "function" ? row.querySelector("a[href^='tel:']") : null;
-    if (telLink && telLink.getAttribute) {
-      phone = normalizeBDPhone((telLink.getAttribute("href") || "").replace("tel:", "")) || "";
-    }
-    if (!phone) {
-      const text = row.textContent || row.innerText || "";
-      phone = normalizeBDPhone(text) || "";
-    }
-    if (!phone) {
-      const details = extractRowOrderDetails(row);
-      if (details && details.phone) phone = details.phone;
-    }
-
-    if (!phone) {
-      if (!ratingCell.dataset.renderedPhone) {
-        ratingCell.dataset.renderedPhone = "none";
-        ratingCell.innerHTML = `<span style="color:#94a3b8; font-size:11px; font-weight:500;">No Phone</span>`;
-      }
-      return;
-    }
+  function renderRatingCellForPhone(row, ratingCell, phone, orderId) {
+    if (!phone || !ratingCell) return;
+    if (orderId) setOrderPhoneCache(orderId, phone);
 
     // Skip redundant DOM manipulation if already rendered for this phone
     if (ratingCell.dataset.renderedPhone === phone && !ratingCell.dataset.deenDirty) {
@@ -2959,9 +3033,9 @@
     delete ratingCell.dataset.deenDirty;
 
     // Check LocalStorage cache first for zero-latency synchronous rendering
-    const cached = getLocalRatingCache(phone);
-    if (cached) {
-      renderRatingCellUI(row, ratingCell, cached, phone);
+    const cachedRating = getLocalRatingCache(phone);
+    if (cachedRating) {
+      renderRatingCellUI(row, ratingCell, cachedRating, phone);
       return;
     }
 
@@ -2977,6 +3051,87 @@
       setLocalRatingCache(phone, rating);
       renderRatingCellUI(row, ratingCell, rating, phone);
     });
+  }
+
+  /**
+   * Render or update rating cell for a specific order table row
+   */
+  function renderOrderRatingCell(row, ratingCell) {
+    if (!row || !ratingCell) return;
+
+    let phone = "";
+    const telLink = typeof row.querySelector === "function" ? row.querySelector("a[href^='tel:']") : null;
+    if (telLink && telLink.getAttribute) {
+      phone = normalizeBDPhone((telLink.getAttribute("href") || "").replace("tel:", "")) || "";
+    }
+    if (!phone) {
+      const text = row.textContent || row.innerText || "";
+      phone = normalizeBDPhone(text) || "";
+    }
+
+    const details = extractRowOrderDetails(row);
+    if (!phone && details && details.phone) {
+      phone = details.phone;
+    }
+
+    const orderId = details && details.orderId ? String(details.orderId).replace(/^#/, "").trim() : "";
+
+    // 1. Check persistent order-phone cache
+    if (!phone && orderId) {
+      phone = getOrderPhoneCache(orderId) || "";
+    }
+
+    // 2. Check in-memory orderDetailsCache
+    if (!phone && orderId && orderDetailsCache.has(orderId)) {
+      const cachedOrder = orderDetailsCache.get(orderId);
+      if (cachedOrder && cachedOrder.phone) {
+        phone = cachedOrder.phone;
+        setOrderPhoneCache(orderId, phone);
+      }
+    }
+
+    // If phone is found directly or via cache:
+    if (phone) {
+      renderRatingCellForPhone(row, ratingCell, phone, orderId);
+      return;
+    }
+
+    // 3. Phone NOT found in row text: Auto-fetch order details via same-origin AJAX/page in background!
+    if (orderId) {
+      if (ratingCell.dataset.fetchingOrderId === orderId) {
+        return;
+      }
+      ratingCell.dataset.fetchingOrderId = orderId;
+
+      ratingCell.innerHTML = `
+        <div class="deen-rating-cell-box">
+          <span class="deen-table-rating-pill deen-rating-loading" title="Fetching customer phone & rating for Order #${escapeHTML(orderId)}...">⏳ Checking...</span>
+        </div>
+      `.trim();
+
+      fetchOrderDetailsViaEditPage(orderId, details.orderUrl, (fetched) => {
+        delete ratingCell.dataset.fetchingOrderId;
+        if (fetched && fetched.phone) {
+          const resolvedPhone = normalizeBDPhone(fetched.phone);
+          if (resolvedPhone) {
+            setOrderPhoneCache(orderId, resolvedPhone);
+            renderRatingCellForPhone(row, ratingCell, resolvedPhone, orderId);
+            return;
+          }
+        }
+
+        // Truly no phone entered for this order in WooCommerce
+        ratingCell.dataset.renderedPhone = "none";
+        ratingCell.innerHTML = `<span style="color:#94a3b8; font-size:11px; font-weight:500;" title="No mobile number found for Order #${escapeHTML(orderId)}">No Phone</span>`;
+      });
+      return;
+    }
+
+    // No order ID and no phone
+    if (!ratingCell.dataset.renderedPhone) {
+      ratingCell.dataset.renderedPhone = "none";
+      ratingCell.innerHTML = `<span style="color:#94a3b8; font-size:11px; font-weight:500;">No Phone</span>`;
+    }
   }
 
   /**
@@ -4254,6 +4409,11 @@
       triggerOrderConfirmModalForRow,
       RATING_CACHE_KEY,
       RATING_CACHE_TTL,
+      ORDER_PHONE_CACHE_KEY,
+      getOrderPhoneCache,
+      setOrderPhoneCache,
+      clearOrderPhoneCache,
+      renderRatingCellForPhone,
       BD_ISO_DISTRICTS: typeof BD_ISO_DISTRICTS !== "undefined" ? BD_ISO_DISTRICTS : (typeof require !== "undefined" ? require("./parser.js").BD_ISO_DISTRICTS : {}),
       detectDistrictFromISOCode: typeof detectDistrictFromISOCode !== "undefined" ? detectDistrictFromISOCode : (typeof require !== "undefined" ? require("./parser.js").detectDistrictFromISOCode : null),
       getISOCodeFromDistrict: typeof getISOCodeFromDistrict !== "undefined" ? getISOCodeFromDistrict : (typeof require !== "undefined" ? require("./parser.js").getISOCodeFromDistrict : null)

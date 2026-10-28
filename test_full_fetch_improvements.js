@@ -456,12 +456,13 @@ function runRemainingTests() {
       }
     };
 
+    let directText = props.textContent || "";
+
     const el = {
       tagName: tag.toUpperCase(),
       children: [],
       style: {},
       dataset: {},
-      textContent: props.textContent || "",
       setAttribute: function(k, v) { this[k] = v; },
       getAttribute: function(k) { return this[k]; },
       addEventListener: function(evt, handler) { this._events = this._events || {}; this._events[evt] = handler; },
@@ -497,6 +498,21 @@ function runRemainingTests() {
         return res;
       }
     };
+
+    Object.defineProperty(el, "textContent", {
+      get() {
+        if (this.children.length > 0) {
+          return this.children.map(c => c.textContent).join(" ");
+        }
+        return directText;
+      },
+      set(val) { directText = val || ""; }
+    });
+
+    Object.defineProperty(el, "innerText", {
+      get() { return this.textContent; },
+      set(val) { this.textContent = val; }
+    });
 
     Object.defineProperty(el, "className", {
       get() { return rawCls; },
@@ -631,7 +647,58 @@ function runRemainingTests() {
   console.log("  ✅ Dedicated Customer Rating column inserted with 100% table alignment and instant localStorage render!");
   console.log("  ✅ High-risk return auto-highlighting verified on orders table row!");
 
+  // =========================================================================
+  // Test 10: Automatic Order Phone Resolution When Phone Is Missing in Row HTML
+  // =========================================================================
+  console.log("\n▶ Test 10: Testing Automatic Order Phone Resolution When Phone Is Missing in Row HTML (e.g. Order #19105)...");
+
+  assert.strictEqual(typeof woocommerce.getOrderPhoneCache, "function", "getOrderPhoneCache must be a function");
+  assert.strictEqual(typeof woocommerce.setOrderPhoneCache, "function", "setOrderPhoneCache must be a function");
+
+  // Create Row 3 with Order #19105 Mashud Hasan where phone is absent from row HTML text
+  const row3 = createTestEl("tr", { className: "order-row" });
+  row3.appendChild(createTestEl("td", { className: "column-order_number", textContent: "#19105 Mashud Hasan" }));
+  row3.appendChild(createTestEl("td", { className: "column-shipping_address", textContent: "Mashud Hasan, Apartment: A3, 11/11 Tajmahal Road, Block C Mohammadpur, Dhaka, 1207 via Flat rate" }));
+  row3.appendChild(createTestEl("td", { className: "column-order_total", textContent: "1,211৳" }));
+  tbody.appendChild(row3);
+
+  // Seed orderDetailsCache with phone for #19105
+  woocommerce.orderDetailsCache.set("19105", {
+    orderId: "19105",
+    phone: "01715485035",
+    name: "Mashud Hasan",
+    address: "Apartment: A3, 11/11 Tajmahal Road, Block C, Mohammadpur, Dhaka",
+    cod: "1211",
+    items: [{ name: "Polo T-Shirt", qty: 1, unitPrice: 1211 }]
+  });
+
+  // Also seed customer rating in localStorage for 01715485035
+  woocommerce.setLocalRatingCache("01715485035", {
+    success: true,
+    phone: "01715485035",
+    successRate: 92,
+    totalParcels: 12,
+    deliveredCount: 11,
+    cancelledCount: 1,
+    riskLevel: "low",
+    riskLabel: "Safe Buyer (92% Success)",
+    isNewCustomer: false
+  });
+
+  // Run injectCustomerRatingColumn
+  woocommerce.injectCustomerRatingColumn();
+
+  // Verify cell3 is inserted and resolved
+  const cell3 = row3.querySelector(".column-deen_rating");
+  assert.ok(cell3, "Row 3 must contain td.column-deen_rating");
+  assert.strictEqual(woocommerce.getOrderPhoneCache("19105"), "01715485035", "Order #19105 phone must be cached in orderPhoneCache");
+  assert.ok(cell3.innerHTML.includes("🛡️ 92% Safe"), "Cell 3 must resolve phone and display 92% Safe rating instead of No Phone");
+  assert.ok(cell3.innerHTML.includes("11/12 Delivered • 1 Return"), "Cell 3 must display delivery stats");
+  assert.ok(cell3.innerHTML.includes("💬 WhatsApp"), "Cell 3 must display WhatsApp action button");
+
+  console.log("  ✅ Missing phone automatically resolved and cached for Order #19105 with instant rating render!");
+
   console.log("\n==================================================");
-  console.log("🎉 ALL 9 FULL FETCH, RATING COLUMN & AUTOMATION TESTS PASSED 100%!");
+  console.log("🎉 ALL 10 FULL FETCH, RATING COLUMN & AUTOMATION TESTS PASSED 100%!");
   console.log("==================================================");
 }
