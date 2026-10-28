@@ -24,6 +24,7 @@ if (typeof document !== "undefined") {
     checkPendingStorage();
     initSyncTab();
     initQuickReplyTab();
+    initWebMCPTab();
   });
 }
 
@@ -1113,9 +1114,129 @@ function initQuickReplyTab() {
   }
 }
 
+/**
+ * -----------------------------------------------------------------------------
+ * Tab 5: WebMCP AI Agent Tools Inspector & Live Runner
+ * -----------------------------------------------------------------------------
+ */
+function initWebMCPTab() {
+  const toolSelect = document.getElementById("webmcp-tool-select");
+  const toolDesc = document.getElementById("webmcp-tool-desc");
+  const argsInput = document.getElementById("webmcp-args-input");
+  const btnExecute = document.getElementById("btn-execute-webmcp-tool");
+  const outputJson = document.getElementById("webmcp-output-json");
+  const execStatus = document.getElementById("webmcp-exec-status");
+
+  if (!toolSelect) return;
+
+  const sampleArgs = {
+    check_customer_courier_rating: {
+      phone: "01715485035",
+      forceRefresh: false
+    },
+    normalize_bd_address: {
+      rawAddress: "Home Benapole city,thana sharsha,jela jashore Division khulna Benapole"
+    },
+    build_full_address: {
+      rawAddress: "House 12, Road 4, Mirpur 10, Dhaka 1216"
+    },
+    calculate_delivery_fee: {
+      address: "Boalmari, Faridpur",
+      isOutsideDhaka: true
+    },
+    generate_whatsapp_quick_reply: {
+      templateKey: "advance_fee",
+      phone: "01715485035",
+      orderId: "18304",
+      customerName: "Kazi Morshed",
+      codAmount: 1590,
+      isOutsideDhaka: true
+    },
+    get_woocommerce_active_orders: {
+      limit: 10
+    },
+    autofill_pathao_consignment: {
+      phone: "01715485035",
+      name: "Kazi Morshed",
+      address: "Mirpur 10, Dhaka",
+      cod: 1590,
+      orderId: "18304",
+      autoSwitch: false
+    }
+  };
+
+  const updateToolDisplay = async () => {
+    const selected = toolSelect.value;
+    if (argsInput) {
+      argsInput.value = JSON.stringify(sampleArgs[selected] || {}, null, 2);
+    }
+    const registry = (typeof window !== "undefined" && (window.modelContext || window.__webMCPRegistry));
+    if (registry && typeof registry.getTools === "function") {
+      try {
+        const tools = await registry.getTools();
+        const found = tools.find(t => t.name === selected);
+        if (found && toolDesc) {
+          const hintBadge = found.readOnlyHint
+            ? '<span style="color:#10b981; font-weight:700;">[ReadOnly]</span>'
+            : (found.consequentialHint ? '<span style="color:#f59e0b; font-weight:700;">[Consequential]</span>' : '');
+          toolDesc.innerHTML = `${hintBadge} ${found.description}`;
+        }
+      } catch (e) {}
+    }
+  };
+
+  toolSelect.addEventListener("change", updateToolDisplay);
+  updateToolDisplay();
+
+  if (btnExecute) {
+    btnExecute.addEventListener("click", async () => {
+      const selected = toolSelect.value;
+      let parsedArgs = {};
+      try {
+        parsedArgs = JSON.parse(argsInput.value || "{}");
+      } catch (jsonErr) {
+        if (outputJson) outputJson.textContent = `❌ JSON Syntax Error:\n${jsonErr.message}`;
+        if (execStatus) {
+          execStatus.textContent = "Error";
+          execStatus.style.color = "#ef4444";
+        }
+        return;
+      }
+
+      if (execStatus) {
+        execStatus.textContent = "Executing...";
+        execStatus.style.color = "#38bdf8";
+      }
+
+      const registry = (typeof window !== "undefined" && (window.modelContext || window.__webMCPRegistry));
+      if (!registry || typeof registry.executeTool !== "function") {
+        if (outputJson) outputJson.textContent = "❌ WebMCP Registry not found in current window context.";
+        return;
+      }
+
+      try {
+        const result = await registry.executeTool(selected, parsedArgs);
+        if (outputJson) outputJson.textContent = JSON.stringify(result, null, 2);
+        if (execStatus) {
+          execStatus.textContent = "✓ Success";
+          execStatus.style.color = "#10b981";
+        }
+        showToast(`⚡ WebMCP tool '${selected}' executed!`);
+      } catch (execErr) {
+        if (outputJson) outputJson.textContent = `❌ Execution Error:\n${execErr.message}`;
+        if (execStatus) {
+          execStatus.textContent = "Failed";
+          execStatus.style.color = "#ef4444";
+        }
+      }
+    });
+  }
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
-    initQuickReplyTab
+    initQuickReplyTab,
+    initWebMCPTab
   };
 }
 

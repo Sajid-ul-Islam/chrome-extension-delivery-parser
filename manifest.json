@@ -47,7 +47,8 @@
       "resources": [
         "icons/*",
         ".env",
-        "env.js"
+        "env.js",
+        "webmcp-provider.js"
       ],
       "matches": ["<all_urls>"]
     }
@@ -60,7 +61,7 @@
         "http://merchant.pathao.com/*",
         "http://*.pathao.com/*"
       ],
-      "js": ["xlsx.mini.min.js", "parser.js", "content.js"],
+      "js": ["xlsx.mini.min.js", "parser.js", "content.js", "webmcp-provider.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     },
@@ -70,7 +71,7 @@
         "*://*.deencommerce.com/wp-admin/*",
         "*://*/wp-admin/*"
       ],
-      "js": ["parser.js", "woocommerce.js"],
+      "js": ["parser.js", "woocommerce.js", "webmcp-provider.js"],
       "css": ["woocommerce.css"],
       "run_at": "document_idle"
     },
@@ -82,7 +83,7 @@
         "http://merchant.pathao.com/*",
         "http://*.pathao.com/*"
       ],
-      "js": ["parser.js", "phone-check.js"],
+      "js": ["parser.js", "phone-check.js", "webmcp-provider.js"],
       "css": ["phone-check.css"],
       "run_at": "document_idle"
     }

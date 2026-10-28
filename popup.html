@@ -36,6 +36,9 @@
       <button class="nav-tab" data-tab="tab-quickreply">
         <span>💬 WhatsApp COD</span>
       </button>
+      <button class="nav-tab" data-tab="tab-webmcp">
+        <span>🤖 WebMCP Tools</span>
+      </button>
     </nav>
 
     <!-- Tab 1: Current Tab Extractor -->
@@ -231,6 +234,58 @@
       </div>
     </div>
 
+    <!-- Tab 5: WebMCP AI Agent Tools -->
+    <div id="tab-webmcp" class="tab-content">
+      <div class="webmcp-panel" style="padding: 4px 0;">
+        <div class="sync-banner" style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%); border-color: rgba(56, 189, 248, 0.3);">
+          <div class="sync-badge" style="background: rgba(56, 189, 248, 0.25); color: #38bdf8;">🤖 W3C WebMCP Protocol Active</div>
+          <p class="sync-desc" style="font-size: 11.5px; line-height: 1.5; color: #cbd5e1; margin-top: 6px;">
+            Exposes structured <strong>Model Context Protocol (MCP)</strong> JavaScript tools directly to AI agents (Chrome Gemini Nano, Claude, or Assistant) across WooCommerce and Pathao.
+          </p>
+        </div>
+
+        <!-- Tool Selector & Inspector -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <label style="font-size: 12px; font-weight: 700; color: #f8fafc;">Select WebMCP Tool</label>
+            <span id="webmcp-tool-count" style="font-size: 10px; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 2px 7px; border-radius: 10px;">7 Tools</span>
+          </div>
+          <select id="webmcp-tool-select" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 7px 10px; color: #fff; font-size: 12px; margin-bottom: 10px;">
+            <option value="check_customer_courier_rating">check_customer_courier_rating (Pathao + Steadfast)</option>
+            <option value="normalize_bd_address">normalize_bd_address (Smart BD Normalizer)</option>
+            <option value="build_full_address">build_full_address (Address + Zone + District)</option>
+            <option value="calculate_delivery_fee">calculate_delivery_fee (৳50 Inside vs ৳90 Outside)</option>
+            <option value="generate_whatsapp_quick_reply">generate_whatsapp_quick_reply (Bengali WhatsApp + Link)</option>
+            <option value="get_woocommerce_active_orders">get_woocommerce_active_orders (WooCommerce DOM)</option>
+            <option value="autofill_pathao_consignment">autofill_pathao_consignment (Pathao Form Dispatch)</option>
+          </select>
+
+          <div id="webmcp-tool-desc" style="font-size: 11.5px; color: #94a3b8; line-height: 1.45; margin-bottom: 10px; padding: 8px 10px; background: rgba(0,0,0,0.25); border-radius: 6px; border-left: 3px solid #38bdf8;">
+            Select a tool above to view description and arguments.
+          </div>
+
+          <!-- Tool Arguments JSON Input -->
+          <div style="margin-bottom: 10px;">
+            <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Arguments (JSON)</label>
+            <textarea id="webmcp-args-input" rows="4" style="width: 100%; box-sizing: border-box; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #38bdf8; font-size: 11px; line-height: 1.4; padding: 8px 10px; font-family: monospace;"></textarea>
+          </div>
+
+          <button id="btn-execute-webmcp-tool" class="btn-primary" style="width: 100%; padding: 8px 12px; font-size: 12px; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
+            <span>⚡ Execute Tool</span>
+          </button>
+        </div>
+
+        <!-- Tool Output View -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">Output Response</span>
+            <span id="webmcp-exec-status" style="font-size: 10px; color: #94a3b8;">Ready</span>
+          </div>
+          <pre id="webmcp-output-json" style="margin: 0; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 10px; font-family: monospace; font-size: 10.5px; line-height: 1.45; color: #e2e8f0; max-height: 180px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;">Execute a tool to inspect response...</pre>
+        </div>
+      </div>
+    </div>
+
     <!-- Results Section (KPIs + Table) -->
     <div id="results-container" class="results-section hidden">
       <!-- KPI Cards -->
@@ -360,6 +415,7 @@
 
   <script src="xlsx.mini.min.js"></script>
   <script src="parser.js"></script>
+  <script src="webmcp-provider.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
