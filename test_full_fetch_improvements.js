@@ -226,7 +226,111 @@ function runRemainingTests() {
   assert.ok(!reply.includes("৳0 অগ্রিম"), "Should never output ৳0 advance fee");
   console.log("  ✅ generateQuickReply cleanly omitted advance delivery fee request on free shipping order!");
 
+  // Test 7: High-Risk Return Auto-Highlighter & Advance Gate Automation
+  console.log("\n▶ Test 7: Testing High-Risk Return Auto-Highlighter & Advance Fee Gate Automation...");
+  
+  // Set up mock DOM elements to test modal auto-preselection
+  let createdElements = [];
+  const mockBackdrop = {
+    id: "",
+    className: "",
+    children: [],
+    appendChild: function(child) { this.children.push(child); return child; },
+    addEventListener: () => {},
+    remove: () => {}
+  };
+
+  const mockTabButtons = [
+    { dataset: { tpl: "order_details_confirm" }, classList: { classes: ["deen-tab-btn", "deen-tab-active"], add: function(c) { this.classes.push(c); }, remove: function(c) { this.classes = this.classes.filter(x => x !== c); } }, addEventListener: () => {} },
+    { dataset: { tpl: "confirm_order" }, classList: { classes: ["deen-tab-btn"], add: function(c) { this.classes.push(c); }, remove: function(c) { this.classes = this.classes.filter(x => x !== c); } }, addEventListener: () => {} },
+    { dataset: { tpl: "high_risk_notice" }, classList: { classes: ["deen-tab-btn"], add: function(c) { this.classes.push(c); }, remove: function(c) { this.classes = this.classes.filter(x => x !== c); } }, addEventListener: () => {} }
+  ];
+
+  const mockRatingBox = { style: {}, parentNode: { insertBefore: () => {} }, nextSibling: null };
+  const mockRatingBadge = { textContent: "", style: {} };
+  const mockRatingText = { textContent: "", innerHTML: "" };
+  const mockTextarea = { value: "", dataset: {}, addEventListener: () => {} };
+  const mockSendBtn = { textContent: "", addEventListener: () => {} };
+
+  const modalMockDom = {
+    querySelector: function(sel) {
+      if (sel === "#deen-order-confirm-rating-box") return mockRatingBox;
+      if (sel === "#deen-order-rating-badge") return mockRatingBadge;
+      if (sel === "#deen-order-rating-text") return mockRatingText;
+      if (sel === "#deen-order-msg-text") return mockTextarea;
+      if (sel === "#deen-footer-btn-send") return mockSendBtn;
+      if (sel === ".deen-tab-btn[data-tpl='high_risk_notice']") return mockTabButtons[2];
+      return null;
+    },
+    querySelectorAll: function(sel) {
+      if (sel === ".deen-tab-btn") return mockTabButtons;
+      return [];
+    },
+    appendChild: () => {}
+  };
+
+  // Mock global document.createElement and body for modal
+  const origCreate = global.document ? global.document.createElement : null;
+  global.document = global.document || {};
+  global.document.getElementById = (id) => null;
+  global.document.createElement = function(tag) {
+    if (tag === "div") {
+      return {
+        id: "",
+        className: "",
+        innerHTML: "",
+        style: {},
+        querySelector: modalMockDom.querySelector,
+        querySelectorAll: modalMockDom.querySelectorAll,
+        appendChild: () => {},
+        addEventListener: () => {}
+      };
+    }
+    return { style: {}, classList: { add: () => {}, remove: () => {} }, addEventListener: () => {} };
+  };
+  global.document.body = { appendChild: () => {} };
+
+  // Mock fetchCustomerRatingBackground returning a high-risk customer with 4 cancellations
+  const origFetchRating = woocommerce.fetchCustomerRatingBackground;
+  global.chrome = global.chrome || {};
+  global.chrome.storage = global.chrome.storage || {
+    sync: { get: (k, cb) => cb({}) },
+    local: { get: (k, cb) => cb({}) }
+  };
+  global.chrome.runtime = global.chrome.runtime || {
+    sendMessage: (msg, cb) => {
+      if (msg.action === "fetch_customer_rating") {
+        cb({
+          success: true,
+          phone: "01799990000",
+          successRate: 45,
+          totalParcels: 9,
+          deliveredCount: 4,
+          cancelledCount: 5,
+          riskLevel: "high",
+          riskLabel: "High Return Risk"
+        });
+      }
+    }
+  };
+
+  woocommerce.showOrderConfirmModal({
+    orderId: "19557",
+    name: "Risky Customer",
+    phone: "01799990000",
+    address: "Mirpur 1, Dhaka",
+    subtotal: 1500,
+    cod: 1550
+  });
+
+  // Verify advance gate auto-preselection
+  assert.ok(mockTabButtons[2].classList.classes.includes("deen-tab-active"), "High risk notice tab must be auto-selected");
+  assert.ok(!mockTabButtons[0].classList.classes.includes("deen-tab-active"), "Order details tab must be de-selected for high risk");
+  assert.ok(mockTextarea.value.includes("অগ্রিম প্রদান করা বাধ্যতামূলক"), "Textarea must auto-populate with advance fee requirement");
+  assert.strictEqual(mockSendBtn.textContent, "⚠️ Send Advance Charge Notice (WhatsApp)", "Send button must adapt to advance notice");
+  console.log("  ✅ showOrderConfirmModal successfully gated high-risk customer and auto-selected advance fee notice!");
+
   console.log("\n==================================================");
-  console.log("🎉 ALL 6 FULL FETCH IMPROVEMENT TESTS PASSED 100%!");
+  console.log("🎉 ALL 7 FULL FETCH & AUTOMATION TESTS PASSED 100%!");
   console.log("==================================================");
 }

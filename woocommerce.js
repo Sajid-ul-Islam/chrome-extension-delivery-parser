@@ -2228,12 +2228,14 @@
         });
       }
 
-      // Wire up Pathao Customer Intelligence
+      // Wire up Pathao Customer Intelligence & Action Elements
       const ratingBox = modal.querySelector("#deen-order-confirm-rating-box");
       const ratingText = modal.querySelector("#deen-order-rating-text");
       const ratingBadge = modal.querySelector("#deen-order-rating-badge");
       const ratingGradeTag = modal.querySelector("#deen-order-rating-grade-tag");
       const ratingRefreshBtn = modal.querySelector("#deen-order-rating-refresh-btn");
+      const tabButtons = modal.querySelectorAll(".deen-tab-btn");
+      const sendBtn = modal.querySelector("#deen-footer-btn-send");
 
       function updateRatingUI(rating) {
         if (!rating || !ratingText || !ratingBadge) return;
@@ -2252,11 +2254,54 @@
         ratingBadge.style.backgroundColor = rating.riskColor || (rating.riskLevel === "high" ? "#fee2e2" : "#dcfce7");
         ratingBadge.style.color = rating.riskLevel === "high" ? "#b91c1c" : (rating.riskLevel === "medium" ? "#b45309" : "#15803d");
 
-        // High risk visual alert styling (preserves selected order details confirmation template)
-        if (rating.riskLevel === "high" || (rating.successRate !== undefined && Number(rating.successRate) < 70)) {
+        // Automated High-Risk Alert & Advance Delivery Charge Gate
+        const isHighRisk = rating.riskLevel === "high" ||
+                           (rating.cancelledCount !== undefined && Number(rating.cancelledCount) >= 3) ||
+                           (rating.successRate !== undefined && Number(rating.successRate) < 65 && Number(rating.totalParcels || 0) >= 2);
+
+        if (isHighRisk) {
           if (ratingBox) {
             ratingBox.style.background = "#fef2f2";
             ratingBox.style.borderColor = "#fca5a5";
+          }
+
+          // Automated Advance Fee Gate Pre-selection:
+          // If the merchant hasn't manually edited the textarea, pre-select the 'high_risk_notice' template
+          const riskTab = modal.querySelector(".deen-tab-btn[data-tpl='high_risk_notice']");
+          if (riskTab && (!textarea || !textarea.dataset.userEdited)) {
+            if (tabButtons && tabButtons.forEach) {
+              tabButtons.forEach(b => b.classList && b.classList.remove && b.classList.remove("deen-tab-active"));
+            }
+            if (riskTab.classList && riskTab.classList.add) {
+              riskTab.classList.add("deen-tab-active");
+            }
+            if (genReply && textarea && !textarea.dataset.userEdited) {
+              textarea.value = genReply("high_risk_notice", {
+                name: details.name,
+                phone: details.phone,
+                orderId: details.orderId,
+                cod: details.cod,
+                address: details.address,
+                items: items,
+                isOutsideDhaka: isOutside,
+                isFreeShipping: details.isFreeShipping
+              }, config);
+            }
+            if (sendBtn) {
+              sendBtn.textContent = "⚠️ Send Advance Charge Notice (WhatsApp)";
+            }
+          }
+
+          // Inject or show the High-Risk Advance Payment Gate warning banner
+          let gateBanner = modal.querySelector("#deen-high-risk-gate-banner");
+          if (!gateBanner && ratingBox && ratingBox.parentNode) {
+            gateBanner = document.createElement("div");
+            gateBanner.id = "deen-high-risk-gate-banner";
+            gateBanner.className = "deen-high-risk-gate-banner";
+            gateBanner.innerHTML = `
+              <span>🚨 <strong>High Return Risk (${rating.cancelledCount || 0} returns):</strong> Advance courier charge notice automatically pre-selected. Require advance payment to prevent return shipping losses.</span>
+            `;
+            ratingBox.parentNode.insertBefore(gateBanner, ratingBox.nextSibling);
           }
         }
       }
@@ -2317,12 +2362,16 @@
         });
       }
 
-      const tabButtons = modal.querySelectorAll(".deen-tab-btn");
       tabButtons.forEach(btn => {
         btn.addEventListener("click", () => {
           tabButtons.forEach(b => b.classList.remove("deen-tab-active"));
           btn.classList.add("deen-tab-active");
           const tpl = btn.dataset.tpl;
+          if (sendBtn) {
+            sendBtn.textContent = tpl === "high_risk_notice"
+              ? "⚠️ Send Advance Charge Notice (WhatsApp)"
+              : "💬 Ask Customer to Confirm (WhatsApp)";
+          }
           if (genReply) {
             const newText = genReply(tpl, {
               name: details.name,
@@ -2331,14 +2380,14 @@
               cod: details.cod,
               address: details.address,
               items: items,
-              isOutsideDhaka: isOutside
+              isOutsideDhaka: isOutside,
+              isFreeShipping: details.isFreeShipping
             }, config);
             textarea.value = newText;
           }
         });
       });
 
-      const sendBtn = modal.querySelector("#deen-footer-btn-send");
       if (sendBtn) {
         sendBtn.addEventListener("click", () => {
           const textToSend = textarea.value.trim() || currentMsg;
@@ -2724,7 +2773,8 @@
               ratingPill.classList.remove("deen-rating-loading", "rating-safe", "rating-moderate", "rating-danger", "rating-new");
             }
 
-            if (rating.riskLevel === "high") {
+            if (rating.riskLevel === "high" || (rating.cancelledCount && Number(rating.cancelledCount) >= 3)) {
+              if (row && row.classList && row.classList.add) row.classList.add("deen-high-risk-order-row");
               if (ratingPill.classList && ratingPill.classList.add) ratingPill.classList.add("rating-danger");
               const returns = rating.cancelledCount || 0;
               ratingPill.innerHTML = `🚨 High Risk (${returns})`;
