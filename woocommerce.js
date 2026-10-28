@@ -2617,6 +2617,456 @@
     }
   }
 
+  // ==========================================================================
+  // LocalStorage Customer Ratings Cache & Dedicated Table Column
+  // ==========================================================================
+  const RATING_CACHE_KEY = "deen_customer_ratings_cache_v1";
+  const RATING_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+  const memoryRatingCache = {}; // In-memory fallback if localStorage is unavailable
+
+  /**
+   * Read customer rating from 24-hour synchronous localStorage cache
+   */
+  function getLocalRatingCache(phone) {
+    if (!phone) return null;
+    let cleanPhone = normalizeBDPhone(phone);
+    if (!cleanPhone && typeof require !== "undefined") {
+      try { cleanPhone = require("./phone-check.js").normalizeBDPhone(phone); } catch (e) {}
+    }
+    if (!cleanPhone) return null;
+
+    let store = null;
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem(RATING_CACHE_KEY);
+        if (raw) store = JSON.parse(raw);
+      } catch (e) {}
+    } else {
+      store = memoryRatingCache;
+    }
+
+    if (!store || typeof store !== "object") return null;
+    const entry = store[cleanPhone];
+    if (!entry || !entry.rating) return null;
+
+    const age = Date.now() - (entry.timestamp || 0);
+    if (age > RATING_CACHE_TTL) {
+      delete store[cleanPhone];
+      if (typeof localStorage !== "undefined") {
+        try { localStorage.setItem(RATING_CACHE_KEY, JSON.stringify(store)); } catch (e) {}
+      }
+      return null;
+    }
+
+    return entry.rating;
+  }
+
+  /**
+   * Save customer courier rating to localStorage with 24-hour timestamp & auto-pruning
+   */
+  function setLocalRatingCache(phone, ratingData) {
+    if (!phone || !ratingData) return;
+    let cleanPhone = normalizeBDPhone(phone);
+    if (!cleanPhone && typeof require !== "undefined") {
+      try { cleanPhone = require("./phone-check.js").normalizeBDPhone(phone); } catch (e) {}
+    }
+    if (!cleanPhone) return;
+
+    let store = {};
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem(RATING_CACHE_KEY);
+        if (raw) store = JSON.parse(raw);
+      } catch (e) {}
+    } else {
+      store = memoryRatingCache;
+    }
+
+    if (!store || typeof store !== "object") store = {};
+
+    store[cleanPhone] = {
+      rating: ratingData,
+      timestamp: Date.now()
+    };
+
+    // Auto-prune to maximum 500 entries to prevent localStorage quota exhaustion
+    const keys = Object.keys(store);
+    if (keys.length > 500) {
+      keys.sort((a, b) => (store[a].timestamp || 0) - (store[b].timestamp || 0));
+      for (let i = 0; i < 100; i++) {
+        delete store[keys[i]];
+      }
+    }
+
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem(RATING_CACHE_KEY, JSON.stringify(store));
+      } catch (e) {
+        try {
+          const k = Object.keys(store);
+          for (let i = 0; i < Math.floor(k.length / 2); i++) delete store[k[i]];
+          localStorage.setItem(RATING_CACHE_KEY, JSON.stringify(store));
+        } catch (e2) {}
+      }
+    }
+  }
+
+  /**
+   * Clear rating cache for a specific phone number or purge all
+   */
+  function clearLocalRatingCache(phone) {
+    if (phone) {
+      let cleanPhone = normalizeBDPhone(phone);
+      if (!cleanPhone && typeof require !== "undefined") {
+        try { cleanPhone = require("./phone-check.js").normalizeBDPhone(phone); } catch (e) {}
+      }
+      if (!cleanPhone) return;
+      if (typeof localStorage !== "undefined") {
+        try {
+          const raw = localStorage.getItem(RATING_CACHE_KEY);
+          if (raw) {
+            const store = JSON.parse(raw);
+            delete store[cleanPhone];
+            localStorage.setItem(RATING_CACHE_KEY, JSON.stringify(store));
+          }
+        } catch (e) {}
+      }
+      delete memoryRatingCache[cleanPhone];
+    } else {
+      if (typeof localStorage !== "undefined") {
+        try { localStorage.removeItem(RATING_CACHE_KEY); } catch (e) {}
+      }
+      for (const k in memoryRatingCache) delete memoryRatingCache[k];
+    }
+  }
+
+  /**
+   * Helper to open DEEN Order Confirm Modal for an order row, fetching items/COD if needed
+   */
+  function triggerOrderConfirmModalForRow(row, phone) {
+    if (!row) return;
+    const details = extractRowOrderDetails(row);
+    if (phone) details.phone = phone;
+
+    // If products or COD are not loaded yet, attempt background fetch or auto-preview
+    if (!details.items || details.items.length === 0 || !details.cod || details.cod === "0") {
+      // Check cache first
+      if (details.orderId && orderDetailsCache.has(details.orderId)) {
+        const cached = orderDetailsCache.get(details.orderId);
+        if (cached && cached.items && cached.items.length > 0) {
+          if (cached.items) details.items = cached.items;
+          if (cached.cod && (!details.cod || details.cod === "0")) details.cod = cached.cod;
+          if (cached.name && (!details.name || isInvalidCustomerName(details.name))) details.name = cached.name;
+          if (cached.address && (!details.address || details.address.length < 5)) details.address = cached.address;
+          showOrderConfirmModal(details);
+          return;
+        }
+      }
+
+      function triggerPreviewFallback() {
+        const previewBtn = row.querySelector(".order-preview, button.order-preview, a.order-preview, .wc-action-button-preview, a.wc-action-button-view");
+        if (previewBtn && typeof previewBtn.click === "function") {
+          showWCToast("⏳ Loading ordered products via WooCommerce preview...", null, null, 2500);
+          previewBtn.click();
+
+          let attempts = 0;
+          const checkModalInterval = setInterval(() => {
+            attempts++;
+            const modal = document.querySelector(".wc-backbone-modal, .wc-order-preview, #wc-backbone-modal-dialog");
+            if (modal) {
+              const modalDetails = extractOrderDetailsFromModal(modal);
+              const hasItems = Boolean(modalDetails.items && modalDetails.items.length > 0);
+              const isStillLoading = Boolean(modal.querySelector(".blockUI, .loading, .spinner.is-active, .wc-order-preview--loading, .wc-order-preview-table--loading"));
+
+              if ((hasItems && !isStillLoading) || attempts >= 35) {
+                clearInterval(checkModalInterval);
+                if (modalDetails) {
+                  if (modalDetails.items && modalDetails.items.length > 0) {
+                    details.items = modalDetails.items;
+                  }
+                  if (modalDetails.cod && (!details.cod || details.cod === "0")) {
+                    details.cod = modalDetails.cod;
+                  }
+                  if (modalDetails.name && (!details.name || isInvalidCustomerName(details.name))) {
+                    details.name = modalDetails.name;
+                  }
+                  if (modalDetails.address && (!details.address || details.address.length < 5)) {
+                    details.address = modalDetails.address;
+                  }
+                }
+                showOrderConfirmModal(details);
+                return;
+              }
+            } else if (attempts >= 35) {
+              clearInterval(checkModalInterval);
+              showOrderConfirmModal(details);
+            }
+          }, 100);
+          return;
+        }
+        showOrderConfirmModal(details);
+      }
+
+      // Direct authoritative fetch via WooCommerce AJAX / Edit Page
+      if (details.orderId) {
+        showWCToast("⏳ Loading ordered products & details from WooCommerce...", null, null, 2000);
+        fetchOrderDetailsViaEditPage(details.orderId, details.orderUrl, (fetched) => {
+          if (fetched && fetched.items && fetched.items.length > 0) {
+            details.items = fetched.items;
+            if (fetched.cod && (!details.cod || details.cod === "0")) details.cod = fetched.cod;
+            if (fetched.name && (!details.name || isInvalidCustomerName(details.name))) details.name = fetched.name;
+            if (fetched.address && (!details.address || details.address.length < 5)) details.address = fetched.address;
+            showOrderConfirmModal(details);
+            return;
+          }
+          triggerPreviewFallback();
+        });
+        return;
+      }
+
+      triggerPreviewFallback();
+      return;
+    }
+
+    showOrderConfirmModal(details);
+  }
+
+  /**
+   * Render rating card UI inside the dedicated Customer Rating column cell
+   */
+  function renderRatingCellUI(row, ratingCell, rating, phone) {
+    if (!ratingCell || !rating) return;
+    ratingCell.dataset.renderedPhone = phone;
+
+    // High risk order row highlight
+    if (rating.riskLevel === "high" || (rating.cancelledCount && Number(rating.cancelledCount) >= 3)) {
+      if (row && row.classList && row.classList.add) row.classList.add("deen-high-risk-order-row");
+    } else {
+      if (row && row.classList && row.classList.remove) row.classList.remove("deen-high-risk-order-row");
+    }
+
+    let badgeClass = "rating-safe";
+    let badgeText = `🛡️ ${rating.successRate !== undefined ? rating.successRate : 100}% Safe`;
+    let badgeTitle = `Safe buyer: ${rating.deliveredCount || 0} delivered parcels (${rating.successRate !== undefined ? rating.successRate : 100}% delivery rate). Click to view details.`;
+
+    if (rating.riskLevel === "high" || (rating.cancelledCount && Number(rating.cancelledCount) >= 3)) {
+      badgeClass = "rating-danger";
+      const returns = rating.cancelledCount || 0;
+      badgeText = `🚨 High Risk (${returns})`;
+      badgeTitle = `⚠️ High Return Risk: ${returns} returned parcels on record. Click to view order details & require advance payment.`;
+    } else if (rating.riskLevel === "medium") {
+      badgeClass = "rating-moderate";
+      const rate = rating.successRate !== undefined ? rating.successRate : 75;
+      badgeText = `⚠️ ${rate}% Moderate`;
+      badgeTitle = `⚠️ Moderate Risk: ${rating.cancelledCount || 0} returned parcels (${rate}% delivery rate). Click to view details.`;
+    } else if (rating.isNewCustomer) {
+      badgeClass = "rating-new";
+      badgeText = `🆕 New Customer`;
+      badgeTitle = `🆕 First time customer with 0 returns on record. Click to view details.`;
+    }
+
+    let breakdownText = "";
+    if (rating.isNewCustomer) {
+      breakdownText = "First order (0 return)";
+    } else if (rating.totalParcels > 0) {
+      breakdownText = `${rating.deliveredCount || 0}/${rating.totalParcels} Delivered • ${rating.cancelledCount || 0} Return`;
+    } else if (rating.riskLabel) {
+      breakdownText = rating.riskLabel;
+    } else {
+      breakdownText = "Verified";
+    }
+
+    ratingCell.innerHTML = `
+      <div class="deen-rating-cell-box">
+        <div class="deen-rating-top-row">
+          <span class="deen-table-rating-pill ${badgeClass}" title="${escapeHTML(badgeTitle)}">${escapeHTML(badgeText)}</span>
+          <button type="button" class="deen-cell-refresh-btn" title="Refresh courier rating for ${escapeHTML(phone)}">🔄</button>
+        </div>
+        <div class="deen-rating-cell-breakdown" title="Delivered vs Returned parcels">${escapeHTML(breakdownText)}</div>
+        <div class="deen-rating-actions-row">
+          <button type="button" class="deen-cell-wa-btn deen-wc-wa-btn" title="1-Click WhatsApp Order Confirm for ${escapeHTML(phone)}">💬 WhatsApp</button>
+        </div>
+      </div>
+    `.trim();
+
+    const pill = ratingCell.querySelector(".deen-table-rating-pill");
+    const waBtn = ratingCell.querySelector(".deen-cell-wa-btn");
+    const openModal = (e) => {
+      if (e) {
+        if (typeof e.preventDefault === "function") e.preventDefault();
+        if (typeof e.stopPropagation === "function") e.stopPropagation();
+      }
+      triggerOrderConfirmModalForRow(row, phone);
+    };
+    if (pill && pill.addEventListener) pill.addEventListener("click", openModal);
+    if (waBtn && waBtn.addEventListener) waBtn.addEventListener("click", openModal);
+
+    const refBtn = ratingCell.querySelector(".deen-cell-refresh-btn");
+    if (refBtn && refBtn.addEventListener) {
+      refBtn.addEventListener("click", (e) => {
+        if (e) {
+          if (typeof e.preventDefault === "function") e.preventDefault();
+          if (typeof e.stopPropagation === "function") e.stopPropagation();
+        }
+        clearLocalRatingCache(phone);
+        ratingCell.innerHTML = `
+          <div class="deen-rating-cell-box">
+            <span class="deen-table-rating-pill deen-rating-loading">⏳ Refreshing...</span>
+          </div>
+        `.trim();
+        fetchCustomerRatingBackground(phone, (freshRating) => {
+          if (!freshRating) return;
+          setLocalRatingCache(phone, freshRating);
+          renderRatingCellUI(row, ratingCell, freshRating, phone);
+        }, true);
+      });
+    }
+  }
+
+  /**
+   * Render or update rating cell for a specific order table row
+   */
+  function renderOrderRatingCell(row, ratingCell) {
+    if (!row || !ratingCell) return;
+
+    let phone = "";
+    const telLink = typeof row.querySelector === "function" ? row.querySelector("a[href^='tel:']") : null;
+    if (telLink && telLink.getAttribute) {
+      phone = normalizeBDPhone((telLink.getAttribute("href") || "").replace("tel:", "")) || "";
+    }
+    if (!phone) {
+      const text = row.textContent || row.innerText || "";
+      phone = normalizeBDPhone(text) || "";
+    }
+    if (!phone) {
+      const details = extractRowOrderDetails(row);
+      if (details && details.phone) phone = details.phone;
+    }
+
+    if (!phone) {
+      if (!ratingCell.dataset.renderedPhone) {
+        ratingCell.dataset.renderedPhone = "none";
+        ratingCell.innerHTML = `<span style="color:#94a3b8; font-size:11px; font-weight:500;">No Phone</span>`;
+      }
+      return;
+    }
+
+    // Skip redundant DOM manipulation if already rendered for this phone
+    if (ratingCell.dataset.renderedPhone === phone && !ratingCell.dataset.deenDirty) {
+      return;
+    }
+    ratingCell.dataset.renderedPhone = phone;
+    delete ratingCell.dataset.deenDirty;
+
+    // Check LocalStorage cache first for zero-latency synchronous rendering
+    const cached = getLocalRatingCache(phone);
+    if (cached) {
+      renderRatingCellUI(row, ratingCell, cached, phone);
+      return;
+    }
+
+    // If not cached, render loading indicator and fetch from background
+    ratingCell.innerHTML = `
+      <div class="deen-rating-cell-box">
+        <span class="deen-table-rating-pill deen-rating-loading">⏳ Checking...</span>
+      </div>
+    `.trim();
+
+    fetchCustomerRatingBackground(phone, (rating) => {
+      if (!rating) return;
+      setLocalRatingCache(phone, rating);
+      renderRatingCellUI(row, ratingCell, rating, phone);
+    });
+  }
+
+  /**
+   * Dedicated Customer Rating Column for WooCommerce Orders Table
+   * Inserts <th>Customer Rating</th> in thead & tfoot and <td class="column-deen_rating">
+   * order by order with zero-latency 24h localStorage caching.
+   */
+  function injectCustomerRatingColumn() {
+    if (typeof document === "undefined") return;
+
+    const tables = document.querySelectorAll(
+      "table.wp-list-table, table.wc-orders-list-table, table.widefat"
+    );
+
+    tables.forEach(table => {
+      // Check if this table represents an orders list table
+      const isOrders = (table.classList && table.classList.contains("wc-orders-list-table")) ||
+                       table.querySelector(".column-order_number, .column-order_title, .column-order_total, .column-shipping_address, [data-colname='Order'], [data-colname='Total']");
+      if (!isOrders) return;
+
+      // 1. Inject Column Header in thead
+      const theadRows = table.querySelectorAll("thead tr");
+      theadRows.forEach(hRow => {
+        if (hRow.querySelector(".column-deen_rating")) return;
+        const th = document.createElement("th");
+        th.scope = "col";
+        th.className = "manage-column column-deen_rating deen-column-rating";
+        if (th.style) {
+          th.style.width = "145px";
+          th.style.textAlign = "left";
+          th.style.verticalAlign = "middle";
+        }
+        th.textContent = "Customer Rating";
+
+        const refHeader = hRow.querySelector(".column-order_total, .column-total, th[class*='total'], .column-wc_actions, .column-order_actions");
+        if (refHeader && refHeader.parentNode === hRow) {
+          hRow.insertBefore(th, refHeader);
+        } else {
+          hRow.appendChild(th);
+        }
+      });
+
+      // 2. Inject Column Header in tfoot
+      const tfootRows = table.querySelectorAll("tfoot tr");
+      tfootRows.forEach(fRow => {
+        if (fRow.querySelector(".column-deen_rating")) return;
+        const th = document.createElement("th");
+        th.scope = "col";
+        th.className = "manage-column column-deen_rating deen-column-rating";
+        if (th.style) {
+          th.style.width = "145px";
+          th.style.textAlign = "left";
+          th.style.verticalAlign = "middle";
+        }
+        th.textContent = "Customer Rating";
+
+        const refFooter = fRow.querySelector(".column-order_total, .column-total, th[class*='total'], .column-wc_actions, .column-order_actions");
+        if (refFooter && refFooter.parentNode === fRow) {
+          fRow.insertBefore(th, refFooter);
+        } else {
+          fRow.appendChild(th);
+        }
+      });
+
+      // 3. Inject Column Cell in tbody rows
+      const rows = table.querySelectorAll("tbody tr");
+      rows.forEach(row => {
+        if (row.classList && row.classList.contains("no-items")) return;
+        if (typeof row.querySelector === "function" && row.querySelector("td[colspan]")) return;
+
+        let ratingCell = row.querySelector("td.column-deen_rating");
+        if (!ratingCell) {
+          ratingCell = document.createElement("td");
+          ratingCell.className = "column-deen_rating deen-column-rating";
+          if (ratingCell.setAttribute) ratingCell.setAttribute("data-colname", "Customer Rating");
+          if (ratingCell.style) ratingCell.style.verticalAlign = "middle";
+
+          const refCell = row.querySelector(".column-order_total, .column-total, td[class*='total'], .column-wc_actions, .column-order_actions");
+          if (refCell && refCell.parentNode === row) {
+            row.insertBefore(ratingCell, refCell);
+          } else {
+            row.appendChild(ratingCell);
+          }
+        }
+
+        renderOrderRatingCell(row, ratingCell);
+      });
+    });
+  }
+
   /**
    * Inject 1-Click "⚡ Pathao" and "💬 WhatsApp" buttons into WooCommerce orders table
    */
@@ -2666,90 +3116,7 @@
           waBtn.classList.add("deen-btn-active");
           setTimeout(() => waBtn.classList.remove("deen-btn-active"), 800);
 
-          const details = extractRowOrderDetails(row);
-          details.phone = phone;
-
-          // If products or COD are not loaded yet, attempt background fetch or auto-preview
-          if (!details.items || details.items.length === 0 || !details.cod || details.cod === "0") {
-            // Check cache first
-            if (details.orderId && orderDetailsCache.has(details.orderId)) {
-              const cached = orderDetailsCache.get(details.orderId);
-              if (cached && cached.items && cached.items.length > 0) {
-                if (cached.items) details.items = cached.items;
-                if (cached.cod && (!details.cod || details.cod === "0")) details.cod = cached.cod;
-                if (cached.name && (!details.name || isInvalidCustomerName(details.name))) details.name = cached.name;
-                if (cached.address && (!details.address || details.address.length < 5)) details.address = cached.address;
-                showOrderConfirmModal(details);
-                return;
-              }
-            }
-
-            function triggerPreviewFallback() {
-              const previewBtn = row.querySelector(".order-preview, button.order-preview, a.order-preview, .wc-action-button-preview, a.wc-action-button-view");
-              if (previewBtn && typeof previewBtn.click === "function") {
-                showWCToast("⏳ Loading ordered products via WooCommerce preview...", null, null, 2500);
-                previewBtn.click();
-
-                let attempts = 0;
-                const checkModalInterval = setInterval(() => {
-                  attempts++;
-                  const modal = document.querySelector(".wc-backbone-modal, .wc-order-preview, #wc-backbone-modal-dialog");
-                  if (modal) {
-                    const modalDetails = extractOrderDetailsFromModal(modal);
-                    const hasItems = Boolean(modalDetails.items && modalDetails.items.length > 0);
-                    const isStillLoading = Boolean(modal.querySelector(".blockUI, .loading, .spinner.is-active, .wc-order-preview--loading, .wc-order-preview-table--loading"));
-
-                    if ((hasItems && !isStillLoading) || attempts >= 35) {
-                      clearInterval(checkModalInterval);
-                      if (modalDetails) {
-                        if (modalDetails.items && modalDetails.items.length > 0) {
-                          details.items = modalDetails.items;
-                        }
-                        if (modalDetails.cod && (!details.cod || details.cod === "0")) {
-                          details.cod = modalDetails.cod;
-                        }
-                        if (modalDetails.name && (!details.name || isInvalidCustomerName(details.name))) {
-                          details.name = modalDetails.name;
-                        }
-                        if (modalDetails.address && (!details.address || details.address.length < 5)) {
-                          details.address = modalDetails.address;
-                        }
-                      }
-                      showOrderConfirmModal(details);
-                      return;
-                    }
-                  } else if (attempts >= 35) {
-                    clearInterval(checkModalInterval);
-                    showOrderConfirmModal(details);
-                  }
-                }, 100);
-                return;
-              }
-              showOrderConfirmModal(details);
-            }
-
-            // Direct authoritative fetch via WooCommerce AJAX / Edit Page
-            if (details.orderId) {
-              showWCToast("⏳ Loading ordered products & details from WooCommerce...", null, null, 2000);
-              fetchOrderDetailsViaEditPage(details.orderId, details.orderUrl, (fetched) => {
-                if (fetched && fetched.items && fetched.items.length > 0) {
-                  details.items = fetched.items;
-                  if (fetched.cod && (!details.cod || details.cod === "0")) details.cod = fetched.cod;
-                  if (fetched.name && (!details.name || isInvalidCustomerName(details.name))) details.name = fetched.name;
-                  if (fetched.address && (!details.address || details.address.length < 5)) details.address = fetched.address;
-                  showOrderConfirmModal(details);
-                  return;
-                }
-                triggerPreviewFallback();
-              });
-              return;
-            }
-
-            triggerPreviewFallback();
-            return;
-          }
-
-          showOrderConfirmModal(details);
+          triggerOrderConfirmModalForRow(row, phone);
         });
 
         // Live Courier Rating pill for table row
@@ -2763,7 +3130,7 @@
           ratingPill.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            waBtn.click();
+            triggerOrderConfirmModalForRow(row, phone);
           });
 
           fetchCustomerRatingBackground(phone, (rating) => {
@@ -3029,6 +3396,15 @@
       return;
     }
 
+    // Check localStorage cache first for zero-latency response when not force refreshing
+    if (!forceRefresh) {
+      const cached = getLocalRatingCache(cleanPhone);
+      if (cached) {
+        if (typeof callback === "function") callback(cached);
+        return;
+      }
+    }
+
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
       try {
         chrome.runtime.sendMessage({
@@ -3040,7 +3416,7 @@
             void chrome.runtime.lastError.message;
           }
           if (typeof callback === "function") {
-            callback(response && response.success ? response : {
+            const resultData = response && response.success ? response : {
               success: true,
               phone: cleanPhone,
               successRate: 100,
@@ -3051,7 +3427,11 @@
               riskLabel: "New Customer (Clean History)",
               riskColor: "#3b82f6",
               isNewCustomer: true
-            });
+            };
+            if (resultData && resultData.success) {
+              setLocalRatingCache(cleanPhone, resultData);
+            }
+            callback(resultData);
           }
         });
       } catch (e) {
@@ -3060,7 +3440,7 @@
     } else {
       // Mock / Offline fallback for tests
       if (typeof callback === "function") {
-        callback({
+        const mockResult = {
           success: true,
           phone: cleanPhone,
           successRate: 95,
@@ -3071,7 +3451,9 @@
           riskLabel: "Safe Buyer (95% Success)",
           riskColor: "#10b981",
           isNewCustomer: false
-        });
+        };
+        setLocalRatingCache(cleanPhone, mockResult);
+        callback(mockResult);
       }
     }
   }
@@ -3760,6 +4142,7 @@
     try {
       initCopyListener();
       initMessageListener();
+      injectCustomerRatingColumn();
       injectTableActionButtons();
       injectSingleOrderPageButton();
       initBulkDispatchBar();
@@ -3784,6 +4167,7 @@
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           try {
+            injectCustomerRatingColumn();
             injectTableActionButtons();
             injectSingleOrderPageButton();
             injectOrderPreviewModalActions();
@@ -3861,6 +4245,15 @@
       initPathaoPluginAddressNormalizer,
       fetchCustomerRatingBackground,
       renderRatingState,
+      injectCustomerRatingColumn,
+      getLocalRatingCache,
+      setLocalRatingCache,
+      clearLocalRatingCache,
+      renderRatingCellUI,
+      renderOrderRatingCell,
+      triggerOrderConfirmModalForRow,
+      RATING_CACHE_KEY,
+      RATING_CACHE_TTL,
       BD_ISO_DISTRICTS: typeof BD_ISO_DISTRICTS !== "undefined" ? BD_ISO_DISTRICTS : (typeof require !== "undefined" ? require("./parser.js").BD_ISO_DISTRICTS : {}),
       detectDistrictFromISOCode: typeof detectDistrictFromISOCode !== "undefined" ? detectDistrictFromISOCode : (typeof require !== "undefined" ? require("./parser.js").detectDistrictFromISOCode : null),
       getISOCodeFromDistrict: typeof getISOCodeFromDistrict !== "undefined" ? getISOCodeFromDistrict : (typeof require !== "undefined" ? require("./parser.js").getISOCodeFromDistrict : null)

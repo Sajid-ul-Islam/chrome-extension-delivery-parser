@@ -280,24 +280,39 @@ async function getPathaoToken() {
     const candidateNames = [
       "token", "access_token", "accessToken", "auth_token", "auth",
       "session_token", "session", "sid", "__session", "refresh_token",
-      "jwt", "id_token", "idToken", "user_token", "api_token"
+      "jwt", "id_token", "idToken", "user_token", "api_token",
+      "_p_token", "pathao_token", "auth._token.local", "auth.strategy", "bearer_token"
     ];
     for (const name of candidateNames) {
       try {
         const c = await new Promise(r => chrome.cookies.get({ url: "https://merchant.pathao.com", name: name }, r));
-        if (c && c.value && c.value.length > 20) return c.value;
+        if (c && c.value) {
+          let val = c.value;
+          try { val = decodeURIComponent(val); } catch (e) {}
+          val = val.replace(/^Bearer\s+/i, "").trim();
+          if (val.length > 20) return val;
+        }
       } catch (e) {}
       try {
         const c = await new Promise(r => chrome.cookies.get({ url: "https://www.pathao.com", name: name }, r));
-        if (c && c.value && c.value.length > 20) return c.value;
+        if (c && c.value) {
+          let val = c.value;
+          try { val = decodeURIComponent(val); } catch (e) {}
+          val = val.replace(/^Bearer\s+/i, "").trim();
+          if (val.length > 20) return val;
+        }
       } catch (e) {}
     }
     // Scan all pathao.com domain cookies for JWT pattern
     try {
       const all = await new Promise(r => chrome.cookies.getAll({ domain: "pathao.com" }, r));
       for (const c of (all || [])) {
-        if (c.value && c.value.startsWith("eyJ")) return c.value;
-        if (c.value && c.value.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(c.value)) return c.value;
+        if (!c || !c.value) continue;
+        let val = c.value;
+        try { val = decodeURIComponent(val); } catch (e) {}
+        val = val.replace(/^Bearer\s+/i, "").trim();
+        if (val.startsWith("eyJ")) return val;
+        if (val.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(val)) return val;
       }
     } catch (e) {}
   }

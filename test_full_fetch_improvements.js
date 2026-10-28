@@ -330,7 +330,308 @@ function runRemainingTests() {
   assert.strictEqual(mockSendBtn.textContent, "⚠️ Send Advance Charge Notice (WhatsApp)", "Send button must adapt to advance notice");
   console.log("  ✅ showOrderConfirmModal successfully gated high-risk customer and auto-selected advance fee notice!");
 
+  // =========================================================================
+  // Test 8: Dedicated Customer Rating Table Column & LocalStorage 24h Caching
+  // =========================================================================
+  console.log("\n▶ Test 8: Testing Dedicated Customer Rating Table Column & LocalStorage 24h Caching...");
+
+  assert.strictEqual(typeof woocommerce.injectCustomerRatingColumn, "function", "injectCustomerRatingColumn must be a function");
+  assert.strictEqual(typeof woocommerce.getLocalRatingCache, "function", "getLocalRatingCache must be a function");
+  assert.strictEqual(typeof woocommerce.setLocalRatingCache, "function", "setLocalRatingCache must be a function");
+  assert.strictEqual(typeof woocommerce.clearLocalRatingCache, "function", "clearLocalRatingCache must be a function");
+
+  // Test setLocalRatingCache and getLocalRatingCache
+  const sampleRating = {
+    success: true,
+    phone: "01711223344",
+    successRate: 96,
+    totalParcels: 25,
+    deliveredCount: 24,
+    cancelledCount: 1,
+    riskLevel: "low",
+    riskLabel: "Safe Buyer (96% Success)",
+    isNewCustomer: false
+  };
+
+  woocommerce.setLocalRatingCache("01711223344", sampleRating);
+  const retrievedRating = woocommerce.getLocalRatingCache("01711223344");
+  assert.ok(retrievedRating, "Rating must be retrievable from local cache");
+  assert.strictEqual(retrievedRating.phone, "01711223344");
+  assert.strictEqual(retrievedRating.successRate, 96);
+  assert.strictEqual(retrievedRating.deliveredCount, 24);
+
+  // Test clearLocalRatingCache
+  woocommerce.clearLocalRatingCache("01711223344");
+  assert.strictEqual(woocommerce.getLocalRatingCache("01711223344"), null, "Rating must be null after clearing cache");
+  console.log("  ✅ LocalStorage rating cache storage, retrieval, and invalidation verified!");
+
+  // =========================================================================
+  // Test 9: Zero-Latency Table Column Injection & High-Risk Auto-Highlighting
+  // =========================================================================
+  console.log("\n▶ Test 9: Testing Zero-Latency Table Column Injection & High-Risk Auto-Highlighting...");
+
+  // Mock DOM implementation for orders table
+  function matchesSingle(el, p) {
+    if (!el || !p) return false;
+    p = p.trim();
+    if (p.startsWith(".")) {
+      const cls = p.slice(1);
+      return Boolean(el.classList && el.classList.contains && el.classList.contains(cls));
+    }
+    if (p.startsWith("#")) {
+      const id = p.slice(1);
+      return el.id === id;
+    }
+    if (p.includes(".")) {
+      const [tag, cls] = p.split(".");
+      return (!tag || (el.tagName && el.tagName.toLowerCase() === tag.toLowerCase())) &&
+             Boolean(el.classList && el.classList.contains && el.classList.contains(cls));
+    }
+    return p.toLowerCase() === (el.tagName || "").toLowerCase();
+  }
+
+  function matchesSel(el, sel) {
+    if (!el || !sel) return false;
+    const parts = sel.split(",").map(s => s.trim());
+    for (const p of parts) {
+      if (p.includes(" ")) {
+        const segs = p.split(/\s+/);
+        const last = segs[segs.length - 1];
+        if (!matchesSingle(el, last)) continue;
+        let cur = el.parentNode;
+        let segIdx = segs.length - 2;
+        while (cur && segIdx >= 0) {
+          if (matchesSingle(cur, segs[segIdx])) {
+            segIdx--;
+          }
+          cur = cur.parentNode;
+        }
+        if (segIdx < 0) return true;
+      } else {
+        if (matchesSingle(el, p)) return true;
+      }
+    }
+    return false;
+  }
+
+  function parseMockHtml(html) {
+    const list = [];
+    const re = /<([a-z0-9_-]+)([^>]*)>([\s\S]*?)<\/\1>|<([a-z0-9_-]+)([^>]*)\/>/gi;
+    let match;
+    while ((match = re.exec(html)) !== null) {
+      const tag = match[1] || match[4];
+      const attrs = match[2] || match[5] || "";
+      const body = match[3] || "";
+      const clsMatch = attrs.match(/class=["']([^"']+)["']/i);
+      const titleMatch = attrs.match(/title=["']([^"']+)["']/i);
+      const child = createTestEl(tag, {
+        className: clsMatch ? clsMatch[1] : "",
+        textContent: body.replace(/<[^>]+>/g, "").trim()
+      });
+      if (titleMatch) child.title = titleMatch[1];
+      if (body.includes("<")) {
+        const subChildren = parseMockHtml(body);
+        for (const sub of subChildren) {
+          child.appendChild(sub);
+        }
+      }
+      list.push(child);
+    }
+    return list;
+  }
+
+  function createTestEl(tag, props = {}) {
+    let rawHtml = props.innerHTML || "";
+    let rawCls = props.className || "";
+
+    const classListObj = {
+      contains: function(c) {
+        return rawCls.split(/\s+/).filter(Boolean).includes(c);
+      },
+      add: function(c) {
+        if (!this.contains(c)) rawCls = (rawCls + " " + c).trim();
+      },
+      remove: function(c) {
+        rawCls = rawCls.split(/\s+/).filter(x => x && x !== c).join(" ");
+      }
+    };
+
+    const el = {
+      tagName: tag.toUpperCase(),
+      children: [],
+      style: {},
+      dataset: {},
+      textContent: props.textContent || "",
+      setAttribute: function(k, v) { this[k] = v; },
+      getAttribute: function(k) { return this[k]; },
+      addEventListener: function(evt, handler) { this._events = this._events || {}; this._events[evt] = handler; },
+      appendChild: function(child) {
+        child.parentNode = this;
+        this.children.push(child);
+        return child;
+      },
+      insertBefore: function(newNode, refNode) {
+        newNode.parentNode = this;
+        const idx = this.children.indexOf(refNode);
+        if (idx !== -1) {
+          this.children.splice(idx, 0, newNode);
+        } else {
+          this.children.push(newNode);
+        }
+        return newNode;
+      },
+      querySelector: function(sel) {
+        for (const ch of this.children) {
+          if (matchesSel(ch, sel)) return ch;
+          const sub = ch.querySelector ? ch.querySelector(sel) : null;
+          if (sub) return sub;
+        }
+        return null;
+      },
+      querySelectorAll: function(sel) {
+        let res = [];
+        for (const ch of this.children) {
+          if (matchesSel(ch, sel)) res.push(ch);
+          if (ch.querySelectorAll) res = res.concat(ch.querySelectorAll(sel));
+        }
+        return res;
+      }
+    };
+
+    Object.defineProperty(el, "className", {
+      get() { return rawCls; },
+      set(val) { rawCls = val || ""; }
+    });
+    el.classList = classListObj;
+
+    Object.defineProperty(el, "innerHTML", {
+      get() { return rawHtml; },
+      set(val) {
+        rawHtml = val;
+        this.children = [];
+        const parsed = parseMockHtml(val);
+        for (const p of parsed) {
+          this.appendChild(p);
+        }
+      }
+    });
+
+    if (props.innerHTML) {
+      el.innerHTML = props.innerHTML;
+    }
+
+    return el;
+  }
+
+  // Pre-seed local ratings cache for two test customers
+  woocommerce.setLocalRatingCache("01711002233", {
+    success: true,
+    phone: "01711002233",
+    successRate: 95,
+    totalParcels: 20,
+    deliveredCount: 19,
+    cancelledCount: 1,
+    riskLevel: "low",
+    riskLabel: "Safe Buyer (95% Success)",
+    isNewCustomer: false
+  });
+
+  woocommerce.setLocalRatingCache("01899001122", {
+    success: true,
+    phone: "01899001122",
+    successRate: 35,
+    totalParcels: 10,
+    deliveredCount: 3,
+    cancelledCount: 7,
+    riskLevel: "high",
+    riskLabel: "High Return Risk (7 Returns)",
+    isNewCustomer: false
+  });
+
+  // Construct mock WooCommerce table
+  const mockTable = createTestEl("table", { className: "wp-list-table wc-orders-list-table" });
+  const thead = createTestEl("thead");
+  const theadRow = createTestEl("tr");
+  const thOrder = createTestEl("th", { className: "column-order_number", textContent: "Order" });
+  const thShip = createTestEl("th", { className: "column-shipping_address", textContent: "Ship to" });
+  const thTotal = createTestEl("th", { className: "column-order_total", textContent: "Total" });
+  theadRow.appendChild(thOrder);
+  theadRow.appendChild(thShip);
+  theadRow.appendChild(thTotal);
+  thead.appendChild(theadRow);
+  mockTable.appendChild(thead);
+
+  const tfoot = createTestEl("tfoot");
+  const tfootRow = createTestEl("tr");
+  tfootRow.appendChild(createTestEl("th", { className: "column-order_number", textContent: "Order" }));
+  tfootRow.appendChild(createTestEl("th", { className: "column-shipping_address", textContent: "Ship to" }));
+  tfootRow.appendChild(createTestEl("th", { className: "column-order_total", textContent: "Total" }));
+  tfoot.appendChild(tfootRow);
+  mockTable.appendChild(tfoot);
+
+  const tbody = createTestEl("tbody");
+
+  // Row 1: Safe customer
+  const row1 = createTestEl("tr", { className: "order-row" });
+  row1.appendChild(createTestEl("td", { className: "column-order_number", textContent: "#19801" }));
+  row1.appendChild(createTestEl("td", { className: "column-shipping_address", textContent: "Rahim, Mirpur, 01711002233" }));
+  row1.appendChild(createTestEl("td", { className: "column-order_total", textContent: "৳1,500" }));
+  tbody.appendChild(row1);
+
+  // Row 2: High risk customer
+  const row2 = createTestEl("tr", { className: "order-row" });
+  row2.appendChild(createTestEl("td", { className: "column-order_number", textContent: "#19802" }));
+  row2.appendChild(createTestEl("td", { className: "column-shipping_address", textContent: "Karim, Chattogram, 01899001122" }));
+  row2.appendChild(createTestEl("td", { className: "column-order_total", textContent: "৳2,800" }));
+  tbody.appendChild(row2);
+
+  mockTable.appendChild(tbody);
+
+  // Set global document.querySelectorAll to return mockTable and createElement to build test elements
+  global.document.querySelectorAll = function(sel) {
+    if (sel.includes("table.wp-list-table") || sel.includes("table.wc-orders-list-table")) {
+      return [mockTable];
+    }
+    return [];
+  };
+  global.document.createElement = function(tag) {
+    return createTestEl(tag);
+  };
+
+  // Run injectCustomerRatingColumn
+  woocommerce.injectCustomerRatingColumn();
+
+  // 1. Verify thead has th.column-deen_rating inserted before Total column
+  const ratingThThead = theadRow.querySelector(".column-deen_rating");
+  assert.ok(ratingThThead, "thead must contain th.column-deen_rating");
+  assert.strictEqual(ratingThThead.textContent, "Customer Rating");
+  const theadChildren = theadRow.children;
+  assert.strictEqual(theadChildren[2], ratingThThead, "Customer Rating column must be inserted before Total in thead");
+
+  // 2. Verify tfoot has th.column-deen_rating
+  const ratingThTfoot = tfootRow.querySelector(".column-deen_rating");
+  assert.ok(ratingThTfoot, "tfoot must contain th.column-deen_rating");
+
+  // 3. Verify Row 1 (Safe Customer) cell and contents
+  const cell1 = row1.querySelector(".column-deen_rating");
+  assert.ok(cell1, "Row 1 must contain td.column-deen_rating");
+  assert.strictEqual(row1.children[2], cell1, "td.column-deen_rating must sit right before Total column in Row 1");
+  assert.ok(cell1.innerHTML.includes("🛡️ 95% Safe"), "Cell 1 must instantly render 95% Safe rating badge from localStorage");
+  assert.ok(cell1.innerHTML.includes("19/20 Delivered • 1 Return"), "Cell 1 must display delivery breakdown");
+  assert.ok(cell1.innerHTML.includes("💬 WhatsApp"), "Cell 1 must have 1-click WhatsApp order confirm button");
+  assert.ok(cell1.innerHTML.includes("🔄"), "Cell 1 must have live refresh button");
+
+  // 4. Verify Row 2 (High Risk Customer) cell, auto-highlighting, and alert badge
+  const cell2 = row2.querySelector(".column-deen_rating");
+  assert.ok(cell2, "Row 2 must contain td.column-deen_rating");
+  assert.ok(row2.classList.contains("deen-high-risk-order-row"), "Row 2 must have deen-high-risk-order-row class applied");
+  assert.ok(cell2.innerHTML.includes("🚨 High Risk (7)"), "Cell 2 must render High Risk alert badge with cancellation count");
+  assert.ok(cell2.innerHTML.includes("3/10 Delivered • 7 Return"), "Cell 2 must display high return breakdown");
+
+  console.log("  ✅ Dedicated Customer Rating column inserted with 100% table alignment and instant localStorage render!");
+  console.log("  ✅ High-risk return auto-highlighting verified on orders table row!");
+
   console.log("\n==================================================");
-  console.log("🎉 ALL 7 FULL FETCH & AUTOMATION TESTS PASSED 100%!");
+  console.log("🎉 ALL 9 FULL FETCH, RATING COLUMN & AUTOMATION TESTS PASSED 100%!");
   console.log("==================================================");
 }
