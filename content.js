@@ -500,16 +500,13 @@
   }
 
   function escapeHTML(str) {
-    if (typeof window !== "undefined" && typeof window.escapeHTML === "function") {
-      return window.escapeHTML(str);
-    }
-    if (!str) return "";
+    if (str === null || str === undefined) return "";
     return String(str)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+      .replace(/'/g, "&#039;");
   }
 
   function findPathaoRecipientFields() {
