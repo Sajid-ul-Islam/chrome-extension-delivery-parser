@@ -503,7 +503,7 @@ assert(confirmMsg.includes("DEEN Commerce"), "Must include store name");
 assert(confirmMsg.includes("Exclusive Panjabi (Navy Blue - L) (পরিমাণ: 2) (প্রতি পিস ৳1600) - ৳3200"), "Must include product 1 with qty, unit price & line total");
 assert(confirmMsg.includes("Premium Attar (12ml) (পরিমাণ: 1) (প্রতি পিস ৳650) - ৳650"), "Must include product 2 with qty, unit price & line total");
 assert(confirmMsg.includes("Road 7, Block F, Banani, Dhaka"), "Must include delivery address");
-assert(confirmMsg.includes("৳3850"), "Must include COD amount ৳3850");
+assert(confirmMsg.includes("৳3900"), "Must include COD amount ৳3900 (Subtotal 3850 + Inside Dhaka Delivery 50)");
 assert(confirmMsg.includes("অর্ডারটি কনফার্ম করার জন্য অনুগ্রহ করে 'হ্যাঁ' বা 'কনফার্ম' লিখে রিপ্লাই দিন"), "Must include confirmation call to action");
 console.log("  ✅ Bengali WhatsApp confirmation message contains complete product list, address, COD, and confirmation CTA!");
 
@@ -2514,8 +2514,85 @@ assert(mockAddrInput.value.includes("Cumilla"), "Smart guess must ensure Cumilla
 
 console.log("  ✅ Pathao modal helper accurately identified Cumilla & Titas, completed full address, and added Smart Guess button!");
 
+// -----------------------------------------------------------------------------
+// Test 29: Inside Dhaka Delivery Fee Addition for Real Order #19046 (1494 + 50 = 1544)
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 29: Testing Inside Dhaka Delivery Fee Addition for Real Order #19046...");
+
+const rawOrder19046 = {
+  orderId: "19046",
+  name: "জোবায়েদ হোসেন",
+  phone: "01534372692",
+  address: "65/3, Sky View S.F Tower, Kodomtola, Bashabo, Dhaka",
+  cod: "1494",
+  items: [
+    {
+      name: "DEEN High-End Whisker Faded Jeans - Slim Fit - 38",
+      qty: 1,
+      unitPrice: "1494",
+      total: "1494"
+    }
+  ]
+};
+
+const norm19046 = wcIntegration.normalizeCustomerAndOrderData(rawOrder19046);
+assert.strictEqual(norm19046.orderId, "19046", "Order ID must be 19046");
+assert.strictEqual(norm19046.name, "জোবায়েদ হোসেন", "Customer name must be জোবায়েদ হোসেন");
+assert.strictEqual(norm19046.phone, "01534372692", "Phone must be 01534372692");
+assert.strictEqual(norm19046.subtotal, "1494", "Subtotal must be 1494");
+assert.strictEqual(norm19046.deliveryFee, 50, "Delivery fee for Inside Dhaka must be 50");
+assert.strictEqual(norm19046.isOutsideDhaka, false, "Must detect Inside Dhaka");
+assert.strictEqual(norm19046.cod, "1544", "Total COD must be Subtotal 1494 + Delivery 50 = 1544 TK (NEVER 1494!)");
+
+// Test Canvas text rendering for Order #19046
+const drawnTexts29 = [];
+const mockCanvas29 = {
+  width: 0,
+  height: 0,
+  style: {},
+  getContext: () => ({
+    scale: () => {},
+    clearRect: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    fillText: (text) => drawnTexts29.push(text),
+    strokeText: () => {},
+    measureText: (txt) => ({ width: (txt || "").length * 7 }),
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    quadraticCurveTo: () => {},
+    closePath: () => {},
+    stroke: () => {},
+    fill: () => {},
+    save: () => {},
+    restore: () => {},
+    drawImage: () => {}
+  }),
+  toBlob: (cb) => cb({ type: "image/png" })
+};
+
+global.document.createElement = (tag) => {
+  if (tag.toLowerCase() === "canvas") return mockCanvas29;
+  return mockElement(tag);
+};
+
+wcIntegration.renderOrderReceiptCanvas(rawOrder19046);
+assert(drawnTexts29.includes("Subtotal: ৳1494  •  Delivery (Inside Dhaka): ৳50"), "Canvas must show Subtotal 1494 and Delivery 50 breakdown");
+assert(drawnTexts29.includes("৳1544"), "Canvas COD total must display ৳1544 (1494 + 50)");
+
+// Test WhatsApp Quick Reply for Order #19046
+const genWaReply = typeof generateQuickReply === "function" ? generateQuickReply : (wcIntegration.generateQuickReply || require('./parser.js').generateQuickReply);
+const waMsg19046 = genWaReply ? genWaReply("order_details_confirm", norm19046, { storeName: "DEEN Commerce" }) : "";
+if (waMsg19046) {
+  assert(waMsg19046.includes("৳1544"), "WhatsApp confirmation message must show COD ৳1544");
+  assert(waMsg19046.includes("জোবায়েদ হোসেন"), "WhatsApp confirmation message must greet customer");
+}
+
+console.log("  ✅ Order #19046 Inside Dhaka delivery fee addition verified: Subtotal ৳1494 + Delivery ৳50 = COD ৳1544!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 28 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
+console.log("🎉 ALL 29 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
 console.log("==================================================");
 
 

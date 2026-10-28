@@ -2929,7 +2929,12 @@ function normalizeCustomerAndOrderData(rawDetails) {
   // 4. Products & Unit Prices
   const items = [];
   let subtotalCalc = 0;
+  if (d.subtotal !== undefined && d.subtotal !== null && d.subtotal !== "") {
+    const sMatch = bengaliToAsciiDigits(String(d.subtotal)).replace(/,/g, "").match(/[\d.]+/);
+    if (sMatch) subtotalCalc = Math.round(parseFloat(sMatch[0]));
+  }
   if (Array.isArray(d.items) && d.items.length > 0) {
+    let itemsSum = 0;
     d.items.forEach(it => {
       let rawName = extractItemNameWithSize(it.name || it.title || "", it);
       if (!rawName) return;
@@ -2955,7 +2960,7 @@ function normalizeCustomerAndOrderData(rawDetails) {
         totalNum = unitPrice * qtyVal;
       }
 
-      subtotalCalc += totalNum;
+      itemsSum += totalNum;
 
       items.push({
         name: rawName,
@@ -2964,6 +2969,9 @@ function normalizeCustomerAndOrderData(rawDetails) {
         total: totalNum > 0 ? totalNum.toString() : ""
       });
     });
+    if (itemsSum > 0) {
+      subtotalCalc = itemsSum;
+    }
   }
 
   // 5. Total COD
@@ -3035,8 +3043,8 @@ function normalizeCustomerAndOrderData(rawDetails) {
         finalCod = (subNum + outsideFee).toString();
       }
     } else {
-      // Inside Dhaka: only fill if COD was missing
-      if (!finalCod || codNum === 0) {
+      // Inside Dhaka: if COD matches subtotal (0 shipping added in WooCommerce) or COD was missing
+      if (codNum === subNum || !finalCod || codNum === 0) {
         finalCod = (subNum + insideFee).toString();
       }
     }

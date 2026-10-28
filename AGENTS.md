@@ -54,6 +54,9 @@ The 2x Retina Order Receipt canvas rendered by `renderOrderReceiptCanvas`:
 ### Invariant 7: Delivery Fee & Outside Dhaka Detection
 - Inside Dhaka standard delivery: **৳50**
 - Outside Dhaka standard delivery: **৳90**
+- **0 Shipping / COD Equal to Subtotal Addition**: When an order arrives where WooCommerce added 0 shipping (`codNum === subNum`, e.g. Subtotal ৳1494 and COD ৳1494), the system automatically adds the delivery fee:
+  - Inside Dhaka: `Subtotal + ৳50` (e.g. `1494 + 50 = ৳1544` as in Order #19046).
+  - Outside Dhaka: `Subtotal + ৳90` (e.g. `1500 + 90 = ৳1590`).
 - **False-Dhaka 50 TK Correction**: When a customer outside Dhaka falsely selected inside-Dhaka delivery (paying only ৳50), the system corrects COD to `Subtotal + ৳90` (e.g. `1500 + 90 = 1590`) so the merchant is never underpaid.
 
 ### Invariant 8: 100% 64 Districts Coverage, Reverse Zone Inference & Online Geocoding Fallback

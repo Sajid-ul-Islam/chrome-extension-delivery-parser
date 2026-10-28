@@ -1713,6 +1713,11 @@
         subtotalVal = (Number(details.cod) - feeCalc).toString();
       }
     }
+    // Safety guarantee: If COD was equal to subtotal (0 shipping added in WooCommerce),
+    // COD must include the delivery fee so the merchant is never underpaid!
+    if (subtotalVal && details.cod && Number(details.cod) === Number(subtotalVal) && Number(subtotalVal) > 0) {
+      details.cod = (Number(subtotalVal) + feeCalc).toString();
+    }
     const subtotalText = subtotalVal && subtotalVal !== "0" ? `Subtotal: ৳${subtotalVal}` : "";
     const feeText = `Delivery (${isOutside ? "Outside Dhaka" : "Inside Dhaka"}): ৳${feeCalc}`;
     ctx.fillText(`${subtotalText}${subtotalText ? "  •  " : ""}${feeText}`, 36, curY + 10);
