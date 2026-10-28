@@ -1664,7 +1664,7 @@ function parseBDAddress(rawAddress) {
   // 2A. Check for explicit district label (e.g. "জেলা: ফরিদপুর", "District: Gazipur", "জেলাঃ ঢাকা")
   const explicitDistMatch = clean.match(/(?:জেলা|District|Dist|Zilla|State|City)[\s:ঃ#\-]+([^\s,;।\n]+)/i);
   if (explicitDistMatch) {
-    const rawDist = explicitDistMatch[1].trim();
+    const rawDist = explicitDistMatch[1].trim().replace(/^[.,;:\s।–-]+|[.,;:\s।–-]+$/g, "");
     for (const d of BD_DISTRICTS) {
       if (d.name.toLowerCase() === rawDist.toLowerCase() || d.aliases.some(a => a.toLowerCase() === rawDist.toLowerCase() || matchWord(rawDist, a))) {
         matchedDistrict = d.name;
@@ -1676,7 +1676,7 @@ function parseBDAddress(rawAddress) {
   // 2B. Check for explicit thana/zone label (e.g. "থানা: শ্রীপুর", "উপজেলা: বোয়ালমারী", "Thana: Mirpur")
   const explicitThanaMatch = clean.match(/(?:থানা|উপজেলা|Thana|Upazila|Upozila|Police\s*Station|P\.?S\.?)[\s:ঃ#\-]+([^\s,;।\n]+)/i);
   if (explicitThanaMatch) {
-    const rawThana = explicitThanaMatch[1].trim();
+    const rawThana = explicitThanaMatch[1].trim().replace(/^[.,;:\s।–-]+|[.,;:\s।–-]+$/g, "");
     for (const [distName, zones] of Object.entries(OTHER_CITY_ZONES)) {
       for (const z of zones) {
         const zName = typeof z === "string" ? z : z.name;
@@ -1703,7 +1703,7 @@ function parseBDAddress(rawAddress) {
     }
 
     if (!matchedZone && rawThana.length >= 3) {
-      matchedZone = rawThana;
+      matchedZone = rawThana.charAt(0).toUpperCase() + rawThana.slice(1);
     }
   }
 
