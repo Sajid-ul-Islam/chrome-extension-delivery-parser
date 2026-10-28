@@ -2213,16 +2213,12 @@
     const itemCount = initialDetails.items ? initialDetails.items.length : 0;
     bar.innerHTML = `
       <div class="deen-preview-bar-left">
-        <span class="deen-preview-badge">⚡ DEEN WhatsApp Quick Actions</span>
         <span class="deen-preview-info">
           ${initialDetails.phone ? `Phone: <strong>${escapeHTML(initialDetails.phone)}</strong> • ` : ""}
           <strong>${itemCount} item${itemCount === 1 ? '' : 's'}</strong> • COD: <strong>৳${escapeHTML(initialDetails.cod || "0")}</strong>
         </span>
       </div>
       <div class="deen-preview-bar-actions">
-        <button type="button" class="deen-preview-btn deen-btn-ask-wa" id="deen-modal-btn-ask-wa" title="Send itemized order confirmation via WhatsApp">
-          💬 Ask Customer to Confirm
-        </button>
         <button type="button" class="deen-preview-btn deen-btn-copy-shot" id="deen-modal-btn-copy-shot" title="Copy visual order receipt screenshot to clipboard (Ctrl+V in WhatsApp)">
           📸 Copy Screenshot
         </button>
@@ -2303,37 +2299,6 @@
         const observeTarget = previewModal.querySelector(".wc-order-preview-table-wrapper, .wc-order-preview") || previewModal;
         modalObserver.observe(observeTarget, { childList: true, subtree: true });
       } catch (e) {}
-    }
-
-    const askBtn = bar.querySelector("#deen-modal-btn-ask-wa");
-    if (askBtn) {
-      askBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        askBtn.classList.add("deen-btn-active");
-        setTimeout(() => askBtn.classList.remove("deen-btn-active"), 800);
-
-        getFreshestModalDetails((currentDetails) => {
-          if (!currentDetails.phone) {
-            showWCToast("⚠️ Could not find a valid Bangladeshi phone number in this order preview.");
-            return;
-          }
-
-          let genReply = typeof generateQuickReply === "function" ? generateQuickReply : null;
-          if (!genReply && typeof require !== "undefined") {
-            try { genReply = require("./parser.js").generateQuickReply; } catch (err) {}
-          }
-
-          getQuickReplyConfig((config) => {
-            const msg = genReply ? genReply("order_details_confirm", currentDetails, config) :
-              `আসসালামু আলাইকুম ${currentDetails.name || ""}! আপনার অর্ডার #${currentDetails.orderId || ""} কনফার্ম করতে রিপ্লাই দিন।`;
-
-            injectWhatsAppMessage(msg, { phone: currentDetails.phone, openChat: true });
-            showWCToast(`💬 WhatsApp confirmation with <strong>${currentDetails.items ? currentDetails.items.length : 0} items</strong> copied & opened!`);
-          });
-        });
-      });
     }
 
     const shotBtn = bar.querySelector("#deen-modal-btn-copy-shot");

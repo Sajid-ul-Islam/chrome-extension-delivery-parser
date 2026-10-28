@@ -728,7 +728,8 @@ wcIntegration.injectOrderPreviewModalActions();
 
 assert(injectedBar, "Action bar must be injected into modal");
 assert.strictEqual(injectedBar.id, "deen-wc-preview-action-bar", "Action bar ID must be deen-wc-preview-action-bar");
-assert(injectedBar.innerHTML.includes("deen-btn-ask-wa"), "Must have 💬 Ask Customer to Confirm button");
+assert(!injectedBar.innerHTML.includes("deen-btn-ask-wa"), "Must not have deen-btn-ask-wa (dropped per user request)");
+assert(!injectedBar.innerHTML.includes("deen-preview-badge"), "Must not have deen-preview-badge (dropped per user request)");
 assert(injectedBar.innerHTML.includes("deen-btn-copy-shot"), "Must have 📸 Copy Screenshot button");
 assert(injectedBar.innerHTML.includes("deen-btn-open-dialog"), "Must have 🔍 Details & Options button");
 console.log("  ✅ 1-Click WhatsApp Quick Actions bar successfully injected inside WooCommerce Order Preview popup!");
