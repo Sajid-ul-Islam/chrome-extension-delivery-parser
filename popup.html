@@ -18,7 +18,11 @@
         </div>
       </div>
       <div class="header-badges">
-        <span class="version-badge">v1.0</span>
+        <span class="status-beacon">
+          <span class="beacon-dot"></span>
+          <span class="beacon-text">Engine Online</span>
+        </span>
+        <span class="version-badge">v1.2 Enterprise</span>
       </div>
     </header>
 
@@ -86,44 +90,51 @@
         </div>
 
         <!-- Quick manual phone check input -->
-        <div class="quick-check-box" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-          <div style="font-size: 11px; font-weight: 700; color: #cbd5e1; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-            <span>⚡ Quick Check Any BD Number</span>
+        <div class="quick-check-box">
+          <div class="quick-check-header">
+            <span class="quick-check-title">⚡ Quick Check Any BD Number</span>
+            <span class="quick-check-sub">Multi-Courier Intelligence</span>
           </div>
-          <div style="display: flex; gap: 8px;">
-            <input type="tel" id="input-quick-phone" placeholder="e.g. 01712345678 or +88017..." style="flex: 1; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 7px 10px; color: #fff; font-family: monospace; font-size: 12.5px;" />
-            <button id="btn-quick-check" class="btn-primary" style="white-space: nowrap; padding: 7px 12px;">
+          <div class="quick-check-input-row">
+            <div class="quick-input-wrapper">
+              <span class="quick-input-icon">📱</span>
+              <input type="tel" id="input-quick-phone" placeholder="e.g. 01712345678 or +88017..." />
+            </div>
+            <button id="btn-quick-check" class="btn-primary btn-quick-check-btn">
               <span>⚡ Check</span>
             </button>
           </div>
-          <div id="popup-rating-card" class="hidden" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);"></div>
+          <div id="popup-rating-card" class="hidden popup-rating-result"></div>
         </div>
 
         <div class="last-synced-card">
-          <div class="sync-card-title">Recent Synced Customer</div>
+          <div class="sync-card-header">
+            <div class="sync-card-title">Recent Synced Customer</div>
+            <span class="sync-status-chip">Active Session</span>
+          </div>
           <div class="customer-details-grid">
             <div class="detail-item">
-              <span class="detail-label">Phone:</span>
-              <strong class="detail-val" id="sync-phone">None yet</strong>
+              <span class="detail-label">Phone</span>
+              <strong class="detail-val detail-phone" id="sync-phone">None yet</strong>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Name:</span>
+              <span class="detail-label">Name</span>
               <span class="detail-val" id="sync-name">-</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">Order ID:</span>
+              <span class="detail-label">Order ID</span>
               <span class="detail-val" id="sync-order">-</span>
             </div>
             <div class="detail-item">
-              <span class="detail-label">COD Total:</span>
-              <span class="detail-val" id="sync-cod">-</span>
+              <span class="detail-label">COD Total</span>
+              <span class="detail-val detail-cod" id="sync-cod">-</span>
             </div>
           </div>
-          <div style="display: flex; gap: 8px; margin-top: 12px;">
-            <button id="btn-open-pathao-form" class="btn-primary-large" style="flex: 1;">
+          <div class="sync-card-actions">
+            <button id="btn-open-pathao-form" class="btn-primary-large btn-sync-dispatch">
               <span>🚀 Open Pathao Create</span>
             </button>
-            <button id="btn-clear-pathao-sync" class="btn-secondary" style="white-space: nowrap; padding: 8px 12px;" title="Clear and remove saved phone number">
+            <button id="btn-clear-pathao-sync" class="btn-secondary btn-sync-clear" title="Clear and remove saved phone number">
               <span>🗑️ Clear Phone</span>
             </button>
           </div>
@@ -149,74 +160,81 @@
 
     <!-- Tab 4: WhatsApp Advance COD Quick Reply Settings -->
     <div id="tab-quickreply" class="tab-content">
-      <div class="qr-panel" style="display: flex; flex-direction: column; gap: 14px;">
-        <div class="sync-banner" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.25)); border-color: rgba(16, 185, 129, 0.4);">
-          <div class="sync-badge" style="background: #10b981; color: #fff;">💬 WhatsApp Quick Reply & Advance COD</div>
+      <div class="qr-panel">
+        <div class="sync-banner qr-banner">
+          <div class="sync-badge qr-badge">💬 WhatsApp Quick Reply & Advance COD</div>
           <p class="sync-desc">Configure your bKash & Nagad accounts and delivery fees to protect against COD losses with 1-click WhatsApp messages on risky orders.</p>
         </div>
 
         <!-- Settings Form -->
-        <div class="qr-settings-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
-          <div style="font-size: 13px; font-weight: 700; color: #f8fafc; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
-            <span>⚙️ Merchant Payment & Delivery Settings</span>
+        <div class="qr-settings-card">
+          <div class="qr-card-header">
+            <span class="qr-card-title">⚙️ Merchant Payment & Delivery Settings</span>
+            <span class="qr-secure-badge">🔒 AES-256 Synced</span>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-            <div>
-              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Store Name</label>
-              <input type="text" id="qr-store-name" placeholder="DEEN Commerce" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 12px;" />
+          <div class="qr-form-grid qr-grid-2col">
+            <div class="qr-field">
+              <label class="qr-label">Store Name</label>
+              <input type="text" id="qr-store-name" placeholder="DEEN Commerce" class="qr-input" />
             </div>
-            <div>
-              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Inside Dhaka Delivery Fee (৳)</label>
-              <input type="number" id="qr-inside-fee" placeholder="50" value="50" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 12px;" />
+            <div class="qr-field">
+              <label class="qr-label">Inside Dhaka Delivery Fee (৳)</label>
+              <input type="number" id="qr-inside-fee" placeholder="50" value="50" class="qr-input" />
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 10px;">
-            <div>
-              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">bKash Number</label>
-              <input type="tel" id="qr-bkash-number" placeholder="01XXXXXXXXX" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #fff; font-family: monospace; font-size: 12px;" />
+          <div class="qr-form-grid qr-grid-split">
+            <div class="qr-field">
+              <label class="qr-label">bKash Number</label>
+              <input type="tel" id="qr-bkash-number" placeholder="01XXXXXXXXX" class="qr-input qr-mono" />
             </div>
-            <div>
-              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">bKash Type</label>
-              <select id="qr-bkash-type" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; color: #fff; font-size: 12px;">
+            <div class="qr-field">
+              <label class="qr-label">bKash Type</label>
+              <select id="qr-bkash-type" class="qr-select">
                 <option value="Personal">Personal (Send Money)</option>
                 <option value="Merchant">Merchant (Payment)</option>
               </select>
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 10px;">
-            <div>
-              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Nagad Number (Optional)</label>
-              <input type="tel" id="qr-nagad-number" placeholder="01XXXXXXXXX" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #fff; font-family: monospace; font-size: 12px;" />
+          <div class="qr-form-grid qr-grid-split">
+            <div class="qr-field">
+              <label class="qr-label">Nagad Number (Optional)</label>
+              <input type="tel" id="qr-nagad-number" placeholder="01XXXXXXXXX" class="qr-input qr-mono" />
             </div>
-            <div>
-              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Nagad Type</label>
-              <select id="qr-nagad-type" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; color: #fff; font-size: 12px;">
+            <div class="qr-field">
+              <label class="qr-label">Nagad Type</label>
+              <select id="qr-nagad-type" class="qr-select">
                 <option value="Personal">Personal</option>
                 <option value="Merchant">Merchant</option>
               </select>
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 14px;">
-            <div>
-              <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Outside Dhaka Delivery Fee (৳)</label>
-              <input type="number" id="qr-outside-fee" placeholder="90" value="90" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 12px;" />
+          <div class="qr-form-grid qr-grid-1col">
+            <div class="qr-field">
+              <label class="qr-label">Outside Dhaka Delivery Fee (৳)</label>
+              <input type="number" id="qr-outside-fee" placeholder="90" value="90" class="qr-input" />
             </div>
           </div>
 
-          <button id="btn-save-qr-config" class="btn-primary" style="width: 100%; padding: 8px 12px; font-size: 12.5px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-color: #10b981;">
+          <button id="btn-save-qr-config" class="btn-primary qr-save-btn">
             <span>💾 Save WhatsApp Settings</span>
           </button>
         </div>
 
-        <!-- Live Template Preview Box -->
-        <div class="qr-preview-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">📝 Live Quick Reply Preview</span>
-            <select id="qr-preview-template-select" style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 8px; color: #fff; font-size: 11px;">
+        <!-- Live WhatsApp Chat Bubble Preview Card -->
+        <div class="qr-preview-card">
+          <div class="qr-preview-header">
+            <div class="wa-mock-bar">
+              <span class="wa-avatar">💬</span>
+              <div class="wa-info">
+                <span class="wa-name">Customer WhatsApp Chat</span>
+                <span class="wa-status">● Live Preview</span>
+              </div>
+            </div>
+            <select id="qr-preview-template-select" class="qr-template-select">
               <option value="advance_fee_out">Advance Fee (Outside Dhaka - ৳90)</option>
               <option value="advance_fee_in">Advance Fee (Inside Dhaka - ৳50)</option>
               <option value="confirm_order">Order Confirmation</option>
@@ -224,9 +242,17 @@
               <option value="tracking_info">Courier Tracking Notice</option>
             </select>
           </div>
-          <textarea id="qr-preview-textarea" rows="6" readonly style="width: 100%; box-sizing: border-box; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #f8fafc; font-size: 11.5px; line-height: 1.5; padding: 8px 10px; font-family: inherit; margin-bottom: 8px;"></textarea>
-          <div style="display: flex; justify-content: flex-end;">
-            <button id="btn-copy-qr-preview" class="btn-secondary" style="font-size: 11px; padding: 5px 12px;">
+          <div class="wa-chat-canvas">
+            <div class="wa-speech-bubble">
+              <textarea id="qr-preview-textarea" rows="6" readonly class="wa-bubble-textarea"></textarea>
+              <div class="wa-bubble-meta">
+                <span class="wa-time">Just now</span>
+                <span class="wa-ticks">✓✓</span>
+              </div>
+            </div>
+          </div>
+          <div class="qr-preview-footer">
+            <button id="btn-copy-qr-preview" class="btn-secondary btn-copy-preview">
               <span>📋 Copy Preview</span>
             </button>
           </div>
@@ -236,21 +262,21 @@
 
     <!-- Tab 5: WebMCP AI Agent Tools -->
     <div id="tab-webmcp" class="tab-content">
-      <div class="webmcp-panel" style="padding: 4px 0;">
-        <div class="sync-banner" style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%); border-color: rgba(56, 189, 248, 0.3);">
-          <div class="sync-badge" style="background: rgba(56, 189, 248, 0.25); color: #38bdf8;">🤖 W3C WebMCP Protocol Active</div>
-          <p class="sync-desc" style="font-size: 11.5px; line-height: 1.5; color: #cbd5e1; margin-top: 6px;">
+      <div class="webmcp-panel">
+        <div class="sync-banner webmcp-banner">
+          <div class="sync-badge webmcp-badge">🤖 W3C WebMCP Protocol Active</div>
+          <p class="sync-desc">
             Exposes structured <strong>Model Context Protocol (MCP)</strong> JavaScript tools directly to AI agents (Chrome Gemini Nano, Claude, or Assistant) across WooCommerce and Pathao.
           </p>
         </div>
 
-        <!-- Tool Selector & Inspector -->
-        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-            <label style="font-size: 12px; font-weight: 700; color: #f8fafc;">Select WebMCP Tool</label>
-            <span id="webmcp-tool-count" style="font-size: 10px; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 2px 7px; border-radius: 10px;">7 Tools</span>
+        <!-- Tool Selector & Inspector Card -->
+        <div class="webmcp-card">
+          <div class="webmcp-card-header">
+            <label class="webmcp-label">Select WebMCP Tool</label>
+            <span id="webmcp-tool-count" class="webmcp-count-badge">10 Tools</span>
           </div>
-          <select id="webmcp-tool-select" style="width: 100%; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 6px; padding: 7px 10px; color: #fff; font-size: 12px; margin-bottom: 10px;">
+          <select id="webmcp-tool-select" class="webmcp-select">
             <option value="check_customer_courier_rating">check_customer_courier_rating (Pathao + Steadfast)</option>
             <option value="normalize_bd_address">normalize_bd_address (Smart BD Normalizer)</option>
             <option value="build_full_address">build_full_address (Address + Zone + District)</option>
@@ -258,30 +284,36 @@
             <option value="generate_whatsapp_quick_reply">generate_whatsapp_quick_reply (Bengali WhatsApp + Link)</option>
             <option value="get_woocommerce_active_orders">get_woocommerce_active_orders (WooCommerce DOM)</option>
             <option value="autofill_pathao_consignment">autofill_pathao_consignment (Pathao Form Dispatch)</option>
+            <option value="query_indexed_order_cache">query_indexed_order_cache (IndexedDB Storage Engine)</option>
+            <option value="calculate_multi_factor_risk">calculate_multi_factor_risk (Predictive Fraud Engine)</option>
+            <option value="recommend_dynamic_courier">recommend_dynamic_courier (Cost & SLA Routing Arbitrage)</option>
           </select>
 
-          <div id="webmcp-tool-desc" style="font-size: 11.5px; color: #94a3b8; line-height: 1.45; margin-bottom: 10px; padding: 8px 10px; background: rgba(0,0,0,0.25); border-radius: 6px; border-left: 3px solid #38bdf8;">
+          <div id="webmcp-tool-desc" class="webmcp-desc-box">
             Select a tool above to view description and arguments.
           </div>
 
           <!-- Tool Arguments JSON Input -->
-          <div style="margin-bottom: 10px;">
-            <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Arguments (JSON)</label>
-            <textarea id="webmcp-args-input" rows="4" style="width: 100%; box-sizing: border-box; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #38bdf8; font-size: 11px; line-height: 1.4; padding: 8px 10px; font-family: monospace;"></textarea>
+          <div class="webmcp-args-group">
+            <div class="webmcp-args-header">
+              <label class="webmcp-args-label">Arguments (JSON Payload)</label>
+              <span class="webmcp-json-hint">Valid JSON</span>
+            </div>
+            <textarea id="webmcp-args-input" rows="4" class="webmcp-code-editor" placeholder="{ ... }"></textarea>
           </div>
 
-          <button id="btn-execute-webmcp-tool" class="btn-primary" style="width: 100%; padding: 8px 12px; font-size: 12px; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
-            <span>⚡ Execute Tool</span>
+          <button id="btn-execute-webmcp-tool" class="btn-primary webmcp-exec-btn">
+            <span>⚡ Execute WebMCP Tool</span>
           </button>
         </div>
 
-        <!-- Tool Output View -->
-        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">Output Response</span>
-            <span id="webmcp-exec-status" style="font-size: 10px; color: #94a3b8;">Ready</span>
+        <!-- Tool Output View Card -->
+        <div class="webmcp-output-card">
+          <div class="webmcp-output-header">
+            <span class="webmcp-output-title">Output Response</span>
+            <span id="webmcp-exec-status" class="webmcp-status-pill">Ready</span>
           </div>
-          <pre id="webmcp-output-json" style="margin: 0; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 10px; font-family: monospace; font-size: 10.5px; line-height: 1.45; color: #e2e8f0; max-height: 180px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;">Execute a tool to inspect response...</pre>
+          <pre id="webmcp-output-json" class="webmcp-output-console">Execute a tool to inspect response...</pre>
         </div>
       </div>
     </div>
