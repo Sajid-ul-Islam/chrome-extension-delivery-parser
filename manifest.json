@@ -45,7 +45,8 @@
     "*://*.deencommerce.com/*",
     "https://api.redx.com.bd/*",
     "https://openapi.redx.com.bd/*",
-    "https://nominatim.openstreetmap.org/*"
+    "https://nominatim.openstreetmap.org/*",
+    "https://api.github.com/*"
   ],
   "web_accessible_resources": [
     {

@@ -16,7 +16,7 @@ let displayedRecords = [];
 let currentMetrics = null;
 let currentActivityFilter = "all";
 
-if (typeof document !== "undefined") {
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
   document.addEventListener("DOMContentLoaded", async () => {
     initTabs();
     initActiveTabInfo();
@@ -25,6 +25,8 @@ if (typeof document !== "undefined") {
     initSyncTab();
     initQuickReplyTab();
     initWebMCPTab();
+    initCredentialsManager();
+    initUpdateChecker();
   });
 }
 
@@ -1253,10 +1255,225 @@ function initWebMCPTab() {
   }
 }
 
+/**
+ * Tab 3 Extension: Pathao API Credentials & Zero-Node .env Manager
+ */
+function initCredentialsManager() {
+  const credClientId = document.getElementById("cred-client-id");
+  const credClientSecret = document.getElementById("cred-client-secret");
+  const credUsername = document.getElementById("cred-username");
+  const credPassword = document.getElementById("cred-password");
+  const credStatus = document.getElementById("cred-status-indicator");
+  const btnLoadEnv = document.getElementById("btn-load-env-file");
+  const btnSaveCred = document.getElementById("btn-save-credentials");
+  const credFeedback = document.getElementById("cred-feedback-msg");
+
+  if (!btnSaveCred) return;
+
+  function setStatus(badgeText, isActive) {
+    if (!credStatus) return;
+    credStatus.textContent = badgeText;
+    credStatus.className = `cred-status-badge ${isActive ? "active" : "missing"}`;
+  }
+
+  function showCredFeedback(msg, isError = false) {
+    if (!credFeedback) return;
+    credFeedback.textContent = msg;
+    credFeedback.className = `cred-feedback ${isError ? "error" : ""}`;
+    credFeedback.classList.remove("hidden");
+    setTimeout(() => {
+      if (credFeedback) credFeedback.classList.add("hidden");
+    }, 5000);
+  }
+
+  // 1. Fetch current credentials info from background service worker
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+    chrome.runtime.sendMessage({ action: "get_api_credentials" }, (res) => {
+      if (chrome.runtime.lastError) return;
+      if (res && res.success) {
+        if (credClientId && res.clientId) credClientId.value = res.clientId;
+        if (credUsername && res.username) credUsername.value = res.username;
+        if (credClientSecret && res.hasSecret) credClientSecret.placeholder = "•••••••• (Configured)";
+        if (credPassword && res.hasPassword) credPassword.placeholder = "•••••••• (Configured)";
+
+        const hasFull = Boolean(res.clientId && (res.hasSecret || res.hasBearerToken));
+        setStatus(hasFull ? "Active / Configured" : "Not Configured", hasFull);
+      }
+    });
+  }
+
+  // 2. Auto-load from .env file via fetch(chrome.runtime.getURL(".env"))
+  if (btnLoadEnv) {
+    btnLoadEnv.addEventListener("click", () => {
+      const origText = btnLoadEnv.innerHTML;
+      btnLoadEnv.innerHTML = `<span>⏳ Reading .env...</span>`;
+      btnLoadEnv.disabled = true;
+
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ action: "load_env_runtime" }, (res) => {
+          btnLoadEnv.innerHTML = origText;
+          btnLoadEnv.disabled = false;
+
+          if (chrome.runtime.lastError) {
+            showCredFeedback("❌ Failed to communicate with background engine", true);
+            return;
+          }
+
+          if (res && res.hasCredentials) {
+            if (credClientId && res.clientId) credClientId.value = res.clientId;
+            if (credUsername && res.username) credUsername.value = res.username;
+            setStatus("Active (.env)", true);
+            showCredFeedback("✅ Loaded successfully from .env file directly!");
+            showToast("✅ Loaded credentials from .env file!");
+          } else {
+            showCredFeedback("⚠️ No .env file or valid PATHAO_CLIENT_ID found in extension folder.", true);
+            showToast("⚠️ Could not find valid credentials in .env");
+          }
+        });
+      } else {
+        btnLoadEnv.innerHTML = origText;
+        btnLoadEnv.disabled = false;
+      }
+    });
+  }
+
+  // 3. Save & Apply user credentials
+  btnSaveCred.addEventListener("click", () => {
+    const clientId = credClientId ? credClientId.value.trim() : "";
+    const clientSecret = credClientSecret ? credClientSecret.value.trim() : "";
+    const username = credUsername ? credUsername.value.trim() : "";
+    const password = credPassword ? credPassword.value.trim() : "";
+
+    if (!clientId && !clientSecret && !username && !password) {
+      showCredFeedback("⚠️ Please enter at least a Client ID or Secret", true);
+      return;
+    }
+
+    const origText = btnSaveCred.innerHTML;
+    btnSaveCred.innerHTML = `<span>⏳ Saving...</span>`;
+    btnSaveCred.disabled = true;
+
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({
+        action: "save_api_credentials",
+        credentials: { clientId, clientSecret, username, password }
+      }, (res) => {
+        btnSaveCred.innerHTML = origText;
+        btnSaveCred.disabled = false;
+
+        if (chrome.runtime.lastError) {
+          showCredFeedback("❌ Error saving credentials", true);
+          return;
+        }
+
+        if (res && res.success) {
+          setStatus("Active / Configured", true);
+          showCredFeedback("✅ Pathao API credentials saved & token cache refreshed!");
+          showToast("💾 Credentials saved successfully!");
+        } else {
+          showCredFeedback("❌ Failed to save credentials: " + (res ? res.message : "Unknown error"), true);
+        }
+      });
+    } else {
+      btnSaveCred.innerHTML = origText;
+      btnSaveCred.disabled = false;
+    }
+  });
+}
+
+/**
+ * GitHub Auto-Update Checker for Extension
+ */
+function initUpdateChecker() {
+  const banner = document.getElementById("github-update-banner");
+  const commitBadge = document.getElementById("update-commit-badge");
+  const commitMsg = document.getElementById("update-commit-msg");
+  const btnDownload = document.getElementById("btn-download-update");
+  const btnReload = document.getElementById("btn-reload-update");
+  const btnDismiss = document.getElementById("btn-dismiss-update");
+  const btnHeaderCheck = document.getElementById("btn-check-updates-header");
+
+  let latestDownloadUrl = "https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/archive/refs/heads/main.zip";
+
+  function renderUpdate(info) {
+    if (!info || !info.updateAvailable) {
+      if (banner) banner.classList.add("hidden");
+      return;
+    }
+    if (banner) banner.classList.remove("hidden");
+    if (commitBadge) commitBadge.textContent = info.latestCommit || "NEW";
+    if (commitMsg) {
+      commitMsg.textContent = `${info.commitMessage || "New updates available"} (commit: ${info.latestCommit || "?"})`;
+    }
+    if (info.downloadUrl) {
+      latestDownloadUrl = info.downloadUrl;
+    }
+  }
+
+  function runCheck(force = false) {
+    if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.sendMessage) return;
+    chrome.runtime.sendMessage({ action: "check_for_updates", force: force }, (res) => {
+      if (chrome.runtime.lastError) return;
+      if (res && res.success) {
+        renderUpdate(res);
+        if (force) {
+          if (res.updateAvailable) {
+            showToast(`🚀 New update available (${res.latestCommit})!`);
+          } else {
+            showToast(`✅ Extension is up-to-date (${res.currentCommit || "latest"})!`);
+          }
+        }
+      }
+    });
+  }
+
+  // Initial auto-check on popup open (uses 30m cache)
+  runCheck(false);
+
+  // Download ZIP button
+  if (btnDownload) {
+    btnDownload.addEventListener("click", () => {
+      if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.create) {
+        chrome.tabs.create({ url: latestDownloadUrl });
+      } else {
+        window.open(latestDownloadUrl, "_blank");
+      }
+      showToast("📥 Opening GitHub ZIP download...");
+    });
+  }
+
+  // Reload Extension button
+  if (btnReload) {
+    btnReload.addEventListener("click", () => {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        showToast("🔄 Reloading extension in memory...");
+        chrome.runtime.sendMessage({ action: "reload_extension" });
+      }
+    });
+  }
+
+  // Dismiss button
+  if (btnDismiss && banner) {
+    btnDismiss.addEventListener("click", () => {
+      banner.classList.add("hidden");
+    });
+  }
+
+  // Header "Check Updates" button
+  if (btnHeaderCheck) {
+    btnHeaderCheck.addEventListener("click", () => {
+      showToast("🔍 Checking GitHub repository for updates...");
+      runCheck(true);
+    });
+  }
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     initQuickReplyTab,
-    initWebMCPTab
+    initWebMCPTab,
+    initCredentialsManager,
+    initUpdateChecker
   };
 }
 

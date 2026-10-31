@@ -8,6 +8,29 @@
 </head>
 <body>
   <div class="app-container">
+    <!-- GitHub Update Notification Banner -->
+    <div id="github-update-banner" class="github-update-banner hidden">
+      <div class="update-banner-left">
+        <div class="update-banner-icon">🚀</div>
+        <div class="update-banner-content">
+          <div class="update-banner-title-row">
+            <strong class="update-title">Update Available on GitHub!</strong>
+            <span id="update-commit-badge" class="commit-badge">New Commit</span>
+          </div>
+          <div id="update-commit-msg" class="update-desc">A new version was pushed to the main repository branch.</div>
+        </div>
+      </div>
+      <div class="update-banner-actions">
+        <button id="btn-download-update" class="btn-update-action btn-update-download" title="Download latest ZIP from GitHub">
+          <span>📦 Download ZIP</span>
+        </button>
+        <button id="btn-reload-update" class="btn-update-action btn-update-reload" title="Hot-reload updated extension in Chrome">
+          <span>🔄 Reload App</span>
+        </button>
+        <button id="btn-dismiss-update" class="btn-update-dismiss" title="Dismiss banner">✕</button>
+      </div>
+    </div>
+
     <!-- Header -->
     <header class="app-header">
       <div class="brand">
@@ -18,6 +41,9 @@
         </div>
       </div>
       <div class="header-badges">
+        <button id="btn-check-updates-header" class="btn-header-update" title="Check GitHub for Updates">
+          <span>🔄 Check Updates</span>
+        </button>
         <span class="status-beacon">
           <span class="beacon-dot"></span>
           <span class="beacon-text">Engine Online</span>
@@ -105,6 +131,44 @@
             </button>
           </div>
           <div id="popup-rating-card" class="hidden popup-rating-result"></div>
+        </div>
+
+        <!-- Pathao API Credentials & Zero-Node .env Manager -->
+        <div class="api-credentials-card">
+          <div class="api-card-header">
+            <div class="api-card-title">🔑 Pathao API Credentials & Zero-Node .env</div>
+            <span id="cred-status-indicator" class="cred-status-badge">Checking...</span>
+          </div>
+          <p class="api-card-desc">
+            No Node.js build required! You can either enter credentials below or drop a <code>.env</code> file directly into the extension folder and click <strong>Auto-Load from .env</strong>.
+          </p>
+          <div class="cred-inputs-grid">
+            <div class="cred-field">
+              <label for="cred-client-id">Client ID</label>
+              <input type="text" id="cred-client-id" placeholder="e.g. 101 or Client ID" autocomplete="off" />
+            </div>
+            <div class="cred-field">
+              <label for="cred-client-secret">Client Secret</label>
+              <input type="password" id="cred-client-secret" placeholder="••••••••••••••••" autocomplete="off" />
+            </div>
+            <div class="cred-field">
+              <label for="cred-username">Pathao Email / Username</label>
+              <input type="text" id="cred-username" placeholder="merchant@deencommerce.com" autocomplete="off" />
+            </div>
+            <div class="cred-field">
+              <label for="cred-password">Pathao Password</label>
+              <input type="password" id="cred-password" placeholder="••••••••" autocomplete="off" />
+            </div>
+          </div>
+          <div class="cred-actions-row">
+            <button id="btn-load-env-file" class="btn-secondary btn-load-env" title="Read .env file directly from extension root directory">
+              <span>📄 Auto-Load from .env</span>
+            </button>
+            <button id="btn-save-credentials" class="btn-primary btn-save-cred">
+              <span>💾 Save & Apply</span>
+            </button>
+          </div>
+          <div id="cred-feedback-msg" class="cred-feedback hidden"></div>
         </div>
 
         <div class="last-synced-card">

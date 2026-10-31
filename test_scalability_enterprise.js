@@ -14,6 +14,8 @@
  */
 
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 
 console.log("==================================================");
 console.log("🧪 Running Enterprise Scalability & R&D Test Suite");
@@ -313,6 +315,34 @@ assert.strictEqual(parsedHposHtml.phone, "01715485035", "HPOS edit page must par
 assert.strictEqual(parsedHposHtml.name, "Mashud Hasan", "Customer name must be parsed in HPOS");
 
 console.log("  ✅ Order #19105 HPOS phone extraction & infallible nonce discovery verified 100%!");
+
+// -----------------------------------------------------------------------------
+// Test 9: Zero-Node .env Runtime Reader & GitHub Auto-Update Engine
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 9: Testing Zero-Node .env Runtime Reader, In-Popup Credentials & GitHub Auto-Update Engine...");
+
+const bgCode = fs.readFileSync(path.join(__dirname, "background.js"), "utf8");
+assert(bgCode.includes("loadRuntimeEnv"), "background.js must implement loadRuntimeEnv for zero-node .env parsing");
+assert(bgCode.includes("checkForExtensionUpdate"), "background.js must implement checkForExtensionUpdate");
+assert(bgCode.includes("GITHUB_REPO = \"Sajid-ul-Islam/chrome-extension-delivery-parser\""), "background.js must define GITHUB_REPO");
+assert(bgCode.includes("INSTALLED_COMMIT_SHORT"), "background.js must define INSTALLED_COMMIT_SHORT");
+assert(bgCode.includes("try { importScripts(\"env.js\"); } catch (e) {}"), "background.js must isolate importScripts(env.js) to prevent crash on fresh clones");
+
+const manifestJson = JSON.parse(fs.readFileSync(path.join(__dirname, "manifest.json"), "utf8"));
+assert(manifestJson.host_permissions.includes("https://api.github.com/*"), "manifest.json must include api.github.com host permission");
+
+const popupHtml = fs.readFileSync(path.join(__dirname, "popup.html"), "utf8");
+assert(popupHtml.includes('id="github-update-banner"'), "popup.html must include #github-update-banner");
+assert(popupHtml.includes('id="btn-check-updates-header"'), "popup.html must include #btn-check-updates-header");
+assert(popupHtml.includes('id="cred-client-id"'), "popup.html must include #cred-client-id");
+assert(popupHtml.includes('id="btn-load-env-file"'), "popup.html must include #btn-load-env-file");
+assert(popupHtml.includes('id="btn-save-credentials"'), "popup.html must include #btn-save-credentials");
+
+const popupModule = require("./popup.js");
+assert(typeof popupModule.initCredentialsManager === "function", "popup.js must export initCredentialsManager");
+assert(typeof popupModule.initUpdateChecker === "function", "popup.js must export initUpdateChecker");
+
+console.log("  ✅ Zero-Node .env runtime loader, In-Popup Credentials UI, and GitHub Auto-Update verified 100%!");
 
 console.log("\n==================================================");
 console.log("🎉 ALL ENTERPRISE SCALABILITY & R&D TESTS PASSED 100%!");

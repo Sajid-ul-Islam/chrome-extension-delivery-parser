@@ -4,7 +4,10 @@
 
 try {
   if (typeof importScripts === "function") {
-    importScripts("env.js", "parser.js", "storage-engine.js", "courier-adapters.js");
+    try { importScripts("env.js"); } catch (e) {}
+    try { importScripts("parser.js"); } catch (e) {}
+    try { importScripts("storage-engine.js"); } catch (e) {}
+    try { importScripts("courier-adapters.js"); } catch (e) {}
   }
 } catch (e) {}
 
@@ -201,6 +204,72 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
         sendResponse({ success: true, alerts: [] });
         return true;
       }
+    } else if (request && request.action === "check_for_updates") {
+      checkForExtensionUpdate(Boolean(request.force)).then(info => {
+        sendResponse({ success: true, ...info });
+      }).catch(err => {
+        sendResponse({ success: false, error: err.message });
+      });
+      return true;
+    } else if (request && request.action === "reload_extension") {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.reload) {
+        sendResponse({ success: true });
+        setTimeout(() => chrome.runtime.reload(), 250);
+      } else {
+        sendResponse({ success: false, message: "chrome.runtime.reload not available" });
+      }
+      return true;
+    } else if (request && request.action === "load_env_runtime") {
+      loadRuntimeEnv().then(creds => {
+        sendResponse({
+          success: Boolean(creds && (creds.PATHAO_CLIENT_ID || creds.PATHAO_BEARER_TOKEN)),
+          hasCredentials: Boolean(creds && (creds.PATHAO_CLIENT_ID || creds.PATHAO_BEARER_TOKEN)),
+          clientId: creds && creds.PATHAO_CLIENT_ID ? creds.PATHAO_CLIENT_ID.substring(0, 4) + "..." : "",
+          username: creds ? (creds.PATHAO_USERNAME || "") : "",
+          hasBearerToken: Boolean(creds && creds.PATHAO_BEARER_TOKEN && creds.PATHAO_BEARER_TOKEN.length > 20)
+        });
+      });
+      return true;
+    } else if (request && request.action === "save_api_credentials") {
+      if (request.credentials && chrome.storage && chrome.storage.local) {
+        const c = request.credentials;
+        chrome.storage.local.set({
+          "pathao_client_id": c.clientId || "",
+          "pathao_client_secret": c.clientSecret || "",
+          "pathao_username": c.username || "",
+          "pathao_password": c.password || "",
+          "pathao_bearer_token": c.bearerToken || ""
+        }, () => {
+          chrome.storage.local.remove(["pathao_merchant_token", "pathao_token_expiry"], () => {
+            if (typeof self !== "undefined") {
+              self.DEEN_ENV = Object.assign({}, self.DEEN_ENV || {}, {
+                PATHAO_CLIENT_ID: c.clientId || "",
+                PATHAO_CLIENT_SECRET: c.clientSecret || "",
+                PATHAO_USERNAME: c.username || "",
+                PATHAO_PASSWORD: c.password || "",
+                PATHAO_BEARER_TOKEN: c.bearerToken || ""
+              });
+            }
+            sendResponse({ success: true, message: "Credentials saved and active!" });
+          });
+        });
+        return true;
+      } else {
+        sendResponse({ success: false, message: "No credentials provided" });
+        return false;
+      }
+    } else if (request && request.action === "get_api_credentials") {
+      loadRuntimeEnv().then(creds => {
+        sendResponse({
+          success: true,
+          clientId: creds ? (creds.PATHAO_CLIENT_ID || "") : "",
+          username: creds ? (creds.PATHAO_USERNAME || "") : "",
+          hasSecret: Boolean(creds && creds.PATHAO_CLIENT_SECRET),
+          hasPassword: Boolean(creds && creds.PATHAO_PASSWORD),
+          hasBearerToken: Boolean(creds && creds.PATHAO_BEARER_TOKEN)
+        });
+      });
+      return true;
     } else {
       sendResponse({ status: "ignored" });
     }
@@ -257,6 +326,162 @@ async function issuePathaoTokenFromCredentials(creds) {
 }
 
 /**
+ * Zero-Node Direct .env & Storage Runtime Loader
+ * Automatically reads and parses .env file via fetch(chrome.runtime.getURL(".env"))
+ * or retrieves credentials saved in chrome.storage.local without requiring Node.js.
+ */
+async function loadRuntimeEnv() {
+  let envCreds = null;
+  if (typeof self !== "undefined" && self.DEEN_ENV) {
+    envCreds = Object.assign({}, self.DEEN_ENV);
+  } else if (typeof DEEN_ENV !== "undefined") {
+    envCreds = Object.assign({}, DEEN_ENV);
+  }
+  if (!envCreds && typeof require !== "undefined") {
+    try { envCreds = Object.assign({}, require("./env.js")); } catch (e) {}
+  }
+
+  // 1. Check chrome.storage.local for credentials saved via popup/options UI
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    try {
+      const stored = await new Promise(r => chrome.storage.local.get([
+        "pathao_client_id", "pathao_client_secret", "pathao_username", "pathao_password", "pathao_bearer_token"
+      ], r));
+      if (stored && stored.pathao_client_id) {
+        envCreds = Object.assign({}, envCreds || {}, {
+          PATHAO_CLIENT_ID: stored.pathao_client_id,
+          PATHAO_CLIENT_SECRET: stored.pathao_client_secret,
+          PATHAO_USERNAME: stored.pathao_username,
+          PATHAO_PASSWORD: stored.pathao_password,
+          PATHAO_BEARER_TOKEN: stored.pathao_bearer_token || (envCreds ? envCreds.PATHAO_BEARER_TOKEN : "")
+        });
+        if (typeof self !== "undefined") self.DEEN_ENV = envCreds;
+      }
+    } catch (e) {}
+  }
+
+  // 2. If credentials missing, fetch .env file directly from extension directory (Zero Node.js dependency)
+  if (!envCreds || !envCreds.PATHAO_CLIENT_ID || !envCreds.PATHAO_CLIENT_SECRET) {
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL && typeof fetch === "function") {
+      try {
+        const envUrl = chrome.runtime.getURL(".env");
+        const res = await fetch(envUrl);
+        if (res && res.ok) {
+          const text = await res.text();
+          if (text && !text.includes("<html") && !text.includes("<!DOCTYPE")) {
+            const parsed = {};
+            const lines = text.split(/\r?\n/);
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || trimmed.startsWith("#")) continue;
+              const match = trimmed.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$/);
+              if (match) {
+                const k = match[1].trim();
+                const v = match[2].trim().replace(/^['"](.*)['"]$/, "$1");
+                parsed[k] = v;
+              }
+            }
+            if (Object.keys(parsed).length > 0) {
+              envCreds = Object.assign({}, envCreds || {}, parsed);
+              if (typeof self !== "undefined") self.DEEN_ENV = envCreds;
+              if (chrome.storage && chrome.storage.local && parsed.PATHAO_CLIENT_ID) {
+                chrome.storage.local.set({
+                  "pathao_client_id": parsed.PATHAO_CLIENT_ID,
+                  "pathao_client_secret": parsed.PATHAO_CLIENT_SECRET || "",
+                  "pathao_username": parsed.PATHAO_USERNAME || "",
+                  "pathao_password": parsed.PATHAO_PASSWORD || "",
+                  "pathao_bearer_token": parsed.PATHAO_BEARER_TOKEN || ""
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {}
+    }
+  }
+
+  return envCreds;
+}
+
+/**
+ * GitHub Auto-Update Checker for Unpacked Extension
+ * Checks https://api.github.com/repos/Sajid-ul-Islam/chrome-extension-delivery-parser/commits/main
+ * Compares latest remote commit against the installed commit SHA.
+ */
+const GITHUB_REPO = "Sajid-ul-Islam/chrome-extension-delivery-parser";
+const INSTALLED_COMMIT_SHORT = "70753a8"; // Base commit
+
+async function checkForExtensionUpdate(force = false) {
+  if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return null;
+
+  try {
+    const cached = await new Promise(r => chrome.storage.local.get([
+      "deen_update_info", "deen_update_last_check"
+    ], r));
+
+    const now = Date.now();
+    // Cache for 30 minutes unless force is requested
+    if (!force && cached && cached.deen_update_last_check && (now - cached.deen_update_last_check < 30 * 60 * 1000)) {
+      return cached.deen_update_info || null;
+    }
+
+    if (typeof fetch !== "function") return null;
+
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/commits/main`, {
+      headers: { "Accept": "application/vnd.github.v3+json" }
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || !data.sha) return null;
+
+    const latestSha = data.sha;
+    const latestShort = latestSha.substring(0, 7);
+    const commitMsg = data.commit && data.commit.message ? data.commit.message.split("\n")[0] : "New update available";
+    const commitDate = data.commit && data.commit.committer ? data.commit.committer.date : new Date().toISOString();
+
+    const isDifferent = !latestSha.startsWith(INSTALLED_COMMIT_SHORT);
+
+    const updateInfo = {
+      updateAvailable: isDifferent,
+      currentCommit: INSTALLED_COMMIT_SHORT,
+      latestCommit: latestShort,
+      latestCommitFull: latestSha,
+      commitMessage: commitMsg,
+      commitDate: commitDate,
+      downloadUrl: `https://github.com/${GITHUB_REPO}/archive/refs/heads/main.zip`,
+      repoUrl: `https://github.com/${GITHUB_REPO}`,
+      checkedAt: now
+    };
+
+    chrome.storage.local.set({
+      "deen_update_info": updateInfo,
+      "deen_update_last_check": now
+    });
+
+    return updateInfo;
+  } catch (err) {
+    return null;
+  }
+}
+
+// Background auto-check on startup & install
+if (typeof chrome !== "undefined" && chrome.runtime) {
+  if (chrome.runtime.onStartup) {
+    chrome.runtime.onStartup.addListener(() => {
+      loadRuntimeEnv();
+      checkForExtensionUpdate();
+    });
+  }
+  if (chrome.runtime.onInstalled) {
+    chrome.runtime.onInstalled.addListener(() => {
+      loadRuntimeEnv();
+      checkForExtensionUpdate(true);
+    });
+  }
+}
+
+/**
  * Helper to get Pathao token from local storage, .env / env.js credentials, or Chrome cookies
  */
 async function getPathaoToken() {
@@ -272,31 +497,8 @@ async function getPathaoToken() {
     } catch (e) {}
   }
 
-  // 2. Check credentials from env.js / DEEN_ENV / .env
-  let envCreds = null;
-  if (typeof self !== "undefined" && self.DEEN_ENV) {
-    envCreds = self.DEEN_ENV;
-  } else if (typeof DEEN_ENV !== "undefined") {
-    envCreds = DEEN_ENV;
-  }
-  if (!envCreds && typeof require !== "undefined") {
-    try { envCreds = require("./env.js"); } catch (e) {}
-  }
-
-  // Also check chrome.storage.local for credentials saved via options
-  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-    try {
-      const storedCreds = await new Promise(r => chrome.storage.local.get(["pathao_client_id", "pathao_client_secret", "pathao_username", "pathao_password"], r));
-      if (storedCreds && storedCreds.pathao_client_id) {
-        envCreds = Object.assign({}, envCreds || {}, {
-          PATHAO_CLIENT_ID: storedCreds.pathao_client_id,
-          PATHAO_CLIENT_SECRET: storedCreds.pathao_client_secret,
-          PATHAO_USERNAME: storedCreds.pathao_username,
-          PATHAO_PASSWORD: storedCreds.pathao_password
-        });
-      }
-    } catch (e) {}
-  }
+  // 2. Check credentials from loadRuntimeEnv() (reads env.js, .env directly, or chrome.storage.local)
+  const envCreds = await loadRuntimeEnv();
 
   if (envCreds) {
     if (envCreds.PATHAO_BEARER_TOKEN && envCreds.PATHAO_BEARER_TOKEN.length > 20) {
