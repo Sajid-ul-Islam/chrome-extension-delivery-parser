@@ -1077,7 +1077,7 @@
           <textarea id="deen-sidebar-qr-preview" style="width: 100%; box-sizing: border-box; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #f8fafc; font-size: 11px; line-height: 1.4; padding: 6px 8px; resize: vertical; min-height: 70px; font-family: inherit; margin-bottom: 8px;"></textarea>
 
           <div style="display: flex; gap: 6px;">
-            <button id="deen-sidebar-btn-qr-send" style="flex: 1; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; border: none; border-radius: 6px; padding: 6px 10px; font-weight: 700; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+            <button id="deen-sidebar-btn-qr-send" style="flex: 1; background: linear-gradient(135deg, #128C7E 0%, #075E54 100%); color: #fff; border: 1px solid #075E54; border-radius: 6px; padding: 6px 10px; font-weight: 700; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 1px 4px rgba(7, 94, 84, 0.35);">
               <span>💬 Send to WhatsApp</span>
             </button>
             <button id="deen-sidebar-btn-qr-copy" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 10px; font-weight: 600; font-size: 11px; cursor: pointer;">
