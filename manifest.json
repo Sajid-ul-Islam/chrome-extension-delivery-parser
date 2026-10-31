@@ -43,6 +43,8 @@
     "https://*.steadfast.com.bd/*",
     "*://deencommerce.com/*",
     "*://*.deencommerce.com/*",
+    "https://api.redx.com.bd/*",
+    "https://openapi.redx.com.bd/*",
     "https://nominatim.openstreetmap.org/*"
   ],
   "web_accessible_resources": [
@@ -51,6 +53,8 @@
         "icons/*",
         ".env",
         "env.js",
+        "storage-engine.js",
+        "courier-adapters.js",
         "webmcp-provider.js"
       ],
       "matches": ["<all_urls>"]
@@ -66,7 +70,7 @@
         "http://*.pathao.com/*",
         "http://pathao.com/*"
       ],
-      "js": ["xlsx.mini.min.js", "parser.js", "content.js", "webmcp-provider.js"],
+      "js": ["xlsx.mini.min.js", "parser.js", "storage-engine.js", "courier-adapters.js", "content.js", "webmcp-provider.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     },
@@ -76,7 +80,7 @@
         "*://*.deencommerce.com/wp-admin/*",
         "*://*/wp-admin/*"
       ],
-      "js": ["parser.js", "woocommerce.js", "webmcp-provider.js"],
+      "js": ["parser.js", "storage-engine.js", "courier-adapters.js", "woocommerce.js", "webmcp-provider.js"],
       "css": ["woocommerce.css"],
       "run_at": "document_idle"
     },
@@ -90,7 +94,7 @@
         "http://*.pathao.com/*",
         "http://pathao.com/*"
       ],
-      "js": ["parser.js", "phone-check.js", "webmcp-provider.js"],
+      "js": ["parser.js", "storage-engine.js", "courier-adapters.js", "phone-check.js", "webmcp-provider.js"],
       "css": ["phone-check.css"],
       "run_at": "document_idle"
     }

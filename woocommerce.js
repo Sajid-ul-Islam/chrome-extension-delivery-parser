@@ -40,6 +40,15 @@
                   (typeof globalThis !== "undefined" ? globalThis : null) ||
                   (typeof require !== "undefined" ? (() => { try { return require("./parser.js"); } catch (e) { return {}; } })() : {});
 
+  // Reference storage engine and multi-courier adapters
+  const _storage = (typeof window !== "undefined" && window.DeenStorage ? window.DeenStorage : null) ||
+                   (typeof globalThis !== "undefined" && globalThis.DeenStorage ? globalThis.DeenStorage : null) ||
+                   (typeof require !== "undefined" ? (() => { try { return require("./storage-engine.js"); } catch (e) { return {}; } })() : {});
+
+  const _couriers = (typeof window !== "undefined" && window.DeenCouriers ? window.DeenCouriers : null) ||
+                    (typeof globalThis !== "undefined" && globalThis.DeenCouriers ? globalThis.DeenCouriers : null) ||
+                    (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return {}; } })() : {});
+
   const BD_PHONE_CLEAN_REGEX = /(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/;
 
   /**
@@ -138,31 +147,61 @@
     let ajaxUrl = "/wp-admin/admin-ajax.php";
     let nonce = "";
 
-    if (typeof window !== "undefined") {
-      if (window.wc_orders_params && window.wc_orders_params.order_preview_nonce) {
-        return { ajaxUrl: window.wc_orders_params.ajax_url || ajaxUrl, nonce: window.wc_orders_params.order_preview_nonce };
+    // 1. Direct page context probe via DOM script (safely extracts in page world if isolated content script)
+    if (typeof document !== "undefined" && document.documentElement) {
+      if (document.documentElement.dataset && document.documentElement.dataset.deenWcNonce) {
+        nonce = document.documentElement.dataset.deenWcNonce;
       }
-      if (window.wc_orders_params && window.wc_orders_params.preview_nonce) {
-        return { ajaxUrl: window.wc_orders_params.ajax_url || ajaxUrl, nonce: window.wc_orders_params.preview_nonce };
+      if (document.documentElement.dataset && document.documentElement.dataset.deenWcAjaxUrl) {
+        ajaxUrl = document.documentElement.dataset.deenWcAjaxUrl;
       }
-      if (window.woocommerce_admin && window.woocommerce_admin.order_preview_nonce) {
-        return { ajaxUrl: window.woocommerce_admin.ajax_url || ajaxUrl, nonce: window.woocommerce_admin.order_preview_nonce };
-      }
-      if (window.woocommerce_admin_meta_boxes && window.woocommerce_admin_meta_boxes.order_preview_nonce) {
-        return { ajaxUrl: window.woocommerce_admin_meta_boxes.ajax_url || ajaxUrl, nonce: window.woocommerce_admin_meta_boxes.order_preview_nonce };
+
+      if (!nonce) {
+        try {
+          const probe = document.createElement("script");
+          probe.textContent = `
+            try {
+              var p = window.wc_orders_params || window.wcOrdersParams || window.woocommerce_admin || window.woocommerce_admin_meta_boxes || {};
+              var n = p.preview_nonce || p.order_preview_nonce || '';
+              var u = p.ajax_url || '/wp-admin/admin-ajax.php';
+              if (n) {
+                document.documentElement.dataset.deenWcNonce = n;
+                document.documentElement.dataset.deenWcAjaxUrl = u;
+              }
+            } catch(e) {}
+          `;
+          (document.head || document.documentElement).appendChild(probe);
+          probe.remove();
+          if (document.documentElement.dataset && document.documentElement.dataset.deenWcNonce) {
+            nonce = document.documentElement.dataset.deenWcNonce;
+          }
+          if (document.documentElement.dataset && document.documentElement.dataset.deenWcAjaxUrl) {
+            ajaxUrl = document.documentElement.dataset.deenWcAjaxUrl;
+          }
+        } catch (e) {}
       }
     }
 
-    if (typeof document !== "undefined") {
+    // 2. Window object reference (for non-isolated contexts or unit test mocks)
+    if (!nonce && typeof window !== "undefined") {
+      const p = window.wc_orders_params || window.wcOrdersParams || window.woocommerce_admin || window.woocommerce_admin_meta_boxes || {};
+      if (p.preview_nonce || p.order_preview_nonce) {
+        nonce = p.preview_nonce || p.order_preview_nonce;
+        ajaxUrl = p.ajax_url || ajaxUrl;
+      }
+    }
+
+    // 3. Scan script tags with quote-tolerant regex for both quoted & unquoted keys
+    if (!nonce && typeof document !== "undefined") {
       const scripts = document.querySelectorAll("script");
       for (let s of scripts) {
         const text = s.textContent || s.innerText || "";
-        if (!text || (!text.includes("order_preview_nonce") && !text.includes("preview_nonce"))) continue;
+        if (!text || (!text.includes("order_preview_nonce") && !text.includes("preview_nonce") && !text.includes("wc_orders_params"))) continue;
 
-        const nonceMatch = text.match(/["'](?:order_preview_nonce|preview_nonce)["']\s*:\s*["']([a-zA-Z0-9_-]+)["']/i);
+        const nonceMatch = text.match(/(?:['"]?(?:order_preview_nonce|preview_nonce)['"]?)\s*[:=]\s*['"]([a-zA-Z0-9_-]+)['"]/i);
         if (nonceMatch) nonce = nonceMatch[1];
 
-        const urlMatch = text.match(/["']ajax_url["']\s*:\s*["']([^"']+)["']/i);
+        const urlMatch = text.match(/(?:['"]?ajax_?url['"]?)\s*[:=]\s*['"]([^'"]+)['"]/i);
         if (urlMatch) {
           ajaxUrl = urlMatch[1].replace(/\\/g, "");
         }
@@ -171,9 +210,9 @@
 
       if (!nonce && document.documentElement) {
         const docHtml = document.documentElement.innerHTML || "";
-        const nm = docHtml.match(/["'](?:order_preview_nonce|preview_nonce)["']\s*:\s*["']([a-zA-Z0-9_-]+)["']/i);
+        const nm = docHtml.match(/(?:['"]?(?:order_preview_nonce|preview_nonce)['"]?)\s*[:=]\s*['"]([a-zA-Z0-9_-]+)['"]/i);
         if (nm) nonce = nm[1];
-        const um = docHtml.match(/["']ajax_url["']\s*:\s*["']([^"']+)["']/i);
+        const um = docHtml.match(/(?:['"]?ajax_?url['"]?)\s*[:=]\s*['"]([^'"]+)['"]/i);
         if (um) ajaxUrl = um[1].replace(/\\/g, "");
       }
     }
@@ -217,7 +256,17 @@
       if (pb.name && !isInvalidCustomerName(pb.name)) name = pb.name;
     }
 
-    const phone = normalizeBDPhone(shipping.phone || billing.phone || orderData.phone || dataWrapper.phone || "");
+    let phone = normalizeBDPhone(
+      shipping.phone ||
+      billing.phone ||
+      orderData.phone ||
+      dataWrapper.phone ||
+      orderData.billing_phone ||
+      dataWrapper.billing_phone ||
+      orderData.shipping_phone ||
+      dataWrapper.shipping_phone ||
+      ""
+    );
 
     const shipParts = [shipping.address_1, shipping.address_2, shipping.city, shipping.state, shipping.postcode].filter(Boolean);
     const billParts = [billing.address_1, billing.address_2, billing.city, billing.state, billing.postcode].filter(Boolean);
@@ -229,6 +278,11 @@
       if (pb.address) address = pb.address;
       if (!name && pb.name && !isInvalidCustomerName(pb.name)) name = pb.name;
       if (!phone && pb.phone) phone = pb.phone;
+    }
+
+    // HTML template fallback for phone if not in structured JSON keys
+    if (!phone && (dataWrapper.html || res.html)) {
+      phone = normalizeBDPhone(dataWrapper.html || res.html || "") || "";
     }
 
     const customerNote = String(orderData.customer_note || dataWrapper.customer_note || orderData.notes || "").trim();
@@ -291,9 +345,10 @@
       });
     }
 
-    // Fallback: check item_html if items array was empty
-    if (items.length === 0 && dataWrapper.item_html) {
-      const parsedFromHtml = parseOrderEditPageHTML(dataWrapper.item_html, resolvedId);
+    // Fallback: check html/item_html if items array was empty
+    const previewHtml = dataWrapper.html || res.html || dataWrapper.item_html || "";
+    if (items.length === 0 && previewHtml) {
+      const parsedFromHtml = parseOrderEditPageHTML(previewHtml, resolvedId);
       if (parsedFromHtml && parsedFromHtml.items && parsedFromHtml.items.length > 0) {
         items.push(...parsedFromHtml.items);
       }
@@ -386,14 +441,14 @@
                        rawHtml.match(/(?:^|[^\w&#])#(\d{3,8})/);
       if (pidMatch) resolvedOrderId = pidMatch[1].trim();
 
-      const sfnMatch = rawHtml.match(/name=['"]_shipping_first_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
-                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_shipping_first_name['"]/i);
-      const slnMatch = rawHtml.match(/name=['"]_shipping_last_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
-                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_shipping_last_name['"]/i);
-      const bfnMatch = rawHtml.match(/name=['"]_billing_first_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
-                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_billing_first_name['"]/i);
-      const blnMatch = rawHtml.match(/name=['"]_billing_last_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
-                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_billing_last_name['"]/i);
+      const sfnMatch = rawHtml.match(/name=['"]_?shipping_first_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
+                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_?shipping_first_name['"]/i);
+      const slnMatch = rawHtml.match(/name=['"]_?shipping_last_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
+                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_?shipping_last_name['"]/i);
+      const bfnMatch = rawHtml.match(/name=['"]_?billing_first_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
+                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_?billing_first_name['"]/i);
+      const blnMatch = rawHtml.match(/name=['"]_?billing_last_name['"][^>]*value=['"]([^'"]+)['"]/i) ||
+                       rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"]_?billing_last_name['"]/i);
 
       let name = "";
       if (sfnMatch || slnMatch) name = `${sfnMatch ? sfnMatch[1] : ''} ${slnMatch ? slnMatch[1] : ''}`.trim();
@@ -405,22 +460,22 @@
         if (strongM) name = strongM[1].trim();
       }
 
-      const phoneMatch = rawHtml.match(/name=['"](?:_shipping_phone|_billing_phone)['"][^>]*value=['"]([^'"]+)['"]/i) ||
-                         rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"](?:_shipping_phone|_billing_phone)['"]/i) ||
+      const phoneMatch = rawHtml.match(/name=['"](?:_?shipping_phone|_?billing_phone)['"][^>]*value=['"]([^'"]+)['"]/i) ||
+                         rawHtml.match(/value=['"]([^'"]+)['"][^>]*name=['"](?:_?shipping_phone|_?billing_phone)['"]/i) ||
                          rawHtml.match(/(?:01[3-9]\d{8})/);
       const phone = phoneMatch ? normalizeBDPhone(phoneMatch[1] || phoneMatch[0]) : "";
 
-      const sa1Match = rawHtml.match(/name=['"]_shipping_address_1['"][^>]*value=['"]([^'"]+)['"]/i);
-      const sa2Match = rawHtml.match(/name=['"]_shipping_address_2['"][^>]*value=['"]([^'"]+)['"]/i);
-      const scityMatch = rawHtml.match(/name=['"]_shipping_city['"][^>]*value=['"]([^'"]+)['"]/i);
-      const sstateMatch = rawHtml.match(/name=['"]_shipping_state['"][^>]*value=['"]([^'"]+)['"]/i);
-      const spostMatch = rawHtml.match(/name=['"]_shipping_postcode['"][^>]*value=['"]([^'"]+)['"]/i);
+      const sa1Match = rawHtml.match(/name=['"]_?shipping_address_1['"][^>]*value=['"]([^'"]+)['"]/i);
+      const sa2Match = rawHtml.match(/name=['"]_?shipping_address_2['"][^>]*value=['"]([^'"]+)['"]/i);
+      const scityMatch = rawHtml.match(/name=['"]_?shipping_city['"][^>]*value=['"]([^'"]+)['"]/i);
+      const sstateMatch = rawHtml.match(/name=['"]_?shipping_state['"][^>]*value=['"]([^'"]+)['"]/i);
+      const spostMatch = rawHtml.match(/name=['"]_?shipping_postcode['"][^>]*value=['"]([^'"]+)['"]/i);
 
-      const ba1Match = rawHtml.match(/name=['"]_billing_address_1['"][^>]*value=['"]([^'"]+)['"]/i);
-      const ba2Match = rawHtml.match(/name=['"]_billing_address_2['"][^>]*value=['"]([^'"]+)['"]/i);
-      const bcityMatch = rawHtml.match(/name=['"]_billing_city['"][^>]*value=['"]([^'"]+)['"]/i);
-      const bstateMatch = rawHtml.match(/name=['"]_billing_state['"][^>]*value=['"]([^'"]+)['"]/i);
-      const bpostMatch = rawHtml.match(/name=['"]_billing_postcode['"][^>]*value=['"]([^'"]+)['"]/i);
+      const ba1Match = rawHtml.match(/name=['"]_?billing_address_1['"][^>]*value=['"]([^'"]+)['"]/i);
+      const ba2Match = rawHtml.match(/name=['"]_?billing_address_2['"][^>]*value=['"]([^'"]+)['"]/i);
+      const bcityMatch = rawHtml.match(/name=['"]_?billing_city['"][^>]*value=['"]([^'"]+)['"]/i);
+      const bstateMatch = rawHtml.match(/name=['"]_?billing_state['"][^>]*value=['"]([^'"]+)['"]/i);
+      const bpostMatch = rawHtml.match(/name=['"]_?billing_postcode['"][^>]*value=['"]([^'"]+)['"]/i);
 
       const shipParts = [sa1Match ? sa1Match[1] : "", sa2Match ? sa2Match[1] : "", scityMatch ? scityMatch[1] : "", sstateMatch ? sstateMatch[1] : "", spostMatch ? spostMatch[1] : ""].filter(Boolean);
       const billParts = [ba1Match ? ba1Match[1] : "", ba2Match ? ba2Match[1] : "", bcityMatch ? bcityMatch[1] : "", bstateMatch ? bstateMatch[1] : "", bpostMatch ? bpostMatch[1] : ""].filter(Boolean);
@@ -582,10 +637,10 @@
     // 2. Customer details (prioritizing shipping recipient when separate)
     let name = "";
     if (doc.querySelector) {
-      const sfn = doc.querySelector("#_shipping_first_name, input[name='_shipping_first_name']");
-      const sln = doc.querySelector("#_shipping_last_name, input[name='_shipping_last_name']");
-      const bfn = doc.querySelector("#_billing_first_name, input[name='_billing_first_name']");
-      const bln = doc.querySelector("#_billing_last_name, input[name='_billing_last_name']");
+      const sfn = doc.querySelector("#_shipping_first_name, input[name='_shipping_first_name'], #shipping_first_name, input[name='shipping_first_name']");
+      const sln = doc.querySelector("#_shipping_last_name, input[name='_shipping_last_name'], #shipping_last_name, input[name='shipping_last_name']");
+      const bfn = doc.querySelector("#_billing_first_name, input[name='_billing_first_name'], #billing_first_name, input[name='billing_first_name']");
+      const bln = doc.querySelector("#_billing_last_name, input[name='_billing_last_name'], #billing_last_name, input[name='billing_last_name']");
       if (sfn || sln) {
         name = `${(sfn ? sfn.value : '')} ${(sln ? sln.value : '')}`.trim();
       }
@@ -600,33 +655,68 @@
 
     let phone = "";
     if (doc.querySelector) {
-      const phoneInput = doc.querySelector("#_shipping_phone, input[name='_shipping_phone'], #_billing_phone, input[name='_billing_phone']");
+      // 1. Inputs (both classic with leading underscore and HPOS without leading underscore)
+      const phoneInput = doc.querySelector(
+        "#_shipping_phone, input[name='_shipping_phone'], #shipping_phone, input[name='shipping_phone'], " +
+        "#_billing_phone, input[name='_billing_phone'], #billing_phone, input[name='billing_phone'], " +
+        "input[name*='phone'], input#phone, input[name='phone']"
+      );
       if (phoneInput && phoneInput.value) {
         phone = normalizeBDPhone(phoneInput.value) || "";
       }
+      // 2. Tel links
       if (!phone) {
         const phoneLink = doc.querySelector("a[href^='tel:']");
         if (phoneLink) phone = normalizeBDPhone(phoneLink.getAttribute("href").replace("tel:", "")) || "";
       }
+      // 3. Address containers (HPOS + classic)
       if (!phone) {
-        const addrCol = doc.querySelector(".order_data_column.shipping, .order_data_column, .address, address");
-        if (addrCol) phone = normalizeBDPhone(addrCol.textContent || addrCol.innerText || "") || "";
+        const addrContainers = doc.querySelectorAll(
+          ".woocommerce-order-data__billing, .woocommerce-order-data__shipping, .woocommerce-order-data, " +
+          ".order_data_column.shipping, .order_data_column, .address, address, .order-data-address, " +
+          ".woocommerce-customer-details, .billing-address, .shipping-address"
+        );
+        for (const ac of addrContainers) {
+          const p = normalizeBDPhone(ac.textContent || ac.innerText || "") || "";
+          if (p) {
+            phone = p;
+            break;
+          }
+        }
+      }
+      // 4. Any phone paragraph/span/data attribute in doc
+      if (!phone) {
+        const phoneEls = doc.querySelectorAll(
+          "p.woocommerce-customer-details--phone, .billing-phone, .shipping-phone, [data-phone]"
+        );
+        for (const pe of phoneEls) {
+          const p = normalizeBDPhone(pe.getAttribute("data-phone") || pe.textContent || pe.innerText || "") || "";
+          if (p) {
+            phone = p;
+            break;
+          }
+        }
+      }
+      // 5. Ultimate fallback: Search entire document body text for Bangladesh phone number
+      if (!phone) {
+        const bodyText = doc.body ? (doc.body.textContent || doc.body.innerText || "") : (doc.textContent || "");
+        phone = normalizeBDPhone(bodyText) || "";
       }
     }
 
     let address = "";
     if (doc.querySelector) {
-      const sa1 = doc.querySelector("#_shipping_address_1, input[name='_shipping_address_1']");
-      const sa2 = doc.querySelector("#_shipping_address_2, input[name='_shipping_address_2']");
-      const scity = doc.querySelector("#_shipping_city, input[name='_shipping_city']");
-      const sstate = doc.querySelector("#_shipping_state, input[name='_shipping_state']");
-      const spost = doc.querySelector("#_shipping_postcode, input[name='_shipping_postcode']");
+      const sa1 = doc.querySelector("#_shipping_address_1, input[name='_shipping_address_1'], #shipping_address_1, input[name='shipping_address_1']");
+      const sa2 = doc.querySelector("#_shipping_address_2, input[name='_shipping_address_2'], #shipping_address_2, input[name='shipping_address_2']");
+      const scity = doc.querySelector("#_shipping_city, input[name='_shipping_city'], #shipping_city, input[name='shipping_city']");
+      const sstate = doc.querySelector("#_shipping_state, input[name='_shipping_state'], #shipping_state, input[name='shipping_state']");
+      const spost = doc.querySelector("#_shipping_postcode, input[name='_shipping_postcode'], #shipping_postcode, input[name='shipping_postcode']");
 
-      const ba1 = doc.querySelector("#_billing_address_1, input[name='_billing_address_1']");
-      const ba2 = doc.querySelector("#_billing_address_2, input[name='_billing_address_2']");
-      const bcity = doc.querySelector("#_billing_city, input[name='_billing_city']");
-      const bstate = doc.querySelector("#_billing_state, input[name='_billing_state']");
-      const bpost = doc.querySelector("#_billing_postcode, input[name='_billing_postcode']");
+      const ba1 = doc.querySelector("#_billing_address_1, input[name='_billing_address_1'], #billing_address_1, input[name='billing_address_1']");
+      const ba2 = doc.querySelector("#_billing_address_2, input[name='_billing_address_2'], #billing_address_2, input[name='billing_address_2']");
+      const bcity = doc.querySelector("#_billing_city, input[name='_billing_city'], #billing_city, input[name='billing_city']");
+      const bstate = doc.querySelector("#_billing_state, input[name='_billing_state'], #billing_state, input[name='billing_state']");
+      const bpost = doc.querySelector("#_billing_postcode, input[name='_billing_postcode'], #billing_postcode, input[name='billing_postcode']");
 
       const shipParts = [sa1 ? sa1.value : "", sa2 ? sa2.value : "", scity ? scity.value : "", sstate ? sstate.value : "", spost ? spost.value : ""].filter(Boolean);
       const billParts = [ba1 ? ba1.value : "", ba2 ? ba2.value : "", bcity ? bcity.value : "", bstate ? bstate.value : "", bpost ? bpost.value : ""].filter(Boolean);
@@ -634,7 +724,11 @@
       if (parts.length > 0) address = parts.join(", ");
 
       if (!address) {
-        const addrEl = doc.querySelector(".order_data_column.shipping address, .order_data_column address, address");
+        const addrEl = doc.querySelector(
+          ".woocommerce-order-data__shipping address, .woocommerce-order-data__billing address, " +
+          ".order_data_column.shipping address, .order_data_column address, address, " +
+          ".woocommerce-order-data__shipping, .woocommerce-order-data__billing"
+        );
         if (addrEl) {
           const parsedBlock = parseWooCommerceAddressBlock(addrEl);
           if (parsedBlock.address) address = parsedBlock.address;
@@ -863,8 +957,13 @@
         })
         .then(json => {
           const parsed = parseWooCommerceAjaxOrderDetails(json, idKey);
-          if (parsed && parsed.items && parsed.items.length > 0) {
-            orderDetailsCache.set(idKey, parsed);
+          if (parsed && (parsed.phone || (parsed.items && parsed.items.length > 0))) {
+            if (idKey && parsed.phone) {
+              setOrderPhoneCache(idKey, parsed.phone);
+            }
+            if (idKey) {
+              orderDetailsCache.set(idKey, parsed);
+            }
             resolveAll(parsed);
             return;
           }
@@ -897,17 +996,31 @@
         })
         .then(html => {
           let parsed = parseOrderEditPageHTML(html, idKey);
-          // If no items found and we attempted HPOS url, try classic post.php url as fallback
-          if ((!parsed || !parsed.items || parsed.items.length === 0) && idKey && targetUrl.includes("page=wc-orders")) {
+
+          // If phone was found, cache and resolve immediately without probing broken URLs!
+          if (parsed && parsed.phone) {
+            setOrderPhoneCache(idKey, parsed.phone);
+            if (idKey && parsed.items && parsed.items.length > 0) {
+              orderDetailsCache.set(idKey, parsed);
+            }
+            resolveAll(parsed);
+            return;
+          }
+
+          // If no phone and no items found and we attempted HPOS url, try classic post.php url as fallback
+          if ((!parsed || (!parsed.phone && (!parsed.items || parsed.items.length === 0))) && idKey && targetUrl.includes("page=wc-orders")) {
             const classicUrl = `${(typeof window !== "undefined" && window.location ? window.location.origin : "")}/wp-admin/post.php?post=${idKey}&action=edit`;
             fetchWithTimeout(classicUrl, { credentials: "same-origin" }, 8000)
               .then(cRes => cRes.ok ? cRes.text() : "")
               .then(cHtml => {
                 if (cHtml) {
                   const cParsed = parseOrderEditPageHTML(cHtml, idKey);
-                  if (cParsed && cParsed.items && cParsed.items.length > 0) {
+                  if (cParsed && (cParsed.phone || (cParsed.items && cParsed.items.length > 0))) {
                     parsed = cParsed;
                   }
+                }
+                if (parsed && parsed.phone) {
+                  setOrderPhoneCache(idKey, parsed.phone);
                 }
                 if (parsed && idKey && parsed.items && parsed.items.length > 0) {
                   orderDetailsCache.set(idKey, parsed);
@@ -920,6 +1033,9 @@
             return;
           }
 
+          if (parsed && parsed.phone) {
+            setOrderPhoneCache(idKey, parsed.phone);
+          }
           if (parsed && idKey && parsed.items && parsed.items.length > 0) {
             orderDetailsCache.set(idKey, parsed);
           }
@@ -2489,6 +2605,9 @@
     let bar = previewModal.querySelector("#deen-wc-preview-action-bar");
     if (bar) {
       const currentDetails = extractOrderDetailsFromModal(previewModal);
+      if (currentDetails.orderId && currentDetails.phone) {
+        setOrderPhoneCache(currentDetails.orderId, currentDetails.phone);
+      }
       if ((currentDetails.items && currentDetails.items.length > 0) || (currentDetails.cod && currentDetails.cod !== "0")) {
         renderBarStats(bar, currentDetails);
       }
@@ -2496,6 +2615,14 @@
     }
 
     let initialDetails = extractOrderDetailsFromModal(previewModal);
+    if (initialDetails.orderId && initialDetails.phone) {
+      setOrderPhoneCache(initialDetails.orderId, initialDetails.phone);
+      const row = document.querySelector(`tr#order-${initialDetails.orderId}, tr[data-order-id='${initialDetails.orderId}'], tr:has(a[href*='id=${initialDetails.orderId}']), tr:has(a[href*='post=${initialDetails.orderId}'])`);
+      if (row) {
+        const rCell = row.querySelector("td.column-deen_rating");
+        if (rCell) renderRatingCellForPhone(row, rCell, initialDetails.phone, initialDetails.orderId);
+      }
+    }
 
     bar = document.createElement("div");
     bar.id = "deen-wc-preview-action-bar";
@@ -3054,14 +3181,70 @@
   }
 
   /**
+   * Leaky-Bucket Rate Limiter & Concurrency Queue for Rating Cell Requests
+   */
+  const ratingQueue = [];
+  let activeRatingRequests = 0;
+  const MAX_CONCURRENT_RATING_REQUESTS = 3;
+
+  function enqueueRatingTask(taskFn) {
+    return new Promise((resolve, reject) => {
+      ratingQueue.push({ taskFn, resolve, reject });
+      processRatingQueue();
+    });
+  }
+
+  function processRatingQueue() {
+    if (activeRatingRequests >= MAX_CONCURRENT_RATING_REQUESTS || ratingQueue.length === 0) return;
+    const item = ratingQueue.shift();
+    if (!item) return;
+    const { taskFn, resolve, reject } = item;
+    activeRatingRequests++;
+    Promise.resolve()
+      .then(() => taskFn())
+      .then(resolve)
+      .catch(reject)
+      .finally(() => {
+        activeRatingRequests--;
+        setTimeout(processRatingQueue, 100);
+      });
+  }
+
+  let rowIntersectionObserver = null;
+  function getRowIntersectionObserver() {
+    if (typeof IntersectionObserver === "undefined") return null;
+    if (!rowIntersectionObserver) {
+      rowIntersectionObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const row = entry.target;
+            const ratingCell = row.querySelector("td.column-deen_rating");
+            if (ratingCell && !ratingCell.dataset.renderedPhone && !ratingCell.dataset.fetchingOrderId) {
+              renderOrderRatingCell(row, ratingCell);
+            }
+            rowIntersectionObserver.unobserve(row);
+          }
+        });
+      }, { rootMargin: "350px 0px" });
+    }
+    return rowIntersectionObserver;
+  }
+
+  /**
    * Render or update rating cell for a specific order table row
    */
   function renderOrderRatingCell(row, ratingCell) {
     if (!row || !ratingCell) return;
 
     let phone = "";
+    // Direct attribute checks on row/links
+    if (row.dataset && row.dataset.phone) phone = normalizeBDPhone(row.dataset.phone) || "";
+    if (!phone && typeof row.getAttribute === "function") {
+      phone = normalizeBDPhone(row.getAttribute("data-phone") || row.getAttribute("data-customer-phone") || "") || "";
+    }
+
     const telLink = typeof row.querySelector === "function" ? row.querySelector("a[href^='tel:']") : null;
-    if (telLink && telLink.getAttribute) {
+    if (!phone && telLink && telLink.getAttribute) {
       phone = normalizeBDPhone((telLink.getAttribute("href") || "").replace("tel:", "")) || "";
     }
     if (!phone) {
@@ -3109,21 +3292,54 @@
         </div>
       `.trim();
 
-      fetchOrderDetailsViaEditPage(orderId, details.orderUrl, (fetched) => {
-        delete ratingCell.dataset.fetchingOrderId;
-        if (fetched && fetched.phone) {
-          const resolvedPhone = normalizeBDPhone(fetched.phone);
-          if (resolvedPhone) {
-            setOrderPhoneCache(orderId, resolvedPhone);
-            renderRatingCellForPhone(row, ratingCell, resolvedPhone, orderId);
+      enqueueRatingTask(() => new Promise((done) => {
+        fetchOrderDetailsViaEditPage(orderId, details.orderUrl, (fetched) => {
+          delete ratingCell.dataset.fetchingOrderId;
+          if (fetched && fetched.phone) {
+            const resolvedPhone = normalizeBDPhone(fetched.phone);
+            if (resolvedPhone) {
+              setOrderPhoneCache(orderId, resolvedPhone);
+              renderRatingCellForPhone(row, ratingCell, resolvedPhone, orderId);
+              done();
+              return;
+            }
+          }
+
+          if (!fetched) {
+            // Network timeout / fetch failure -> Show retryable status
+            ratingCell.dataset.renderedPhone = "retry";
+            ratingCell.innerHTML = `
+              <div class="deen-rating-cell-box">
+                <span class="deen-table-rating-pill deen-rating-retry" style="cursor:pointer; background:#fef3c7; color:#92400e; font-size:11px;" title="Could not fetch order details for Order #${escapeHTML(orderId)}. Click to retry.">
+                  ↻ Check Phone
+                </span>
+              </div>
+            `.trim();
+            const retryBtn = ratingCell.querySelector(".deen-rating-retry");
+            if (retryBtn) {
+              retryBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                delete ratingCell.dataset.renderedPhone;
+                delete ratingCell.dataset.fetchingOrderId;
+                renderOrderRatingCell(row, ratingCell);
+              });
+            }
+            done();
             return;
           }
-        }
 
-        // Truly no phone entered for this order in WooCommerce
-        ratingCell.dataset.renderedPhone = "none";
-        ratingCell.innerHTML = `<span style="color:#94a3b8; font-size:11px; font-weight:500;" title="No mobile number found for Order #${escapeHTML(orderId)}">No Phone</span>`;
-      });
+          // Order was fetched successfully, but genuinely has no phone number in WooCommerce
+          ratingCell.dataset.renderedPhone = "none";
+          ratingCell.innerHTML = `<span style="color:#94a3b8; font-size:11px; font-weight:500; cursor:pointer;" title="No mobile number entered for Order #${escapeHTML(orderId)}. Click to re-check.">No Phone</span>`;
+          ratingCell.onclick = () => {
+            delete ratingCell.dataset.renderedPhone;
+            delete ratingCell.dataset.fetchingOrderId;
+            clearOrderPhoneCache(orderId);
+            renderOrderRatingCell(row, ratingCell);
+          };
+          done();
+        });
+      }));
       return;
     }
 
@@ -3217,7 +3433,18 @@
           }
         }
 
-        renderOrderRatingCell(row, ratingCell);
+        const observer = getRowIntersectionObserver();
+        if (observer && typeof row.getBoundingClientRect === "function") {
+          const rect = row.getBoundingClientRect();
+          const inViewport = (rect.top <= (window.innerHeight || 800) + 350 && rect.bottom >= -350);
+          if (inViewport) {
+            renderOrderRatingCell(row, ratingCell);
+          } else {
+            observer.observe(row);
+          }
+        } else {
+          renderOrderRatingCell(row, ratingCell);
+        }
       });
     });
   }
@@ -4414,6 +4641,12 @@
       setOrderPhoneCache,
       clearOrderPhoneCache,
       renderRatingCellForPhone,
+      enqueueRatingTask,
+      storageEngine: _storage,
+      courierAdapters: _couriers,
+      calculateMultiFactorRisk: (typeof _couriers.calculateMultiFactorRisk === "function" ? _couriers.calculateMultiFactorRisk : null),
+      evaluateOptimalCourier: (typeof _couriers.evaluateOptimalCourier === "function" ? _couriers.evaluateOptimalCourier : null),
+      processNDRTrackingEvent: (typeof _couriers.processNDRTrackingEvent === "function" ? _couriers.processNDRTrackingEvent : null),
       BD_ISO_DISTRICTS: typeof BD_ISO_DISTRICTS !== "undefined" ? BD_ISO_DISTRICTS : (typeof require !== "undefined" ? require("./parser.js").BD_ISO_DISTRICTS : {}),
       detectDistrictFromISOCode: typeof detectDistrictFromISOCode !== "undefined" ? detectDistrictFromISOCode : (typeof require !== "undefined" ? require("./parser.js").detectDistrictFromISOCode : null),
       getISOCodeFromDistrict: typeof getISOCodeFromDistrict !== "undefined" ? getISOCodeFromDistrict : (typeof require !== "undefined" ? require("./parser.js").getISOCodeFromDistrict : null)

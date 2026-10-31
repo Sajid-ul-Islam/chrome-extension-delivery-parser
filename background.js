@@ -4,7 +4,7 @@
 
 try {
   if (typeof importScripts === "function") {
-    importScripts("env.js", "parser.js");
+    importScripts("env.js", "parser.js", "storage-engine.js", "courier-adapters.js");
   }
 } catch (e) {}
 
@@ -163,6 +163,44 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
     } else if (request && request.action === "guess_address_online") {
       handleOnlineAddressGuess(request.query, sendResponse);
       return true; // Keep message channel open for async response
+    } else if (request && request.action === "evaluate_optimal_courier") {
+      const couriersModule = (typeof DeenCouriers !== "undefined" ? DeenCouriers : null) || (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return null; } })() : null);
+      if (couriersModule && typeof couriersModule.evaluateOptimalCourier === "function") {
+        sendResponse({ success: true, ...couriersModule.evaluateOptimalCourier(request.order || {}, request.rating || {}) });
+      } else {
+        sendResponse({ success: true, recommendedCourier: "pathao", reason: "Standard express delivery" });
+      }
+      return true;
+    } else if (request && request.action === "calculate_multifactor_risk") {
+      const couriersModule = (typeof DeenCouriers !== "undefined" ? DeenCouriers : null) || (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return null; } })() : null);
+      if (couriersModule && typeof couriersModule.calculateMultiFactorRisk === "function") {
+        sendResponse({ success: true, ...couriersModule.calculateMultiFactorRisk(request.rating || {}, request.order || {}) });
+      } else {
+        sendResponse({ success: true, riskLevel: "low", recommendedAdvanceFee: 0 });
+      }
+      return true;
+    } else if (request && request.action === "process_ndr_event") {
+      const couriersModule = (typeof DeenCouriers !== "undefined" ? DeenCouriers : null) || (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return null; } })() : null);
+      const storageModule = (typeof DeenStorage !== "undefined" ? DeenStorage : null) || (typeof require !== "undefined" ? (() => { try { return require("./storage-engine.js"); } catch (e) { return null; } })() : null);
+      if (couriersModule && typeof couriersModule.processNDRTrackingEvent === "function") {
+        const ndrAlert = couriersModule.processNDRTrackingEvent(request.event || {});
+        if (ndrAlert && ndrAlert.isNDR && storageModule && typeof storageModule.saveNDRAlertAsync === "function") {
+          storageModule.saveNDRAlertAsync(ndrAlert.trackingId, ndrAlert).catch(() => {});
+        }
+        sendResponse({ success: true, alert: ndrAlert });
+      } else {
+        sendResponse({ success: false, alert: null });
+      }
+      return true;
+    } else if (request && request.action === "get_ndr_alerts") {
+      const storageModule = (typeof DeenStorage !== "undefined" ? DeenStorage : null) || (typeof require !== "undefined" ? (() => { try { return require("./storage-engine.js"); } catch (e) { return null; } })() : null);
+      if (storageModule && typeof storageModule.getNDRAlertsAsync === "function") {
+        storageModule.getNDRAlertsAsync().then(alerts => sendResponse({ success: true, alerts })).catch(() => sendResponse({ success: false, alerts: [] }));
+        return true;
+      } else {
+        sendResponse({ success: true, alerts: [] });
+        return true;
+      }
     } else {
       sendResponse({ status: "ignored" });
     }
