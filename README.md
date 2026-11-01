@@ -117,26 +117,42 @@ chrome-extension-delivery-parser/
    - Copy `.env.example` to `.env`.
    - Fill in your Pathao merchant client credentials:
      ```env
+## 🚀 Installation & 1-Click Auto-Updates
+
+### Quick Installation:
+1. **Clone or Download ZIP**:
+   ```bash
+   git clone https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser.git
+   ```
+2. **Configure Credentials (Zero Node.js required!)**:
+   - Either place a `.env` file in the extension folder:
+     ```env
      PATHAO_CLIENT_ID=your_client_id
      PATHAO_CLIENT_SECRET=your_client_secret
      PATHAO_USERNAME=your_username
      PATHAO_PASSWORD=your_password
      ```
-   - Run `node sync_env.js` to synchronize credentials into `env.js`.
-3. Open Google Chrome and navigate to:
-   ```text
-   chrome://extensions
-   ```
-4. Enable **Developer mode** (toggle in the top-right corner).
-5. Click **Load unpacked** (top-left button).
-6. Select the `chrome-extension-delivery-parser` directory.
-7. Pin the extension to your Chrome toolbar!
+     and click **📄 Auto-Load from .env** in the popup (Tab 3: Pathao Sync).
+   - Or type/paste credentials directly into the extension popup under **⚡ Pathao Sync** and click **💾 Save & Apply**.
+3. **Load in Chrome**:
+   - Open `chrome://extensions` and enable **Developer mode** (top-right).
+   - Click **Load unpacked** and select the extension folder.
+
+---
+
+### 🔄 How Updates Work (Direct from the Extension):
+Whenever changes are pushed to GitHub, users are notified automatically:
+1. **In-App Notification**: An update banner appears at the top of the popup and in WooCommerce admin.
+2. **1-Click Update**:
+   - **Windows**: Simply double-click `update.bat` in the extension folder. It pulls the latest git commit (or downloads & unpacks the latest ZIP automatically if Git is not installed).
+   - **Mac/Linux**: Run `./update.sh`.
+   - **From Popup**: Click **🔄 Reload App** to hot-reload the updated extension in Chrome memory instantly without visiting `chrome://extensions`!
 
 ---
 
 ## 🧪 Automated Testing & Verification
 
-The repository contains **7 comprehensive test suites** covering all 26+ production scenarios with 100% precision:
+The repository contains **9 comprehensive test suites** covering all enterprise scenarios with 100% precision:
 
 ```powershell
 node test_parser.js; `
@@ -145,7 +161,9 @@ node test_popup_pathao_check.js; `
 node test_live_pathao_rating_parsing.js; `
 node test_universal_phone_e2e.js; `
 node test_whatsapp_quick_reply.js; `
-node test_webmcp_integration.js
+node test_webmcp_integration.js; `
+node test_full_fetch_improvements.js; `
+node test_scalability_enterprise.js
 ```
 
 ---

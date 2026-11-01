@@ -160,7 +160,11 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
         focusOrOpenPathao();
       }
       sendResponse({ status: "handled" });
-    } else if (request && request.action === "fetch_customer_rating" && request.phone) {
+    } else if (request && request.action === "fetch_customer_rating") {
+      if (!request.phone) {
+        sendResponse({ success: false, error: "Missing phone parameter" });
+        return false;
+      }
       handleCustomerRatingRequest(request.phone, sendResponse, Boolean(request.forceRefresh));
       return true; // Keep message channel open for async response
     } else if (request && request.action === "guess_address_online") {
@@ -211,6 +215,16 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
         sendResponse({ success: false, error: err.message });
       });
       return true;
+    } else if (request && request.action === "dismiss_update") {
+      if (request.commit && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ "deen_update_dismissed": request.commit }, () => {
+          sendResponse({ success: true });
+        });
+        return true;
+      } else {
+        sendResponse({ success: false });
+        return false;
+      }
     } else if (request && request.action === "reload_extension") {
       if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.reload) {
         sendResponse({ success: true });
@@ -409,20 +423,59 @@ async function loadRuntimeEnv() {
  * Compares latest remote commit against the installed commit SHA.
  */
 const GITHUB_REPO = "Sajid-ul-Islam/chrome-extension-delivery-parser";
-const INSTALLED_COMMIT_SHORT = "70753a8"; // Base commit
+const INSTALLED_COMMIT_SHORT = "6f5e3f6"; // Fallback base commit
+
+/**
+ * Local version information resolver
+ * Reads version.json or manifest.json dynamically without hardcoding
+ */
+async function getLocalVersionInfo() {
+  let version = "1.2.1";
+  let commit = INSTALLED_COMMIT_SHORT;
+
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getManifest) {
+    try {
+      const manifest = chrome.runtime.getManifest();
+      if (manifest && manifest.version) version = manifest.version;
+    } catch (e) {}
+  }
+
+  if (typeof fetch === "function" && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL) {
+    try {
+      const res = await fetch(chrome.runtime.getURL("version.json"));
+      if (res.ok) {
+        const vJson = await res.json();
+        if (vJson && vJson.commit) commit = vJson.commit;
+        if (vJson && vJson.version) version = vJson.version;
+      }
+    } catch (e) {}
+  }
+
+  return {
+    version: version,
+    commit: commit ? commit.substring(0, 7) : INSTALLED_COMMIT_SHORT,
+    commitFull: commit || INSTALLED_COMMIT_SHORT
+  };
+}
 
 async function checkForExtensionUpdate(force = false) {
   if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return null;
 
   try {
+    const local = await getLocalVersionInfo();
+    const currentCommit = local.commit;
+
     const cached = await new Promise(r => chrome.storage.local.get([
-      "deen_update_info", "deen_update_last_check"
+      "deen_update_info", "deen_update_last_check", "deen_update_dismissed"
     ], r));
 
     const now = Date.now();
     // Cache for 30 minutes unless force is requested
     if (!force && cached && cached.deen_update_last_check && (now - cached.deen_update_last_check < 30 * 60 * 1000)) {
-      return cached.deen_update_info || null;
+      if (cached.deen_update_info) {
+        cached.deen_update_info.isDismissed = (cached.deen_update_dismissed === cached.deen_update_info.latestCommitFull);
+        return cached.deen_update_info;
+      }
     }
 
     if (typeof fetch !== "function") return null;
@@ -440,11 +493,14 @@ async function checkForExtensionUpdate(force = false) {
     const commitMsg = data.commit && data.commit.message ? data.commit.message.split("\n")[0] : "New update available";
     const commitDate = data.commit && data.commit.committer ? data.commit.committer.date : new Date().toISOString();
 
-    const isDifferent = !latestSha.startsWith(INSTALLED_COMMIT_SHORT);
+    const isDifferent = !latestSha.startsWith(currentCommit);
+    const isDismissed = (cached && cached.deen_update_dismissed === latestSha);
 
     const updateInfo = {
       updateAvailable: isDifferent,
-      currentCommit: INSTALLED_COMMIT_SHORT,
+      isDismissed: isDismissed,
+      currentCommit: currentCommit,
+      currentVersion: local.version,
       latestCommit: latestShort,
       latestCommitFull: latestSha,
       commitMessage: commitMsg,

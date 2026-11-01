@@ -1826,6 +1826,32 @@ tr.row-unsent:hover {
   box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
 }
 
+.btn-update-git {
+  background: rgba(30, 41, 59, 0.9);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.btn-update-git:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.update-tip-text {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 3px;
+  line-height: 1.2;
+}
+
+.update-tip-text code {
+  color: #38bdf8;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
 .btn-update-reload {
   background: #4f46e5;
   color: #ffffff;

@@ -348,6 +348,35 @@ assert(typeof popupModule.initUpdateChecker === "function", "popup.js must expor
 
 console.log("  ✅ Zero-Node .env runtime loader, In-Popup Credentials UI, and GitHub Auto-Update verified 100%!");
 
+// -----------------------------------------------------------------------------
+// Test 10: 1-Click Auto-Updaters (update.bat, update.sh), version.json & In-Page Notice
+// -----------------------------------------------------------------------------
+console.log("\n▶ Test 10: Testing 1-Click Auto-Updaters (update.bat, update.sh), version.json & In-Page Notice...");
+
+// 1. version.json verification
+assert(fs.existsSync(path.join(__dirname, "version.json")), "version.json must exist in extension root");
+const versionData = JSON.parse(fs.readFileSync(path.join(__dirname, "version.json"), "utf8"));
+assert(versionData.version && versionData.version.length >= 3, "version.json must specify semantic version");
+assert(versionData.commit && versionData.commit.length >= 7, "version.json must specify commit SHA");
+assert.strictEqual(manifestJson.version, versionData.version, "manifest.json and version.json must have matching version");
+assert(manifestJson.web_accessible_resources[0].resources.includes("version.json"), "manifest.json must declare version.json in web_accessible_resources");
+
+// 2. update.bat & update.sh scripts verification
+assert(fs.existsSync(path.join(__dirname, "update.bat")), "update.bat must exist for 1-click Windows updates");
+const batCode = fs.readFileSync(path.join(__dirname, "update.bat"), "utf8");
+assert(batCode.includes("git reset --hard origin/main") || batCode.includes("git pull"), "update.bat must support git pull");
+assert(batCode.includes("Invoke-WebRequest") && batCode.includes("Expand-Archive"), "update.bat must support non-git ZIP download fallback");
+
+assert(fs.existsSync(path.join(__dirname, "update.sh")), "update.sh must exist for 1-click Unix/Mac updates");
+const shCode = fs.readFileSync(path.join(__dirname, "update.sh"), "utf8");
+assert(shCode.includes("git reset --hard origin/main") || shCode.includes("git pull"), "update.sh must support git pull");
+
+// 3. In-page update notification in woocommerce.js
+assert(typeof wc.checkInPageUpdateNotice === "function", "woocommerce.js must export checkInPageUpdateNotice");
+assert(popupHtml.includes('id="btn-copy-git-pull"'), "popup.html must include #btn-copy-git-pull for 1-click git commands");
+
+console.log("  ✅ 1-Click Auto-Updaters (update.bat, update.sh), version.json, and In-Page Notice verified 100%!");
+
 console.log("\n==================================================");
 console.log("🎉 ALL ENTERPRISE SCALABILITY & R&D TESTS PASSED 100%!");
 console.log("==================================================");

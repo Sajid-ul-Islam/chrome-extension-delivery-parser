@@ -1389,14 +1389,16 @@ function initUpdateChecker() {
   const commitBadge = document.getElementById("update-commit-badge");
   const commitMsg = document.getElementById("update-commit-msg");
   const btnDownload = document.getElementById("btn-download-update");
+  const btnGitPull = document.getElementById("btn-copy-git-pull");
   const btnReload = document.getElementById("btn-reload-update");
   const btnDismiss = document.getElementById("btn-dismiss-update");
   const btnHeaderCheck = document.getElementById("btn-check-updates-header");
 
   let latestDownloadUrl = "https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/archive/refs/heads/main.zip";
+  let latestCommitSha = "";
 
   function renderUpdate(info) {
-    if (!info || !info.updateAvailable) {
+    if (!info || !info.updateAvailable || info.isDismissed) {
       if (banner) banner.classList.add("hidden");
       return;
     }
@@ -1408,6 +1410,9 @@ function initUpdateChecker() {
     if (info.downloadUrl) {
       latestDownloadUrl = info.downloadUrl;
     }
+    if (info.latestCommitFull) {
+      latestCommitSha = info.latestCommitFull;
+    }
   }
 
   function runCheck(force = false) {
@@ -1415,6 +1420,10 @@ function initUpdateChecker() {
     chrome.runtime.sendMessage({ action: "check_for_updates", force: force }, (res) => {
       if (chrome.runtime.lastError) return;
       if (res && res.success) {
+        if (force) {
+          // If forced, always show banner even if previously dismissed
+          res.isDismissed = false;
+        }
         renderUpdate(res);
         if (force) {
           if (res.updateAvailable) {
@@ -1442,6 +1451,20 @@ function initUpdateChecker() {
     });
   }
 
+  // Copy git pull command button
+  if (btnGitPull) {
+    btnGitPull.addEventListener("click", () => {
+      const cmd = "git pull origin main";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cmd).then(() => {
+          showToast("📋 Copied 'git pull origin main' to clipboard!");
+          btnGitPull.innerHTML = "<span>✓ Copied!</span>";
+          setTimeout(() => { if (btnGitPull) btnGitPull.innerHTML = "<span>📋 git pull</span>"; }, 2000);
+        });
+      }
+    });
+  }
+
   // Reload Extension button
   if (btnReload) {
     btnReload.addEventListener("click", () => {
@@ -1456,6 +1479,9 @@ function initUpdateChecker() {
   if (btnDismiss && banner) {
     btnDismiss.addEventListener("click", () => {
       banner.classList.add("hidden");
+      if (latestCommitSha && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ action: "dismiss_update", commit: latestCommitSha }).catch(() => {});
+      }
     });
   }
 

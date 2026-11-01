@@ -4512,6 +4512,77 @@
     updateBulkDispatchBar();
   }
 
+  /**
+   * In-Page Extension Update Notification Banner for WooCommerce Admin
+   * Informs merchants immediately when an update has been pushed to GitHub
+   */
+  function checkInPageUpdateNotice() {
+    if (!isExtensionValid() || typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) return;
+    chrome.storage.local.get(["deen_update_info", "deen_update_dismissed"], (res) => {
+      if (!isExtensionValid()) return;
+      const info = res && res.deen_update_info;
+      if (!info || !info.updateAvailable) return;
+      if (res.deen_update_dismissed === info.latestCommitFull) return;
+
+      if (typeof document === "undefined" || !document.body) return;
+      if (document.getElementById("deen-wc-update-pill")) return;
+
+      const pill = document.createElement("div");
+      pill.id = "deen-wc-update-pill";
+      pill.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 999999;
+        background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+        border: 1px solid rgba(99, 102, 241, 0.6);
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 12px;
+      `;
+      pill.innerHTML = `
+        <span style="font-size: 18px;">🚀</span>
+        <div style="line-height: 1.3;">
+          <div style="font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+            <span>DEEN Extension Update Available</span>
+            <span style="font-size: 10px; font-family: monospace; background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(56, 189, 248, 0.4);">${escapeHTML(info.latestCommit || "NEW")}</span>
+          </div>
+          <div style="font-size: 11px; color: #cbd5e1; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(info.commitMessage || "New updates pushed to GitHub main branch")}</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button id="deen-wc-btn-update-download" style="background: #0284c7; color: #fff; border: 1px solid #38bdf8; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600; cursor: pointer;">Download ZIP</button>
+          <button id="deen-wc-btn-update-dismiss" style="background: transparent; color: #94a3b8; border: none; font-size: 14px; cursor: pointer; padding: 2px 4px;" title="Dismiss update notification">✕</button>
+        </div>
+      `;
+
+      document.body.appendChild(pill);
+
+      const dlBtn = pill.querySelector("#deen-wc-btn-update-download");
+      if (dlBtn) {
+        dlBtn.addEventListener("click", () => {
+          const downloadUrl = info.downloadUrl || "https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/archive/refs/heads/main.zip";
+          window.open(downloadUrl, "_blank");
+        });
+      }
+
+      const dismissBtn = pill.querySelector("#deen-wc-btn-update-dismiss");
+      if (dismissBtn) {
+        dismissBtn.addEventListener("click", () => {
+          pill.remove();
+          if (info.latestCommitFull) {
+            chrome.storage.local.set({ "deen_update_dismissed": info.latestCommitFull });
+          }
+        });
+      }
+    });
+  }
+
   // Initialize
   function init() {
     if (!isExtensionValid()) return;
@@ -4525,6 +4596,7 @@
       initBulkDispatchBar();
       injectOrderPreviewModalActions();
       initPathaoPluginAddressNormalizer();
+      checkInPageUpdateNotice();
     } catch (e) {
       if (!isExtensionValid()) return;
     }
@@ -4639,6 +4711,7 @@
       enqueueRatingTask,
       storageEngine: _storage,
       courierAdapters: _couriers,
+      checkInPageUpdateNotice,
       calculateMultiFactorRisk: (typeof _couriers.calculateMultiFactorRisk === "function" ? _couriers.calculateMultiFactorRisk : null),
       evaluateOptimalCourier: (typeof _couriers.evaluateOptimalCourier === "function" ? _couriers.evaluateOptimalCourier : null),
       processNDRTrackingEvent: (typeof _couriers.processNDRTrackingEvent === "function" ? _couriers.processNDRTrackingEvent : null),

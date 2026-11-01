@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DEEN Delivery Parser - Courier & Pathao Exporter",
-  "version": "1.0.0",
+  "version": "1.2.1",
   "description": "Extract, parse, and export Pathao and courier deliveries directly to Excel and CSV with 1-click and live KPI metrics.",
   "icons": {
     "16": "icons/icon16.png",
@@ -54,6 +54,7 @@
         "icons/*",
         ".env",
         "env.js",
+        "version.json",
         "storage-engine.js",
         "courier-adapters.js",
         "webmcp-provider.js"
