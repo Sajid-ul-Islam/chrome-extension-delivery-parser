@@ -255,6 +255,10 @@ console.log("  ✅ Leaky-bucket concurrency rate limiter executed smoothly!");
 console.log("\n▶ Test 8: Testing Order #19105 HPOS Phone Extraction & Infallible Nonce Discovery...");
 
 // Test getWooCommerceAjaxConfig with unquoted preview_nonce in script
+const wcCode = fs.readFileSync(path.join(__dirname, "woocommerce.js"), "utf8");
+assert(!wcCode.includes('document.createElement("script")'), "woocommerce.js must never create script tags (violates CSP script-src)");
+assert(!wcCode.includes("document.createElement('script')"), "woocommerce.js must never create script tags (violates CSP script-src)");
+
 global.document = global.document || {};
 global.document.querySelectorAll = (sel) => {
   if (sel === "script") {

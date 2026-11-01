@@ -147,38 +147,13 @@
     let ajaxUrl = "/wp-admin/admin-ajax.php";
     let nonce = "";
 
-    // 1. Direct page context probe via DOM script (safely extracts in page world if isolated content script)
-    if (typeof document !== "undefined" && document.documentElement) {
-      if (document.documentElement.dataset && document.documentElement.dataset.deenWcNonce) {
+    // 1. Direct page context probe via cached dataset attributes if present
+    if (typeof document !== "undefined" && document.documentElement && document.documentElement.dataset) {
+      if (document.documentElement.dataset.deenWcNonce) {
         nonce = document.documentElement.dataset.deenWcNonce;
       }
-      if (document.documentElement.dataset && document.documentElement.dataset.deenWcAjaxUrl) {
+      if (document.documentElement.dataset.deenWcAjaxUrl) {
         ajaxUrl = document.documentElement.dataset.deenWcAjaxUrl;
-      }
-
-      if (!nonce) {
-        try {
-          const probe = document.createElement("script");
-          probe.textContent = `
-            try {
-              var p = window.wc_orders_params || window.wcOrdersParams || window.woocommerce_admin || window.woocommerce_admin_meta_boxes || {};
-              var n = p.preview_nonce || p.order_preview_nonce || '';
-              var u = p.ajax_url || '/wp-admin/admin-ajax.php';
-              if (n) {
-                document.documentElement.dataset.deenWcNonce = n;
-                document.documentElement.dataset.deenWcAjaxUrl = u;
-              }
-            } catch(e) {}
-          `;
-          (document.head || document.documentElement).appendChild(probe);
-          probe.remove();
-          if (document.documentElement.dataset && document.documentElement.dataset.deenWcNonce) {
-            nonce = document.documentElement.dataset.deenWcNonce;
-          }
-          if (document.documentElement.dataset && document.documentElement.dataset.deenWcAjaxUrl) {
-            ajaxUrl = document.documentElement.dataset.deenWcAjaxUrl;
-          }
-        } catch (e) {}
       }
     }
 
@@ -191,21 +166,35 @@
       }
     }
 
-    // 3. Scan script tags with quote-tolerant regex for both quoted & unquoted keys
+    // 3. Scan existing script tags with quote-tolerant regex for both quoted & unquoted keys
+    // PASSIVE DOM INSPECTION: Strictly reads existing DOM scripts without injecting any inline scripts,
+    // ensuring 100% Content Security Policy (CSP) compliance without triggering 'script-src' violations.
     if (!nonce && typeof document !== "undefined") {
-      const scripts = document.querySelectorAll("script");
-      for (let s of scripts) {
-        const text = s.textContent || s.innerText || "";
-        if (!text || (!text.includes("order_preview_nonce") && !text.includes("preview_nonce") && !text.includes("wc_orders_params"))) continue;
+      if (typeof document.querySelectorAll === "function") {
+        const scripts = document.querySelectorAll("script");
+        for (let s of scripts) {
+          const text = s.textContent || s.innerText || "";
+          if (!text || (!text.includes("order_preview_nonce") && !text.includes("preview_nonce") && !text.includes("wc_orders_params"))) continue;
 
-        const nonceMatch = text.match(/(?:['"]?(?:order_preview_nonce|preview_nonce)['"]?)\s*[:=]\s*['"]([a-zA-Z0-9_-]+)['"]/i);
-        if (nonceMatch) nonce = nonceMatch[1];
+          const nonceMatch = text.match(/(?:['"]?(?:order_preview_nonce|preview_nonce)['"]?)\s*[:=]\s*['"]([a-zA-Z0-9_-]+)['"]/i);
+          if (nonceMatch) nonce = nonceMatch[1];
 
-        const urlMatch = text.match(/(?:['"]?ajax_?url['"]?)\s*[:=]\s*['"]([^'"]+)['"]/i);
-        if (urlMatch) {
-          ajaxUrl = urlMatch[1].replace(/\\/g, "");
+          const urlMatch = text.match(/(?:['"]?ajax_?url['"]?)\s*[:=]\s*['"]([^'"]+)['"]/i);
+          if (urlMatch) {
+            ajaxUrl = urlMatch[1].replace(/\\/g, "");
+          }
+          if (nonce) break;
         }
-        if (nonce) break;
+      }
+
+      // Fallback: check preview buttons or links with data-nonce in DOM
+      if (!nonce && typeof document.querySelector === "function") {
+        const previewEl = document.querySelector(".order-preview[data-nonce], [data-order-preview-nonce], [data-preview-nonce]");
+        if (previewEl) {
+          nonce = previewEl.getAttribute("data-nonce") ||
+                  previewEl.getAttribute("data-order-preview-nonce") ||
+                  previewEl.getAttribute("data-preview-nonce") || "";
+        }
       }
 
       if (!nonce && document.documentElement) {
@@ -215,6 +204,12 @@
         const um = docHtml.match(/(?:['"]?ajax_?url['"]?)\s*[:=]\s*['"]([^'"]+)['"]/i);
         if (um) ajaxUrl = um[1].replace(/\\/g, "");
       }
+    }
+
+    // 4. Cache discovered credentials on document element for zero-latency subsequent lookups
+    if (nonce && typeof document !== "undefined" && document.documentElement && document.documentElement.dataset) {
+      document.documentElement.dataset.deenWcNonce = nonce;
+      document.documentElement.dataset.deenWcAjaxUrl = ajaxUrl;
     }
 
     return { ajaxUrl, nonce };
