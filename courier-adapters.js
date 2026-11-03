@@ -468,8 +468,8 @@
 
     const rawStatus = String(event.status || event.delivery_status || "").toLowerCase();
     const orderId = String(event.orderId || event.merchant_order_id || event.invoice || "").replace(/^#/, "").trim();
-    const customerPhone = normalizeBDPhone(event.phone || event.customerPhone || event.recipient_phone);
-    const customerName = event.customerName || event.recipient_name || "সম্মানিত গ্রাহক";
+    const customerPhone = normalizeBDPhone(event.phone || event.customerPhone || event.recipientPhone || event.recipient_phone);
+    const customerName = event.customerName || event.recipientName || event.recipient_name || "সম্মানিত গ্রাহক";
     const riderPhone = normalizeBDPhone(event.riderPhone || event.delivery_hero_phone || event.agent_phone);
     const trackingId = event.trackingId || event.consignment_id || event.consignmentId || "";
 
@@ -507,7 +507,9 @@ ${riderPhone ? `📞 রাইডারের নাম্বারে সরা
       trackingId,
       orderId,
       customerPhone,
+      recipientPhone: customerPhone,
       customerName,
+      recipientName: customerName,
       riderPhone,
       issueType,
       issueLabel,

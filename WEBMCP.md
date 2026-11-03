@@ -21,7 +21,7 @@ WebMCP allows web applications and Chrome extensions to **directly register stru
 
 ## 2. Architecture in DEEN Delivery Parser
 
-In this extension, [`webmcp-provider.js`](file:///d:/Repo/chrome-extension-delivery-parser/webmcp-provider.js) serves as a **WebMCP Bridge & Adapter** across:
+In this extension, [`webmcp-provider.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/webmcp-provider.js) serves as a **WebMCP Bridge & Adapter** across:
 1. **WooCommerce Store Admin** (`deencommerce.com/wp-admin`)
 2. **Pathao Merchant Portal** (`merchant.pathao.com`)
 3. **Universal Web Pages** (WhatsApp Web, Facebook, CRMs, etc.)
@@ -74,7 +74,7 @@ flowchart TD
 
 ## 3. Registered WebMCP Tools Specification
 
-The extension registers **7 core tools** conforming to the WebMCP schema and semantic hint conventions:
+The extension registers **12 core tools** conforming to the WebMCP schema and semantic hint conventions:
 
 ### Tool 1: `check_customer_courier_rating`
 * **Purpose**: Performs real-time headless risk assessment across Pathao and Steadfast courier networks using the customer's phone number.
@@ -286,6 +286,119 @@ The extension registers **7 core tools** conforming to the WebMCP schema and sem
       "autoSwitch": { "type": "boolean", "description": "Whether to automatically navigate or focus the Pathao tab" }
     },
     "required": ["phone", "address"]
+  }
+  ```
+
+---
+
+### Tool 8: `audit_and_auto_dispatch_orders`
+* **Purpose**: Performs batch auditing of pending WooCommerce orders, evaluates courier fraud ratings for all customer phones, flags High-Risk returns, and selectively queues Safe orders for dispatch.
+* **Semantic Hints**: `consequentialHint: true`
+* **Input Schema**:
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "orders": {
+        "type": "array",
+        "description": "Array of order objects to audit. If omitted, reads from active WooCommerce DOM."
+      },
+      "autoBookSafeOrders": {
+        "type": "boolean",
+        "description": "Whether to trigger courier booking payload dispatch for Safe orders (rating >= 85%, complete address)"
+      }
+    }
+  }
+  ```
+
+---
+
+### Tool 9: `evaluate_multi_courier_routing`
+* **Purpose**: Evaluates and recommends the optimal Bangladeshi courier network (Pathao vs Steadfast vs RedX vs Paperfly) based on destination district/zone coverage, customer courier history, and delivery fee arbitrage.
+* **Semantic Hints**: `readOnlyHint: true`
+* **Input Schema**:
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "district": { "type": "string", "description": "Destination Bangladesh district (e.g. 'Dhaka', 'Cumilla', 'Sylhet')" },
+      "zone": { "type": "string", "description": "Thana, upazila, or delivery zone (optional)" },
+      "cod": { "type": "number", "description": "Cash on delivery amount" },
+      "phone": { "type": "string", "description": "Customer phone number to incorporate multi-courier history" }
+    },
+    "required": ["district"]
+  }
+  ```
+
+---
+
+### Tool 10: `process_ndr_tracking_alerts`
+* **Purpose**: Scans courier consignment tracking events for delivery failure / Non-Delivery Report (NDR) events (unreachable, customer rescheduled, address not found) and generates urgent Bengali WhatsApp rescue messages to prevent returns.
+* **Semantic Hints**: `readOnlyHint: true`
+* **Input Schema**:
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "events": {
+        "type": "array",
+        "description": "List of tracking events (status, orderId, phone, riderPhone, trackingId)"
+      }
+    },
+    "required": ["events"]
+  }
+  ```
+
+---
+
+### Tool 11: `sync_wordpress_admin_credentials`
+* **Purpose**: Auto-syncs courier and Pathao API credentials directly from an authenticated WordPress/WooCommerce admin session (e.g. `deencommerce.com/wp-admin`).
+* **Semantic Hints**: `readOnlyHint: false`, `consequentialHint: false`
+* **Input Schema**:
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "siteUrl": {
+        "type": "string",
+        "description": "WordPress store root URL. Defaults to https://deencommerce.com."
+      }
+    }
+  }
+  ```
+
+---
+
+### Tool 12: `ask_deen_ai_assistant`
+* **Purpose**: Ask the DEEN Commerce Executive AI Intelligence Assistant about courier delivery KPIs, uncollected COD, order distributions, customer notes, Banglish queries, or fraud risks. Supports instant zero-latency deterministic queries and optional BYOK LLM execution (Gemini, OpenAI, Groq).
+* **Semantic Hints**: `readOnlyHint: true`
+* **Input Schema**:
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "User question, analytical query, or customer message/note to analyze."
+      },
+      "records": {
+        "type": "array",
+        "description": "Optional list of active delivery or WooCommerce order records."
+      },
+      "metrics": {
+        "type": "object",
+        "description": "Optional aggregated metrics (totalOrders, totalCOD, totalDeliveryFee, etc.)."
+      },
+      "phone": {
+        "type": "string",
+        "description": "Optional customer phone number to analyze."
+      },
+      "note": {
+        "type": "string",
+        "description": "Optional raw customer note or message text."
+      }
+    },
+    "required": ["query"]
   }
   ```
 

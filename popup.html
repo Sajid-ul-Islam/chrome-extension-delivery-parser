@@ -4,11 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DEEN Delivery Parser</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/icon16.png" />
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <div class="app-container">
-    <!-- GitHub Update Notification Banner -->
+    <!-- GitHub Update Notification Banner (Preserved for test_scalability_enterprise.js) -->
     <div id="github-update-banner" class="github-update-banner hidden">
       <div class="update-banner-left">
         <div class="update-banner-icon">🚀</div>
@@ -38,109 +40,451 @@
     <!-- Header -->
     <header class="app-header">
       <div class="brand">
-        <div class="brand-icon">⚡</div>
+        <div class="brand-icon">
+          <img src="icons/icon48.png" alt="DEEN Commerce" class="brand-logo-img" />
+        </div>
         <div class="brand-text">
           <h1>DEEN Delivery Parser</h1>
-          <span class="brand-tag">Pathao & Courier Intelligence</span>
+          <span class="brand-tag">Pathao &amp; Courier Intelligence</span>
         </div>
       </div>
       <div class="header-badges">
         <button id="btn-check-updates-header" class="btn-header-update" title="Check GitHub for Updates">
-          <span>🔄 Check Updates</span>
+          <span>🔄 Updates</span>
         </button>
         <span class="status-beacon">
           <span class="beacon-dot"></span>
-          <span class="beacon-text">Engine Online</span>
+          <span class="beacon-text">Online</span>
         </span>
-        <span class="version-badge">v1.2 Enterprise</span>
+        <span class="version-badge">v1.2</span>
       </div>
     </header>
 
     <!-- Navigation Tabs -->
     <nav class="nav-tabs">
-      <button class="nav-tab active" data-tab="tab-current">
-        <span>🌐 Current Tab</span>
+      <button class="nav-tab active" data-tab="tab-current" title="Parse and export WooCommerce & Pathao orders">
+        <span>📦 Deliveries</span>
       </button>
-      <button class="nav-tab" data-tab="tab-paste">
-        <span>📋 Paste & Parse</span>
+      <button class="nav-tab" data-tab="tab-sync" title="Check customer delivery ratio and fraud rating">
+        <span>🛡️ Courier Check</span>
       </button>
-      <button class="nav-tab" data-tab="tab-sync">
-        <span>⚡ Pathao Sync</span>
+      <button class="nav-tab" data-tab="tab-store" title="Connect WordPress and Pathao API keys">
+        <span>🌐 Store Connect</span>
       </button>
-      <button class="nav-tab" data-tab="tab-quickreply">
-        <span>💬 WhatsApp COD</span>
+      <button class="nav-tab" data-tab="tab-quickreply" title="Configure bKash, Nagad & WhatsApp messages">
+        <span>💬 WhatsApp</span>
       </button>
-      <button class="nav-tab" data-tab="tab-webmcp">
-        <span>🤖 WebMCP Tools</span>
+      <button class="nav-tab nav-tab-ai" data-tab="tab-assistant" title="DEEN AI Intelligence Assistant">
+        <span>🤖 Assistant</span>
       </button>
+      <button class="nav-tab nav-tab-ai" data-tab="tab-webmcp" title="W3C WebMCP AI Agent Tools">
+        <span>⚡ AI Tools</span>
+      </button>
+      <!-- Hidden compatibility tab for context menu & pending text storage -->
+      <button class="nav-tab hidden" data-tab="tab-paste" style="display:none;"></button>
     </nav>
 
-    <!-- Tab 1: Current Tab Extractor -->
+    <!-- ====================================================================
+         Tab 1: Deliveries (Extractor, Paste & Export Table)
+         ==================================================================== -->
     <div id="tab-current" class="tab-content active">
-      <div class="extract-banner">
-        <div class="url-row">
-          <span class="dot-indicator"></span>
-          <span id="current-url" class="truncate-url">Detecting active page...</span>
-        </div>
-        <button id="btn-extract-tab" class="btn-primary-large">
-          <span>⚡ Extract Deliveries from This Page</span>
+      <!-- Input Mode Sub-Bar: Active Page vs Paste Text -->
+      <div class="delivery-sub-nav">
+        <button type="button" class="delivery-sub-tab active" data-sub="extract">
+          <span>⚡ Active Page Extractor</span>
+        </button>
+        <button type="button" class="delivery-sub-tab" data-sub="paste">
+          <span>📋 Paste Courier Text</span>
         </button>
       </div>
-    </div>
 
-    <!-- Tab 2: Paste Input -->
-    <div id="tab-paste" class="tab-content">
-      <div class="paste-area-wrapper">
-        <textarea
-          id="raw-text-input"
-          placeholder="Paste copied courier text blocks or unstructured delivery notes here..."
-          rows="4"
-        ></textarea>
-        <div class="paste-controls">
-          <label class="checkbox-label">
-            <input type="checkbox" id="chk-force-fuzzy" />
-            <span>Force Aggressive Fuzzy Mode</span>
-          </label>
-          <div class="btn-row">
-            <button id="btn-clear-paste" class="btn-text">Clear</button>
-            <button id="btn-parse-paste" class="btn-primary">
-              <span>🧩 Parse Records</span>
+      <!-- Mode A: Active Tab Extractor -->
+      <div id="view-extract" class="delivery-sub-view">
+        <div class="extract-banner">
+          <div class="url-row">
+            <span class="dot-indicator"></span>
+            <span id="current-url" class="truncate-url">Detecting active page...</span>
+          </div>
+          <button id="btn-extract-tab" class="btn-primary-large">
+            <span>⚡ Extract Deliveries from This Page</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Mode B: Paste Input (Collapsible/Toggled) -->
+      <div id="view-paste" class="delivery-sub-view hidden">
+        <div class="paste-area-wrapper">
+          <textarea
+            id="raw-text-input"
+            placeholder="Paste copied courier text blocks or unstructured delivery notes here..."
+            rows="3"
+          ></textarea>
+          <div class="paste-controls">
+            <label class="checkbox-label">
+              <input type="checkbox" id="chk-force-fuzzy" />
+              <span>Force Aggressive Fuzzy Mode</span>
+            </label>
+            <div class="btn-row">
+              <button id="btn-clear-paste" class="btn-text">Clear</button>
+              <button id="btn-parse-paste" class="btn-primary">
+                <span>🧩 Parse Records</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results Section (KPIs, Filters, Search & Table) - SCOPED TO DELIVERIES TAB -->
+      <div id="results-container" class="results-section hidden">
+        <!-- KPI Cards -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-title" id="kpi-title-total">Total Parcels</div>
+            <div class="kpi-value" id="kpi-total">0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title" id="kpi-title-status">Paid / Unpaid</div>
+            <div class="kpi-value" id="kpi-status-container"><span id="kpi-paid">0</span> / <span id="kpi-unpaid">0</span></div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title" id="kpi-title-cod">Total COD</div>
+            <div class="kpi-value green" id="kpi-cod">৳0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title" id="kpi-title-net">Net Revenue</div>
+            <div class="kpi-value blue" id="kpi-net">৳0</div>
+          </div>
+        </div>
+
+        <!-- Activity / Dispatch Status Filter Bar -->
+        <div id="activity-filter-bar" class="activity-filter-bar hidden">
+          <div class="activity-filter-label">⚡ Activity Filter:</div>
+          <div class="activity-filter-buttons">
+            <button type="button" class="activity-filter-btn active" data-filter="all">
+              <span>All (<span id="filter-count-all">0</span>)</span>
             </button>
+            <button type="button" class="activity-filter-btn btn-filter-unsent" data-filter="unsent" title="Filter orders needing Pathao dispatch">
+              <span>⚡ Unsent / Send with Pathao (<span id="filter-count-unsent">0</span>)</span>
+            </button>
+            <button type="button" class="activity-filter-btn btn-filter-dispatched" data-filter="dispatched" title="Filter already dispatched orders">
+              <span>🚚 Dispatched (<span id="filter-count-dispatched">0</span>)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar">
+          <input
+            type="text"
+            id="search-input"
+            class="search-box"
+            placeholder="🔍 Search consignment, order, customer, phone, store..."
+          />
+          <div class="export-buttons">
+            <button id="btn-export-excel" class="btn-success" title="Download formatted Excel (.xlsx) spreadsheet">
+              <span>📥 Excel (.xlsx)</span>
+            </button>
+            <button id="btn-export-csv" class="btn-secondary" title="Download standard CSV file">
+              <span>📄 CSV</span>
+            </button>
+            <button id="btn-copy-table" class="btn-secondary" title="Copy entire table for Google Sheets/Excel">
+              <span>📋 Copy Table</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Column-Wise Copy Toolbar -->
+        <div class="col-copy-toolbar">
+          <div class="col-copy-header">
+            <span class="col-copy-title">📋 Copy Column:</span>
+            <span class="col-copy-hint">(Click chip to copy all items)</span>
+          </div>
+          <div class="col-copy-chips">
+            <button type="button" class="btn-chip" data-col="Phone" title="Copy all customer phone numbers (1 per line)">📱 Phone</button>
+            <button type="button" class="btn-chip" data-col="Consignment ID" title="Copy all Consignment IDs">🏷️ Consignment</button>
+            <button type="button" class="btn-chip" data-col="Order ID" title="Copy all Order IDs">📦 Order ID</button>
+            <button type="button" class="btn-chip" data-col="COD Amount" title="Copy all COD Amounts">💰 COD (৳)</button>
+            <button type="button" class="btn-chip" data-col="Store" title="Copy all Store names">🏢 Store</button>
+            <button type="button" class="btn-chip" data-col="Recipient Name" title="Copy all Customer names">👤 Customer</button>
+            <button type="button" class="btn-chip" data-col="Address" title="Copy all Delivery addresses">📍 Address</button>
+            <button type="button" class="btn-chip" data-col="Delivery Status" title="Copy all Delivery statuses">🚚 Status</button>
+            <button type="button" class="btn-chip" data-col="Charge" title="Copy all Delivery charges">💳 Charge</button>
+            <div class="col-copy-select-wrapper">
+              <select id="select-copy-column" class="select-chip" title="Copy any other column">
+                <option value="">More columns...</option>
+                <option value="Type">Type (Parcel/Express)</option>
+                <option value="Status Updated On">Status Updated On</option>
+                <option value="Discount">Discount Amount</option>
+                <option value="Payment Status">Payment Status (Paid/Unpaid)</option>
+                <option value="Action">Actions (View/POD)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="table-container">
+          <table id="records-table">
+            <thead>
+              <tr>
+                <th class="copyable-th" data-col="Consignment ID" title="Click to copy all Consignment IDs">Consignment <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="Type" title="Click to copy all Types">Type <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="Order ID" title="Click to copy all Order IDs">Order ID <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="Store" title="Click to copy all Stores">Store <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="Recipient Name" title="Click to copy all Customers">Customer <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="Phone" title="Click to copy all Phone numbers">Phone <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="Address" title="Click to copy all Addresses">Address <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="Delivery Status" title="Click to copy all Statuses">Status <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="COD Amount" title="Click to copy all COD Amounts">COD (৳) <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="Charge" title="Click to copy all Charges">Charge (৳) <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="Discount" title="Click to copy all Discounts">Discount (৳) <span class="copy-icon">📋</span></th>
+                <th class="copyable-th" data-col="Payment Status" title="Click to copy all Payment statuses">Payment <span class="copy-icon">📋</span></th>
+              </tr>
+            </thead>
+            <tbody id="table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Empty State - SCOPED TO DELIVERIES TAB -->
+      <div id="empty-state" class="empty-state">
+        <div class="empty-icon">📦</div>
+        <div class="empty-title">Ready to Parse Deliveries</div>
+        <div class="empty-desc">
+          Open <strong>merchant.pathao.com</strong> or <strong>WooCommerce Orders</strong> (<code>deencommerce.com/wp-admin/...</code>) and click <em>Extract</em>, or use the <em>Paste Courier Text</em> tab to parse copied notes into Excel.
+        </div>
+        <div class="empty-steps">
+          <div class="empty-step">
+            <span class="empty-step-num">1</span>
+            <span>Open your Orders tab in Chrome</span>
+          </div>
+          <div class="empty-step-divider">→</div>
+          <div class="empty-step">
+            <span class="empty-step-num">2</span>
+            <span>Click <strong>⚡ Extract Deliveries</strong></span>
+          </div>
+          <div class="empty-step-divider">→</div>
+          <div class="empty-step">
+            <span class="empty-step-num">3</span>
+            <span>Export to <strong>Excel (.xlsx)</strong> or CSV</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Tab 3: Pathao Sync & Auto-Detect -->
+    <!-- ====================================================================
+         Tab 2: Courier Rating (Customer Phone Check & Fraud Intelligence)
+         ==================================================================== -->
     <div id="tab-sync" class="tab-content">
       <div class="sync-panel">
-        <div class="sync-banner">
-          <div class="sync-badge">⚡ Universal Auto-Detect Active</div>
-          <p class="sync-desc">Highlight or copy any phone number on <strong>ANY website</strong> (WhatsApp Web, Facebook, WooCommerce, or CRM) to instantly check customer delivery ratio & fraud rating in <strong>Pathao</strong>!</p>
-        </div>
-
         <!-- Quick manual phone check input -->
         <div class="quick-check-box">
           <div class="quick-check-header">
-            <span class="quick-check-title">⚡ Quick Check Any BD Number</span>
-            <span class="quick-check-sub">Multi-Courier Intelligence</span>
+            <div class="quick-check-title-row">
+              <span class="quick-check-icon">🛡️</span>
+              <div>
+                <span class="quick-check-title">Customer Courier Rating &amp; Fraud Check</span>
+                <span class="quick-check-sub">Real-Time Pathao &amp; Steadfast Delivery Ratios</span>
+              </div>
+            </div>
+            <span class="quick-check-badge">Multi-Courier Live</span>
           </div>
+
           <div class="quick-check-input-row">
             <div class="quick-input-wrapper">
               <span class="quick-input-icon">📱</span>
-              <input type="tel" id="input-quick-phone" placeholder="e.g. 01712345678 or +88017..." />
+              <input type="tel" id="input-quick-phone" placeholder="Enter BD Phone (e.g. 01712345678 or +88017...)" autocomplete="off" />
             </div>
             <button id="btn-quick-check" class="btn-primary btn-quick-check-btn">
-              <span>⚡ Check</span>
+              <span>⚡ Check Rating</span>
             </button>
           </div>
+
           <div id="popup-rating-card" class="hidden popup-rating-result"></div>
         </div>
 
-        <!-- Pathao API Credentials & Zero-Node .env Manager -->
-        <div class="api-credentials-card">
+        <!-- Recent Synced Customer Card -->
+        <div class="last-synced-card">
+          <div class="sync-card-header">
+            <div class="sync-card-title-group">
+              <span class="sync-card-icon">👤</span>
+              <div>
+                <div class="sync-card-title">Recent Synced Customer</div>
+                <div class="sync-card-sub">Last order clicked in WooCommerce or highlighted on screen</div>
+              </div>
+            </div>
+            <span class="sync-status-chip">Active Session</span>
+          </div>
+
+          <div class="customer-details-grid">
+            <div class="detail-item">
+              <span class="detail-label">Phone</span>
+              <strong class="detail-val detail-phone" id="sync-phone">None yet</strong>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Customer Name</span>
+              <span class="detail-val" id="sync-name">-</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Order ID</span>
+              <span class="detail-val" id="sync-order">-</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">COD Amount</span>
+              <span class="detail-val detail-cod" id="sync-cod">-</span>
+            </div>
+          </div>
+
+          <div class="sync-card-actions">
+            <button id="btn-open-pathao-form" class="btn-primary-large btn-sync-dispatch">
+              <span>🚀 Open in Pathao Create</span>
+            </button>
+            <button id="btn-clear-pathao-sync" class="btn-secondary btn-sync-clear" title="Clear and remove saved phone number">
+              <span>🗑️ Clear</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Universal Detection Tip Card -->
+        <div class="sync-instructions">
+          <div class="instruction-title">💡 Check Ratings Anywhere in Chrome:</div>
+          <div class="step-item">
+            <span class="step-num">1</span>
+            <span><strong>Highlight Any Number:</strong> On WhatsApp Web, Facebook, or any CRM, select a phone number to see the floating <strong>🛡️ Courier Check</strong> pill!</span>
+          </div>
+          <div class="step-item">
+            <span class="step-num">2</span>
+            <span><strong>Press Ctrl+C:</strong> Copy any phone number to trigger an instant on-screen notification with 1-click delivery ratio and risk check.</span>
+          </div>
+          <div class="step-item">
+            <span class="step-num">3</span>
+            <span><strong>Instant Dispatch:</strong> Click <strong>🚀 Open in Pathao</strong> to auto-fill recipient details and consignments in 1 click!</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================================================
+         Tab 3: Store Connect (WordPress Auto-Connect & Courier API Keys)
+         ==================================================================== -->
+    <div id="tab-store" class="tab-content">
+      <div class="store-connect-panel">
+        <!-- WordPress / DeenCommerce Admin Auto-Connect Card -->
+        <div class="wp-connect-card">
+          <div class="wp-card-header">
+            <div class="wp-card-title-row">
+              <span class="wp-brand-icon">🌐</span>
+              <div class="wp-title-text-group">
+                <div class="wp-card-title">WordPress Admin Auto-Connect</div>
+                <div class="wp-card-sub">DeenCommerce Admin Option • Zero Manual API Entry</div>
+              </div>
+            </div>
+            <span id="wp-connection-badge" class="wp-status-badge checking">Checking...</span>
+          </div>
+
+          <!-- Authenticated Account Profile Card (Shows authenticated user & permissions) -->
+          <div id="wp-connected-profile" class="wp-profile-card hidden">
+            <div class="wp-profile-body">
+              <div class="wp-avatar-badge" id="wp-profile-avatar">A</div>
+              <div class="wp-profile-main">
+                <div class="wp-profile-title-row">
+                  <span class="wp-profile-name" id="wp-profile-name">Admin</span>
+                  <span class="wp-role-badge" id="wp-profile-role">🛡️ Administrator</span>
+                </div>
+                <div class="wp-profile-meta-row">
+                  <span class="wp-profile-site" id="wp-profile-site">deencommerce.com</span>
+                  <span class="wp-meta-dot">•</span>
+                  <span class="wp-profile-perm" id="wp-profile-perm">Full Store &amp; API Access</span>
+                </div>
+              </div>
+            </div>
+            <div class="wp-profile-footer">
+              <span class="wp-profile-time" id="wp-profile-time">Active Session</span>
+              <div class="wp-profile-btns">
+                <button type="button" id="btn-recheck-wp" class="btn-subtle" title="Re-sync permissions and credentials from WordPress">
+                  <span>🔄 Re-sync</span>
+                </button>
+                <button type="button" id="btn-disconnect-profile" class="btn-subtle-danger" title="Disconnect this WordPress session">
+                  <span>Disconnect</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <p class="wp-card-desc">
+            Connect directly with your WordPress admin session to automatically sync Pathao &amp; courier API keys without typing Client IDs or secrets.
+          </p>
+
+          <!-- Mode Switcher: 1-Click Session Sync vs Direct WP Login -->
+          <div class="wp-mode-tabs">
+            <button type="button" class="wp-mode-tab active" data-wp-mode="session">
+              <span>⚡ 1-Click Active Session (Recommended)</span>
+            </button>
+            <button type="button" class="wp-mode-tab" data-wp-mode="login">
+              <span>🔐 Login with Credentials</span>
+            </button>
+          </div>
+
+          <!-- Mode 1: Active Session Auto-Sync -->
+          <div id="wp-mode-session-panel" class="wp-mode-panel active">
+            <div class="wp-site-row">
+              <div class="wp-input-wrapper">
+                <span class="wp-input-icon">🔗</span>
+                <input type="url" id="wp-site-url" value="https://deencommerce.com" placeholder="https://deencommerce.com" autocomplete="off" />
+              </div>
+              <button id="btn-detect-active-wp" class="btn-secondary btn-wp-detect" title="Use active tab URL">
+                <span>🎯 Current Tab</span>
+              </button>
+            </div>
+            <div class="wp-actions-row">
+              <button id="btn-sync-from-wp" class="btn-primary btn-wp-sync">
+                <span>⚡ Auto-Sync API Keys from WordPress</span>
+              </button>
+              <button id="btn-open-wp-login" class="btn-secondary btn-wp-login" title="Open WordPress Login in new tab">
+                <span>🔗 Open WP Admin</span>
+              </button>
+              <button id="btn-disconnect-wp" class="btn-text btn-wp-disconnect hidden" title="Disconnect WordPress sync">
+                <span>Disconnect</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Mode 2: Direct WordPress Login Form -->
+          <div id="wp-mode-login-panel" class="wp-mode-panel hidden">
+            <div class="cred-inputs-grid">
+              <div class="cred-field">
+                <label for="wp-login-username">WP Username / Email</label>
+                <input type="text" id="wp-login-username" placeholder="admin@deencommerce.com" autocomplete="username" />
+              </div>
+              <div class="cred-field">
+                <label for="wp-login-password">WP Password</label>
+                <input type="password" id="wp-login-password" placeholder="••••••••••••••••" autocomplete="current-password" />
+              </div>
+            </div>
+            <div class="wp-actions-row">
+              <button id="btn-submit-wp-login" class="btn-primary btn-wp-sync">
+                <span>🔐 Log In &amp; Sync API Keys</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="wp-sync-feedback" class="wp-feedback hidden"></div>
+        </div>
+
+        <!-- Advanced Manual API Keys & .env Toggle -->
+        <div class="manual-cred-toggle-bar">
+          <button id="btn-toggle-manual-cred" class="btn-toggle-manual" type="button">
+            <span>⚙️ Advanced: Manual API Keys &amp; .env Override</span>
+            <span id="manual-toggle-arrow" class="toggle-arrow">▾</span>
+          </button>
+        </div>
+
+        <!-- Pathao API Credentials & Zero-Node .env Manager (Collapsible) -->
+        <div id="manual-cred-container" class="api-credentials-card collapsed">
           <div class="api-card-header">
-            <div class="api-card-title">🔑 Pathao API Credentials & Zero-Node .env</div>
+            <div class="api-card-title">🔑 Pathao API Credentials &amp; Zero-Node .env</div>
             <span id="cred-status-indicator" class="cred-status-badge">Checking...</span>
           </div>
           <p class="api-card-desc">
@@ -169,76 +513,30 @@
               <span>📄 Auto-Load from .env</span>
             </button>
             <button id="btn-save-credentials" class="btn-primary btn-save-cred">
-              <span>💾 Save & Apply</span>
+              <span>💾 Save &amp; Apply</span>
             </button>
           </div>
           <div id="cred-feedback-msg" class="cred-feedback hidden"></div>
         </div>
-
-        <div class="last-synced-card">
-          <div class="sync-card-header">
-            <div class="sync-card-title">Recent Synced Customer</div>
-            <span class="sync-status-chip">Active Session</span>
-          </div>
-          <div class="customer-details-grid">
-            <div class="detail-item">
-              <span class="detail-label">Phone</span>
-              <strong class="detail-val detail-phone" id="sync-phone">None yet</strong>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">Name</span>
-              <span class="detail-val" id="sync-name">-</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">Order ID</span>
-              <span class="detail-val" id="sync-order">-</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">COD Total</span>
-              <span class="detail-val detail-cod" id="sync-cod">-</span>
-            </div>
-          </div>
-          <div class="sync-card-actions">
-            <button id="btn-open-pathao-form" class="btn-primary-large btn-sync-dispatch">
-              <span>🚀 Open Pathao Create</span>
-            </button>
-            <button id="btn-clear-pathao-sync" class="btn-secondary btn-sync-clear" title="Clear and remove saved phone number">
-              <span>🗑️ Clear Phone</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="sync-instructions">
-          <div class="instruction-title">💡 How it works everywhere:</div>
-          <div class="step-item">
-            <span class="step-num">1</span>
-            <span><strong>Highlight Any Number:</strong> On WhatsApp Web, Facebook, or any website, highlight/select a phone number to see the floating <strong>⚡ Pathao Check</strong> pill!</span>
-          </div>
-          <div class="step-item">
-            <span class="step-num">2</span>
-            <span><strong>Copy Any Number:</strong> Press <kbd>Ctrl+C</kbd> on any phone number to trigger the on-screen toast with <strong>👉 Open Pathao</strong>.</span>
-          </div>
-          <div class="step-item">
-            <span class="step-num">3</span>
-            <span><strong>Instant Customer Ratio:</strong> In Pathao, recipient details are autofilled and Pathao immediately reveals the customer's delivery ratio & fraud check!</span>
-          </div>
-        </div>
       </div>
     </div>
 
-    <!-- Tab 4: WhatsApp Advance COD Quick Reply Settings -->
+    <!-- ====================================================================
+         Tab 4: WhatsApp Advance COD & Settings
+         ==================================================================== -->
     <div id="tab-quickreply" class="tab-content">
       <div class="qr-panel">
-        <div class="sync-banner qr-banner">
-          <div class="sync-badge qr-badge">💬 WhatsApp Quick Reply & Advance COD</div>
-          <p class="sync-desc">Configure your bKash & Nagad accounts and delivery fees to protect against COD losses with 1-click WhatsApp messages on risky orders.</p>
-        </div>
-
         <!-- Settings Form -->
         <div class="qr-settings-card">
           <div class="qr-card-header">
-            <span class="qr-card-title">⚙️ Merchant Payment & Delivery Settings</span>
-            <span class="qr-secure-badge">🔒 AES-256 Synced</span>
+            <div class="qr-card-title-group">
+              <span class="qr-card-icon">💬</span>
+              <div>
+                <span class="qr-card-title">Merchant Payment &amp; Delivery Settings</span>
+                <span class="qr-card-sub">Configure bKash, Nagad, and delivery charges for 1-click messages</span>
+              </div>
+            </div>
+            <span class="qr-secure-badge">🔒 Synced</span>
           </div>
 
           <div class="qr-form-grid qr-grid-2col">
@@ -312,7 +610,7 @@
           </div>
           <div class="wa-chat-canvas">
             <div class="wa-speech-bubble">
-              <textarea id="qr-preview-textarea" rows="6" readonly class="wa-bubble-textarea"></textarea>
+              <textarea id="qr-preview-textarea" rows="5" readonly class="wa-bubble-textarea"></textarea>
               <div class="wa-bubble-meta">
                 <span class="wa-time">Just now</span>
                 <span class="wa-ticks">✓✓</span>
@@ -328,7 +626,136 @@
       </div>
     </div>
 
-    <!-- Tab 5: WebMCP AI Agent Tools -->
+    <!-- ====================================================================
+         Tab 5: DEEN AI Intelligence Assistant (Copilot & Analytics)
+         ==================================================================== -->
+    <div id="tab-assistant" class="tab-content">
+      <div class="assistant-panel">
+        <!-- Top Sub-Bar: Telemetry Context & BYOK Key Settings -->
+        <div class="assistant-top-bar">
+          <div class="assistant-context-pill" id="assistant-context-pill" title="Live orders & courier data attached to AI reasoning">
+            <span class="assistant-pulse-dot"></span>
+            <span id="assistant-context-summary">Telemetry: 0 parcels (৳0 COD)</span>
+          </div>
+          <div class="assistant-top-actions">
+            <button id="btn-toggle-byok-modal" class="btn-assistant-action" title="Configure Google Gemini, OpenAI, or Groq API Key">
+              <span>⚙️ AI Key</span>
+              <span id="byok-status-dot" class="byok-dot byok-dot-off"></span>
+            </button>
+            <button id="btn-clear-chat-history" class="btn-assistant-action btn-assistant-clear" title="Clear Chat History">
+              <span>🗑️</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- BYOK API Key Drawer/Modal (Collapsible) -->
+        <div id="assistant-byok-drawer" class="assistant-byok-drawer hidden">
+          <div class="byok-card">
+            <div class="byok-header">
+              <div class="byok-title">
+                <span>🔑 Bring Your Own Key (BYOK)</span>
+                <span class="byok-badge">Direct Client API</span>
+              </div>
+              <button id="btn-close-byok-drawer" class="byok-close-btn">&times;</button>
+            </div>
+            <p class="byok-desc">
+              Your key stays 100% locally in your browser. Get a free high-quota key at
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" class="byok-link">Google AI Studio</a>.
+            </p>
+            <div class="byok-field-group">
+              <label class="byok-label">AI Provider</label>
+              <select id="byok-provider-select" class="byok-select">
+                <option value="gemini">Google Gemini (Recommended / Free Flash)</option>
+                <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
+                <option value="groq">Groq Cloud (Ultra-Fast LLaMA 3.3)</option>
+              </select>
+            </div>
+            <div class="byok-field-group">
+              <label class="byok-label">API Key</label>
+              <div class="byok-input-row">
+                <input type="password" id="byok-api-key-input" class="byok-input" placeholder="AIzaSy... or sk-..." />
+                <button type="button" id="btn-byok-toggle-visibility" class="byok-btn-vis" title="Toggle Visibility">👁️</button>
+              </div>
+            </div>
+            <div class="byok-field-group">
+              <label class="byok-label">Model Identifier</label>
+              <input type="text" id="byok-model-input" class="byok-input" placeholder="gemini-2.5-flash" value="gemini-2.5-flash" />
+            </div>
+            <div class="byok-footer">
+              <button id="btn-byok-test-connection" class="btn-secondary byok-test-btn">
+                <span>⚡ Test Ping</span>
+              </button>
+              <button id="btn-byok-save" class="btn-primary byok-save-btn">
+                <span>💾 Save &amp; Activate</span>
+              </button>
+            </div>
+            <div id="byok-test-result" class="byok-test-status hidden"></div>
+          </div>
+        </div>
+
+        <!-- Chat Messages Stream -->
+        <div id="assistant-chat-stream" class="assistant-chat-stream">
+          <!-- Default Welcome Message -->
+          <div class="chat-msg chat-msg-bot">
+            <div class="chat-avatar">
+              <img src="icons/icon32.png" alt="DEEN AI" />
+            </div>
+            <div class="chat-bubble">
+              <div class="chat-sender">DEEN Assistant <span class="chat-tag">Executive Intelligence</span></div>
+              <div class="chat-text">
+                Assalamu Alaikum! I am <strong>DEEN Assistant</strong>, ported from DEEN Commerce Sales-Analysis Intelligence.<br/><br/>
+                I have real-time access to your parsed delivery telemetry, Pathao &amp; Steadfast fraud scores, and BD territory distribution.
+                Ask me about today's delivery ratio, uncollected COD, high-risk orders, or paste a customer message/note to evaluate return risks!
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Prompt Recommendation Chips Carousel -->
+        <div class="assistant-chips-container">
+          <div class="assistant-chips-scroll" id="assistant-chips-scroll">
+            <button class="assistant-chip" data-prompt="Summarize our delivery performance, COD pipeline, and RTO risk.">
+              <span>📊 Delivery &amp; RTO Summary</span>
+            </button>
+            <button class="assistant-chip" data-prompt="How much COD is currently uncollected and what is our net revenue?">
+              <span>💰 Uncollected COD</span>
+            </button>
+            <button class="assistant-chip" data-prompt="Are there any high return risk customers or low delivery ratios?">
+              <span>⚠️ High Risk Customers</span>
+            </button>
+            <button class="assistant-chip" data-prompt="Show order distribution across Bangladesh districts and delivery fees.">
+              <span>🗺️ Districts &amp; Delivery Fees</span>
+            </button>
+            <button class="assistant-chip" data-prompt="Analyze this customer note: 'dheke nibo bhalo na hole ferot dibo'">
+              <span>📝 Analyze Note: 'dheke nibo'</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat Input Form -->
+        <div class="assistant-input-bar">
+          <div class="assistant-input-wrapper">
+            <textarea
+              id="assistant-user-input"
+              rows="1"
+              placeholder="Ask DEEN Assistant about deliveries, revenue, notes, or Banglish queries... (Enter to send)"
+              class="assistant-textarea"
+            ></textarea>
+            <button id="btn-assistant-send" class="btn-assistant-send" title="Send message (Enter)">
+              <span>🚀</span>
+            </button>
+          </div>
+          <div class="assistant-input-footer">
+            <span class="assistant-mode-badge" id="assistant-mode-indicator">Mode: In-Memory Deterministic Engine</span>
+            <span class="assistant-hint">Shift+Enter for new line</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================================================
+         Tab 5: WebMCP AI Agent Tools (Developer & Automation)
+         ==================================================================== -->
     <div id="tab-webmcp" class="tab-content">
       <div class="webmcp-panel">
         <div class="sync-banner webmcp-banner">
@@ -342,7 +769,7 @@
         <div class="webmcp-card">
           <div class="webmcp-card-header">
             <label class="webmcp-label">Select WebMCP Tool</label>
-            <span id="webmcp-tool-count" class="webmcp-count-badge">10 Tools</span>
+            <span id="webmcp-tool-count" class="webmcp-count-badge">11 Tools</span>
           </div>
           <select id="webmcp-tool-select" class="webmcp-select">
             <option value="check_customer_courier_rating">check_customer_courier_rating (Pathao + Steadfast)</option>
@@ -354,7 +781,8 @@
             <option value="autofill_pathao_consignment">autofill_pathao_consignment (Pathao Form Dispatch)</option>
             <option value="query_indexed_order_cache">query_indexed_order_cache (IndexedDB Storage Engine)</option>
             <option value="calculate_multi_factor_risk">calculate_multi_factor_risk (Predictive Fraud Engine)</option>
-            <option value="recommend_dynamic_courier">recommend_dynamic_courier (Cost & SLA Routing Arbitrage)</option>
+            <option value="recommend_dynamic_courier">recommend_dynamic_courier (Cost &amp; SLA Routing Arbitrage)</option>
+            <option value="sync_wordpress_admin_credentials">sync_wordpress_admin_credentials (WordPress Admin SSO)</option>
           </select>
 
           <div id="webmcp-tool-desc" class="webmcp-desc-box">
@@ -386,135 +814,13 @@
       </div>
     </div>
 
-    <!-- Results Section (KPIs + Table) -->
-    <div id="results-container" class="results-section hidden">
-      <!-- KPI Cards -->
-      <div class="kpi-grid">
-        <div class="kpi-card">
-          <div class="kpi-title" id="kpi-title-total">Total Parcels</div>
-          <div class="kpi-value" id="kpi-total">0</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-title" id="kpi-title-status">Paid / Unpaid</div>
-          <div class="kpi-value" id="kpi-status-container"><span id="kpi-paid">0</span> / <span id="kpi-unpaid">0</span></div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-title" id="kpi-title-cod">Total COD</div>
-          <div class="kpi-value green" id="kpi-cod">৳0</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-title" id="kpi-title-net">Net Revenue</div>
-          <div class="kpi-value blue" id="kpi-net">৳0</div>
-        </div>
-      </div>
-
-      <!-- Activity / Dispatch Status Filter Bar -->
-      <div id="activity-filter-bar" class="activity-filter-bar hidden">
-        <div class="activity-filter-label">⚡ Activity Filter:</div>
-        <div class="activity-filter-buttons">
-          <button type="button" class="activity-filter-btn active" data-filter="all">
-            <span>All (<span id="filter-count-all">0</span>)</span>
-          </button>
-          <button type="button" class="activity-filter-btn btn-filter-unsent" data-filter="unsent" title="Filter orders needing Pathao dispatch">
-            <span>⚡ Unsent / Send with Pathao (<span id="filter-count-unsent">0</span>)</span>
-          </button>
-          <button type="button" class="activity-filter-btn btn-filter-dispatched" data-filter="dispatched" title="Filter already dispatched orders">
-            <span>🚚 Dispatched (<span id="filter-count-dispatched">0</span>)</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Action Bar -->
-      <div class="action-bar">
-        <input
-          type="text"
-          id="search-input"
-          class="search-box"
-          placeholder="🔍 Search consignment, order, customer, phone, store..."
-        />
-        <div class="export-buttons">
-          <button id="btn-export-excel" class="btn-success" title="Download formatted Excel (.xlsx) spreadsheet">
-            <span>📥 Excel (.xlsx)</span>
-          </button>
-          <button id="btn-export-csv" class="btn-secondary" title="Download standard CSV file">
-            <span>📄 CSV</span>
-          </button>
-          <button id="btn-copy-table" class="btn-secondary" title="Copy entire table for Google Sheets/Excel">
-            <span>📋 Copy Table</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Column-Wise Copy Toolbar -->
-      <div class="col-copy-toolbar">
-        <div class="col-copy-header">
-          <span class="col-copy-title">📋 Copy Column:</span>
-          <span class="col-copy-hint">(Click chip or table header to copy)</span>
-        </div>
-        <div class="col-copy-chips">
-          <button type="button" class="btn-chip" data-col="Phone" title="Copy all customer phone numbers (1 per line)">📱 Phone</button>
-          <button type="button" class="btn-chip" data-col="Consignment ID" title="Copy all Consignment IDs">🏷️ Consignment</button>
-          <button type="button" class="btn-chip" data-col="Order ID" title="Copy all Order IDs">📦 Order ID</button>
-          <button type="button" class="btn-chip" data-col="COD Amount" title="Copy all COD Amounts">💰 COD (৳)</button>
-          <button type="button" class="btn-chip" data-col="Store" title="Copy all Store names">🏢 Store</button>
-          <button type="button" class="btn-chip" data-col="Recipient Name" title="Copy all Customer names">👤 Customer</button>
-          <button type="button" class="btn-chip" data-col="Address" title="Copy all Delivery addresses">📍 Address</button>
-          <button type="button" class="btn-chip" data-col="Delivery Status" title="Copy all Delivery statuses">🚚 Status</button>
-          <button type="button" class="btn-chip" data-col="Charge" title="Copy all Delivery charges">💳 Charge</button>
-          <div class="col-copy-select-wrapper">
-            <select id="select-copy-column" class="select-chip" title="Copy any other column">
-              <option value="">More columns...</option>
-              <option value="Type">Type (Parcel/Express)</option>
-              <option value="Status Updated On">Status Updated On</option>
-              <option value="Discount">Discount Amount</option>
-              <option value="Payment Status">Payment Status (Paid/Unpaid)</option>
-              <option value="Action">Actions (View/POD)</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Table Container -->
-      <div class="table-container">
-        <table id="records-table">
-          <thead>
-            <tr>
-              <th class="copyable-th" data-col="Consignment ID" title="Click to copy all Consignment IDs">Consignment <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="Type" title="Click to copy all Types">Type <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="Order ID" title="Click to copy all Order IDs">Order ID <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="Store" title="Click to copy all Stores">Store <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="Recipient Name" title="Click to copy all Customers">Customer <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="Phone" title="Click to copy all Phone numbers">Phone <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="Address" title="Click to copy all Addresses">Address <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="Delivery Status" title="Click to copy all Statuses">Status <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="COD Amount" title="Click to copy all COD Amounts">COD (৳) <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="Charge" title="Click to copy all Charges">Charge (৳) <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="Discount" title="Click to copy all Discounts">Discount (৳) <span class="copy-icon">📋</span></th>
-              <th class="copyable-th" data-col="Payment Status" title="Click to copy all Payment statuses">Payment <span class="copy-icon">📋</span></th>
-            </tr>
-          </thead>
-          <tbody id="table-body">
-            <!-- Dynamically populated -->
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Empty State -->
-    <div id="empty-state" class="empty-state">
-      <div class="empty-icon">📦</div>
-      <div class="empty-title">Ready to Parse Deliveries</div>
-      <div class="empty-desc">
-        Open <strong>merchant.pathao.com</strong> or <strong>WooCommerce Orders</strong> (<code>deencommerce.com/wp-admin/...</code>) and click <em>Extract</em>, or switch to the <em>Paste & Parse</em> tab to parse copied text.
-      </div>
-    </div>
-
-    <!-- Toast Notification -->
+    <!-- Toast Notification (Preserved) -->
     <div id="popup-toast" class="popup-toast hidden"></div>
   </div>
 
   <script src="xlsx.mini.min.js"></script>
   <script src="parser.js"></script>
+  <script src="deen-assistant.js"></script>
   <script src="webmcp-provider.js"></script>
   <script src="popup.js"></script>
 </body>

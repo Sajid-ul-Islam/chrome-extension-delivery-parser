@@ -4,12 +4,12 @@
 
 try {
   if (typeof importScripts === "function") {
-    try { importScripts("env.js"); } catch (e) {}
-    try { importScripts("parser.js"); } catch (e) {}
-    try { importScripts("storage-engine.js"); } catch (e) {}
-    try { importScripts("courier-adapters.js"); } catch (e) {}
+    try { importScripts("env.js"); } catch (e) { }
+    try { importScripts("parser.js"); } catch (e) { }
+    try { importScripts("storage-engine.js"); } catch (e) { }
+    try { importScripts("courier-adapters.js"); } catch (e) { }
   }
-} catch (e) {}
+} catch (e) { }
 
 if (typeof chrome !== "undefined" && chrome.runtime) {
   function safeCreateContextMenu(options) {
@@ -59,7 +59,7 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
         chrome.storage.local.remove(["pathao_autofill_data"]);
       }
       if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
-        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => { });
       }
       setupContextMenus();
     });
@@ -90,13 +90,13 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
         });
       } else if (info.menuItemId === "deen-send-to-pathao" && info.selectionText) {
         const phone = (typeof normalizeBDPhone === "function" ? normalizeBDPhone(info.selectionText) : null) ||
-                      (() => {
-                        const raw = info.selectionText.trim();
-                        const digits = raw.replace(/[^\d+]/g, "");
-                        const match = digits.match(/(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/);
-                        let p = raw.replace(/\D/g, "");
-                        return match && match[1] ? "0" + match[1] : (p.length >= 11 ? p.slice(-11) : p);
-                      })();
+          (() => {
+            const raw = info.selectionText.trim();
+            const digits = raw.replace(/[^\d+]/g, "");
+            const match = digits.match(/(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/);
+            let p = raw.replace(/\D/g, "");
+            return match && match[1] ? "0" + match[1] : (p.length >= 11 ? p.slice(-11) : p);
+          })();
 
         const payload = {
           phone: phone,
@@ -127,7 +127,7 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
         if (chrome.sidePanel && typeof chrome.sidePanel.open === "function") {
           if (tab && tab.id) {
             chrome.sidePanel.open({ tabId: tab.id }).catch(() => {
-              if (tab.windowId) chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+              if (tab.windowId) chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => { });
             });
           }
         }
@@ -138,158 +138,859 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
   // Handle messages from content scripts or popup
   if (chrome.runtime && chrome.runtime.onMessage && chrome.runtime.onMessage.addListener) {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request && request.action === "sync_to_pathao") {
-      if (request.data && chrome.storage && chrome.storage.local) {
-        chrome.storage.local.set({ "pathao_autofill_data": request.data }, () => {
+      if (request && request.action === "sync_to_pathao") {
+        if (request.data && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ "pathao_autofill_data": request.data }, () => {
+            findAndSyncPathaoTab(request.data, request.autoSwitch);
+          });
+        } else {
           findAndSyncPathaoTab(request.data, request.autoSwitch);
-        });
-      } else {
-        findAndSyncPathaoTab(request.data, request.autoSwitch);
-      }
-      sendResponse({ status: "sync_dispatched" });
-    } else if (request && request.action === "focus_or_open_pathao") {
-      if (chrome.storage && chrome.storage.local) {
-        chrome.storage.local.get(["pathao_autofill_data"], (res) => {
-          if (res && res.pathao_autofill_data && res.pathao_autofill_data.phone) {
-            findAndSyncPathaoTab(res.pathao_autofill_data, true);
-          } else {
-            focusOrOpenPathao();
-          }
-        });
-      } else {
-        focusOrOpenPathao();
-      }
-      sendResponse({ status: "handled" });
-    } else if (request && request.action === "fetch_customer_rating") {
-      if (!request.phone) {
-        sendResponse({ success: false, error: "Missing phone parameter" });
-        return false;
-      }
-      handleCustomerRatingRequest(request.phone, sendResponse, Boolean(request.forceRefresh));
-      return true; // Keep message channel open for async response
-    } else if (request && request.action === "guess_address_online") {
-      handleOnlineAddressGuess(request.query, sendResponse);
-      return true; // Keep message channel open for async response
-    } else if (request && request.action === "evaluate_optimal_courier") {
-      const couriersModule = (typeof DeenCouriers !== "undefined" ? DeenCouriers : null) || (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return null; } })() : null);
-      if (couriersModule && typeof couriersModule.evaluateOptimalCourier === "function") {
-        sendResponse({ success: true, ...couriersModule.evaluateOptimalCourier(request.order || {}, request.rating || {}) });
-      } else {
-        sendResponse({ success: true, recommendedCourier: "pathao", reason: "Standard express delivery" });
-      }
-      return true;
-    } else if (request && request.action === "calculate_multifactor_risk") {
-      const couriersModule = (typeof DeenCouriers !== "undefined" ? DeenCouriers : null) || (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return null; } })() : null);
-      if (couriersModule && typeof couriersModule.calculateMultiFactorRisk === "function") {
-        sendResponse({ success: true, ...couriersModule.calculateMultiFactorRisk(request.rating || {}, request.order || {}) });
-      } else {
-        sendResponse({ success: true, riskLevel: "low", recommendedAdvanceFee: 0 });
-      }
-      return true;
-    } else if (request && request.action === "process_ndr_event") {
-      const couriersModule = (typeof DeenCouriers !== "undefined" ? DeenCouriers : null) || (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return null; } })() : null);
-      const storageModule = (typeof DeenStorage !== "undefined" ? DeenStorage : null) || (typeof require !== "undefined" ? (() => { try { return require("./storage-engine.js"); } catch (e) { return null; } })() : null);
-      if (couriersModule && typeof couriersModule.processNDRTrackingEvent === "function") {
-        const ndrAlert = couriersModule.processNDRTrackingEvent(request.event || {});
-        if (ndrAlert && ndrAlert.isNDR && storageModule && typeof storageModule.saveNDRAlertAsync === "function") {
-          storageModule.saveNDRAlertAsync(ndrAlert.trackingId, ndrAlert).catch(() => {});
         }
-        sendResponse({ success: true, alert: ndrAlert });
-      } else {
-        sendResponse({ success: false, alert: null });
-      }
-      return true;
-    } else if (request && request.action === "get_ndr_alerts") {
-      const storageModule = (typeof DeenStorage !== "undefined" ? DeenStorage : null) || (typeof require !== "undefined" ? (() => { try { return require("./storage-engine.js"); } catch (e) { return null; } })() : null);
-      if (storageModule && typeof storageModule.getNDRAlertsAsync === "function") {
-        storageModule.getNDRAlertsAsync().then(alerts => sendResponse({ success: true, alerts })).catch(() => sendResponse({ success: false, alerts: [] }));
-        return true;
-      } else {
-        sendResponse({ success: true, alerts: [] });
-        return true;
-      }
-    } else if (request && request.action === "check_for_updates") {
-      checkForExtensionUpdate(Boolean(request.force)).then(info => {
-        sendResponse({ success: true, ...info });
-      }).catch(err => {
-        sendResponse({ success: false, error: err.message });
-      });
-      return true;
-    } else if (request && request.action === "dismiss_update") {
-      if (request.commit && chrome.storage && chrome.storage.local) {
-        chrome.storage.local.set({ "deen_update_dismissed": request.commit }, () => {
-          sendResponse({ success: true });
-        });
-        return true;
-      } else {
-        sendResponse({ success: false });
-        return false;
-      }
-    } else if (request && request.action === "reload_extension") {
-      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.reload) {
-        sendResponse({ success: true });
-        setTimeout(() => chrome.runtime.reload(), 250);
-      } else {
-        sendResponse({ success: false, message: "chrome.runtime.reload not available" });
-      }
-      return true;
-    } else if (request && request.action === "load_env_runtime") {
-      loadRuntimeEnv().then(creds => {
-        sendResponse({
-          success: Boolean(creds && (creds.PATHAO_CLIENT_ID || creds.PATHAO_BEARER_TOKEN)),
-          hasCredentials: Boolean(creds && (creds.PATHAO_CLIENT_ID || creds.PATHAO_BEARER_TOKEN)),
-          clientId: creds && creds.PATHAO_CLIENT_ID ? creds.PATHAO_CLIENT_ID.substring(0, 4) + "..." : "",
-          username: creds ? (creds.PATHAO_USERNAME || "") : "",
-          hasBearerToken: Boolean(creds && creds.PATHAO_BEARER_TOKEN && creds.PATHAO_BEARER_TOKEN.length > 20)
-        });
-      });
-      return true;
-    } else if (request && request.action === "save_api_credentials") {
-      if (request.credentials && chrome.storage && chrome.storage.local) {
-        const c = request.credentials;
-        chrome.storage.local.set({
-          "pathao_client_id": c.clientId || "",
-          "pathao_client_secret": c.clientSecret || "",
-          "pathao_username": c.username || "",
-          "pathao_password": c.password || "",
-          "pathao_bearer_token": c.bearerToken || ""
-        }, () => {
-          chrome.storage.local.remove(["pathao_merchant_token", "pathao_token_expiry"], () => {
-            if (typeof self !== "undefined") {
-              self.DEEN_ENV = Object.assign({}, self.DEEN_ENV || {}, {
-                PATHAO_CLIENT_ID: c.clientId || "",
-                PATHAO_CLIENT_SECRET: c.clientSecret || "",
-                PATHAO_USERNAME: c.username || "",
-                PATHAO_PASSWORD: c.password || "",
-                PATHAO_BEARER_TOKEN: c.bearerToken || ""
-              });
+        sendResponse({ status: "sync_dispatched" });
+      } else if (request && request.action === "focus_or_open_pathao") {
+        if (chrome.storage && chrome.storage.local) {
+          chrome.storage.local.get(["pathao_autofill_data"], (res) => {
+            if (res && res.pathao_autofill_data && res.pathao_autofill_data.phone) {
+              findAndSyncPathaoTab(res.pathao_autofill_data, true);
+            } else {
+              focusOrOpenPathao();
             }
-            sendResponse({ success: true, message: "Credentials saved and active!" });
+          });
+        } else {
+          focusOrOpenPathao();
+        }
+        sendResponse({ status: "handled" });
+      } else if (request && request.action === "fetch_customer_rating") {
+        if (!request.phone) {
+          sendResponse({ success: false, error: "Missing phone parameter" });
+          return false;
+        }
+        handleCustomerRatingRequest(request.phone, sendResponse, Boolean(request.forceRefresh));
+        return true; // Keep message channel open for async response
+      } else if (request && request.action === "guess_address_online") {
+        handleOnlineAddressGuess(request.query, sendResponse);
+        return true; // Keep message channel open for async response
+      } else if (request && request.action === "evaluate_optimal_courier") {
+        const couriersModule = (typeof DeenCouriers !== "undefined" ? DeenCouriers : null) || (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return null; } })() : null);
+        if (couriersModule && typeof couriersModule.evaluateOptimalCourier === "function") {
+          sendResponse({ success: true, ...couriersModule.evaluateOptimalCourier(request.order || {}, request.rating || {}) });
+        } else {
+          sendResponse({ success: true, recommendedCourier: "pathao", reason: "Standard express delivery" });
+        }
+        return true;
+      } else if (request && request.action === "calculate_multifactor_risk") {
+        const couriersModule = (typeof DeenCouriers !== "undefined" ? DeenCouriers : null) || (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return null; } })() : null);
+        if (couriersModule && typeof couriersModule.calculateMultiFactorRisk === "function") {
+          sendResponse({ success: true, ...couriersModule.calculateMultiFactorRisk(request.rating || {}, request.order || {}) });
+        } else {
+          sendResponse({ success: true, riskLevel: "low", recommendedAdvanceFee: 0 });
+        }
+        return true;
+      } else if (request && request.action === "process_ndr_event") {
+        const couriersModule = (typeof DeenCouriers !== "undefined" ? DeenCouriers : null) || (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return null; } })() : null);
+        const storageModule = (typeof DeenStorage !== "undefined" ? DeenStorage : null) || (typeof require !== "undefined" ? (() => { try { return require("./storage-engine.js"); } catch (e) { return null; } })() : null);
+        if (couriersModule && typeof couriersModule.processNDRTrackingEvent === "function") {
+          const ndrAlert = couriersModule.processNDRTrackingEvent(request.event || {});
+          if (ndrAlert && ndrAlert.isNDR && storageModule && typeof storageModule.saveNDRAlertAsync === "function") {
+            storageModule.saveNDRAlertAsync(ndrAlert.trackingId, ndrAlert).catch(() => { });
+          }
+          sendResponse({ success: true, alert: ndrAlert });
+        } else {
+          sendResponse({ success: false, alert: null });
+        }
+        return true;
+      } else if (request && request.action === "get_ndr_alerts") {
+        const storageModule = (typeof DeenStorage !== "undefined" ? DeenStorage : null) || (typeof require !== "undefined" ? (() => { try { return require("./storage-engine.js"); } catch (e) { return null; } })() : null);
+        if (storageModule && typeof storageModule.getNDRAlertsAsync === "function") {
+          storageModule.getNDRAlertsAsync().then(alerts => sendResponse({ success: true, alerts })).catch(() => sendResponse({ success: false, alerts: [] }));
+          return true;
+        } else {
+          sendResponse({ success: true, alerts: [] });
+          return true;
+        }
+      } else if (request && request.action === "notify_ndr_alert") {
+        if (typeof chrome !== "undefined" && chrome.notifications && chrome.notifications.create) {
+          const alert = request.alert || {};
+          const recipientPhone = alert.recipientPhone || "";
+          const trackingId = alert.trackingId || "";
+          const reason = alert.reason || alert.issueLabel || "Failed Delivery Attempt";
+          chrome.notifications.create({
+            type: "basic",
+            iconUrl: (typeof chrome.runtime !== "undefined" && chrome.runtime.getURL) ? chrome.runtime.getURL("icons/icon128.png") : "icons/icon128.png",
+            title: `🚨 DEEN Alert: Delivery Failed (${recipientPhone || trackingId || "Consignment"})`,
+            message: `Reason: ${reason}. Recipient: ${alert.recipientName || "Valued Customer"}. Click to send WhatsApp rescue message!`,
+            priority: 2
+          }, (notificationId) => {
+            if (chrome.runtime && chrome.runtime.lastError) void chrome.runtime.lastError.message;
+            sendResponse({ success: true, notificationId });
+          });
+          return true;
+        } else {
+          sendResponse({ success: false, error: "Notifications not supported" });
+          return false;
+        }
+      } else if (request && request.action === "check_for_updates") {
+        checkForExtensionUpdate(Boolean(request.force)).then(info => {
+          sendResponse({ success: true, ...info });
+        }).catch(err => {
+          sendResponse({ success: false, error: err.message });
+        });
+        return true;
+      } else if (request && request.action === "dismiss_update") {
+        if (request.commit && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ "deen_update_dismissed": request.commit }, () => {
+            sendResponse({ success: true });
+          });
+          return true;
+        } else {
+          sendResponse({ success: false });
+          return false;
+        }
+      } else if (request && request.action === "reload_extension") {
+        if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.reload) {
+          sendResponse({ success: true });
+          setTimeout(() => chrome.runtime.reload(), 250);
+        } else {
+          sendResponse({ success: false, message: "chrome.runtime.reload not available" });
+        }
+        return true;
+      } else if (request && request.action === "load_env_runtime") {
+        loadRuntimeEnv().then(creds => {
+          sendResponse({
+            success: Boolean(creds && (creds.PATHAO_CLIENT_ID || creds.PATHAO_BEARER_TOKEN)),
+            hasCredentials: Boolean(creds && (creds.PATHAO_CLIENT_ID || creds.PATHAO_BEARER_TOKEN)),
+            clientId: creds && creds.PATHAO_CLIENT_ID ? creds.PATHAO_CLIENT_ID.substring(0, 4) + "..." : "",
+            username: creds ? (creds.PATHAO_USERNAME || "") : "",
+            hasBearerToken: Boolean(creds && creds.PATHAO_BEARER_TOKEN && creds.PATHAO_BEARER_TOKEN.length > 20)
           });
         });
         return true;
-      } else {
-        sendResponse({ success: false, message: "No credentials provided" });
-        return false;
-      }
-    } else if (request && request.action === "get_api_credentials") {
-      loadRuntimeEnv().then(creds => {
-        sendResponse({
-          success: true,
-          clientId: creds ? (creds.PATHAO_CLIENT_ID || "") : "",
-          username: creds ? (creds.PATHAO_USERNAME || "") : "",
-          hasSecret: Boolean(creds && creds.PATHAO_CLIENT_SECRET),
-          hasPassword: Boolean(creds && creds.PATHAO_PASSWORD),
-          hasBearerToken: Boolean(creds && creds.PATHAO_BEARER_TOKEN)
+      } else if (request && request.action === "save_api_credentials") {
+        if (request.credentials && chrome.storage && chrome.storage.local) {
+          const c = request.credentials;
+          chrome.storage.local.set({
+            "pathao_client_id": c.clientId || "",
+            "pathao_client_secret": c.clientSecret || "",
+            "pathao_username": c.username || "",
+            "pathao_password": c.password || "",
+            "pathao_bearer_token": c.bearerToken || ""
+          }, () => {
+            chrome.storage.local.remove(["pathao_merchant_token", "pathao_token_expiry"], () => {
+              if (typeof self !== "undefined") {
+                self.DEEN_ENV = Object.assign({}, self.DEEN_ENV || {}, {
+                  PATHAO_CLIENT_ID: c.clientId || "",
+                  PATHAO_CLIENT_SECRET: c.clientSecret || "",
+                  PATHAO_USERNAME: c.username || "",
+                  PATHAO_PASSWORD: c.password || "",
+                  PATHAO_BEARER_TOKEN: c.bearerToken || ""
+                });
+              }
+              sendResponse({ success: true, message: "Credentials saved and active!" });
+            });
+          });
+          return true;
+        } else {
+          sendResponse({ success: false, message: "No credentials provided" });
+          return false;
+        }
+      } else if (request && request.action === "get_api_credentials") {
+        loadRuntimeEnv().then(creds => {
+          sendResponse({
+            success: true,
+            clientId: creds ? (creds.PATHAO_CLIENT_ID || "") : "",
+            username: creds ? (creds.PATHAO_USERNAME || "") : "",
+            hasSecret: Boolean(creds && creds.PATHAO_CLIENT_SECRET),
+            hasPassword: Boolean(creds && creds.PATHAO_PASSWORD),
+            hasBearerToken: Boolean(creds && creds.PATHAO_BEARER_TOKEN)
+          });
         });
-      });
-      return true;
-    } else {
-      sendResponse({ status: "ignored" });
-    }
-    return false;
-  });
+        return true;
+      } else if (request && request.action === "login_with_wordpress") {
+        authenticateWordPressUser(request.username, request.password, request.storeUrl).then(res => {
+          sendResponse(res);
+        }).catch(err => {
+          sendResponse({ success: false, error: err ? err.message : String(err) });
+        });
+        return true;
+      } else if (request && request.action === "sync_from_wordpress") {
+        syncFromWordPressAdmin(request.siteUrl).then(res => {
+          sendResponse(res);
+        }).catch(err => {
+          sendResponse({ success: false, error: err ? err.message : String(err) });
+        });
+        return true;
+      } else if (request && request.action === "get_wordpress_connection_status") {
+        getWordPressConnectionStatus().then(res => {
+          sendResponse(res);
+        }).catch(err => {
+          sendResponse({ connected: false, siteUrl: "https://deencommerce.com", error: err ? err.message : String(err) });
+        });
+        return true;
+      } else if (request && request.action === "disconnect_wordpress") {
+        disconnectWordPressSession().then(res => {
+          sendResponse(res);
+        }).catch(err => {
+          sendResponse({ success: false, error: err ? err.message : String(err) });
+        });
+        return true;
+      } else if (request && request.action === "sync_wordpress_credentials") {
+        saveWordPressExtractedCredentials(request.credentials, request.siteUrl, request.adminUser, request.userRole, request.userPermissions, request.userLogin).then(res => {
+          sendResponse(res);
+        }).catch(err => {
+          sendResponse({ success: false, error: err ? err.message : String(err) });
+        });
+        return true;
+      } else {
+        sendResponse({ status: "ignored" });
+      }
+      return false;
+    });
+  }
 }
+
+/**
+ * Extract courier API credentials and admin metadata from WordPress admin HTML
+ */
+function extractCredentialsFromWordPressHTML(html, originUrl) {
+  if (!html || typeof html !== "string") {
+    return {
+      isLoggedIn: false,
+      adminUser: "",
+      userLogin: "",
+      userRole: "",
+      userPermissions: "",
+      capabilities: [],
+      siteUrl: originUrl || "",
+      credentials: {},
+      hasCredentials: false
+    };
+  }
+
+  // 1. Detect login redirect or login form
+  const isLoginRedirect = /wp-login\.php/i.test(html) ||
+                          /<form[^>]+id=["']loginform["']/i.test(html) ||
+                          /id=["']user_login["']/i.test(html);
+
+  // 2. Detect admin indicators
+  const hasAdminMarkers = /#wpadminbar|class=["'][^"']*wp-admin[^"']*["']|id=["']wpbody["']|admin\.php|wp-admin/i.test(html);
+  const isLoggedIn = !isLoginRedirect && hasAdminMarkers;
+
+  // 3. Extract admin user display name & username
+  let adminUser = "";
+  const userMatch = html.match(/class=["']display-name["'][^>]*>([^<]+)<\/span>/i) ||
+                    html.match(/Howdy,\s*<span[^>]*>([^<]+)<\/span>/i) ||
+                    html.match(/["']user_display_name["']\s*:\s*["']([^"']+)["']/i) ||
+                    html.match(/id=["']wp-admin-bar-my-account["'][^>]*>[\s\S]*?<span[^>]+class=["']display-name["'][^>]*>([^<]+)<\/span>/i);
+  if (userMatch) adminUser = userMatch[1].trim();
+
+  let userLogin = "";
+  const loginMatch = html.match(/<span[^>]+class=["']username["'][^>]*>([^<]+)<\/span>/i) ||
+                     html.match(/id=["']wp-admin-bar-user-info["'][^>]*>[\s\S]*?<span[^>]+class=["']username["'][^>]*>([^<]+)<\/span>/i) ||
+                     html.match(/["']user_login["']\s*:\s*["']([^"']+)["']/i) ||
+                     html.match(/<input[^>]+name=["']user_login["'][^>]+value=["']([^"']*)["']/i);
+  if (loginMatch) userLogin = loginMatch[1].trim();
+  if (!userLogin) userLogin = adminUser || "admin";
+
+  // 4. Extract User Role & Permissions from HTML body, scripts, or admin menus
+  let userRole = "";
+  const bodyRoleMatch = html.match(/<body[^>]+class=["'][^"']*role-([a-z0-9_-]+)[^"']*["']/i) ||
+                        html.match(/<body[^>]+class=["'][^"']*\b(administrator|shop_manager|editor|author|contributor)\b[^"']*["']/i);
+  if (bodyRoleMatch && bodyRoleMatch[1]) {
+    const rawRole = bodyRoleMatch[1].toLowerCase().replace(/[-_]/g, " ");
+    userRole = rawRole.replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  if (!userRole) {
+    const scriptRoleMatch = html.match(/["']roles["']\s*:\s*\[\s*["']([^"']+)["']/i) ||
+                            html.match(/["']role["']\s*:\s*["']([^"']+)["']/i);
+    if (scriptRoleMatch && scriptRoleMatch[1]) {
+      const rawRole = scriptRoleMatch[1].toLowerCase().replace(/[-_]/g, " ");
+      userRole = rawRole.replace(/\b\w/g, c => c.toUpperCase());
+    }
+  }
+
+  // Capability checks via menu indicators
+  const hasOptionsCap = /id=["']menu-settings["']|id=["']menu-plugins["']|id=["']menu-tools["']|options-general\.php|plugins\.php/i.test(html);
+  const hasWooCap = /id=["']menu-woocommerce["']|page=wc-settings|page=wc-orders|woocommerce/i.test(html);
+
+  if (!userRole) {
+    if (hasOptionsCap) {
+      userRole = "Administrator";
+    } else if (hasWooCap) {
+      userRole = "Shop Manager";
+    } else if (/id=["']menu-posts["']/i.test(html)) {
+      userRole = "Store Staff";
+    } else if (isLoggedIn) {
+      userRole = adminUser.toLowerCase().includes("admin") ? "Administrator" : "Shop Manager";
+    }
+  }
+
+  let userPermissions = "";
+  let capabilities = [];
+  if (userRole.toLowerCase().includes("admin") || hasOptionsCap) {
+    userRole = "Administrator";
+    userPermissions = "Full Store & Settings Access (manage_options, manage_woocommerce)";
+    capabilities = ["manage_options", "manage_woocommerce", "view_woocommerce_reports", "edit_shop_orders"];
+  } else if (userRole.toLowerCase().includes("shop") || hasWooCap) {
+    userRole = "Shop Manager";
+    userPermissions = "WooCommerce & Courier Dispatch Access (manage_woocommerce)";
+    capabilities = ["manage_woocommerce", "view_woocommerce_reports", "edit_shop_orders"];
+  } else {
+    userRole = userRole || "Store Staff";
+    userPermissions = "Standard Orders & Shipping Access";
+    capabilities = ["view_woocommerce_reports", "edit_shop_orders"];
+  }
+
+  // Helper to extract input values regardless of attribute order
+  function getInputValue(names) {
+    for (const name of names) {
+      const escaped = name.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+      // Pattern A: name/id before value
+      const r1 = new RegExp('<input[^>]+(?:name|id)=["\']' + escaped + '["\'][^>]+value=["\']([^"\']*)["\']', "i");
+      const m1 = html.match(r1);
+      if (m1 && m1[1]) return m1[1].trim();
+
+      // Pattern B: value before name/id
+      const r2 = new RegExp('<input[^>]+value=["\']([^"\']*)["\'][^>]+(?:name|id)=["\']' + escaped + '["\']', "i");
+      const m2 = html.match(r2);
+      if (m2 && m2[1]) return m2[1].trim();
+
+      // Pattern C: textarea
+      const r3 = new RegExp('<textarea[^>]+(?:name|id)=["\']' + escaped + '["\'][^>]*>([^<]*)<\\/textarea>', "i");
+      const m3 = html.match(r3);
+      if (m3 && m3[1]) return m3[1].trim();
+    }
+    return "";
+  }
+
+  // 5. Extract credentials
+  let clientId = getInputValue([
+    "ptc_client_id", "client_id", "pathao_client_id", "wc_pathao_client_id",
+    "woocommerce_pathao_client_id", "ptc_merchant_id", "pathao_merchant_id"
+  ]);
+
+  let clientSecret = getInputValue([
+    "ptc_client_secret", "client_secret", "pathao_client_secret", "wc_pathao_client_secret",
+    "woocommerce_pathao_client_secret"
+  ]);
+
+  let username = getInputValue([
+    "ptc_username", "username", "pathao_username", "pathao_email", "ptc_email",
+    "wc_pathao_username", "woocommerce_pathao_username"
+  ]);
+
+  let password = getInputValue([
+    "ptc_password", "password", "pathao_password", "wc_pathao_password",
+    "woocommerce_pathao_password"
+  ]);
+
+  let bearerToken = getInputValue([
+    "ptc_token", "pathao_token", "bearer_token", "access_token", "pathao_bearer_token",
+    "pathao_access_token", "api_token"
+  ]);
+
+  let storeId = getInputValue([
+    "ptc_store_id", "pathao_store_id", "store_id", "merchant_id"
+  ]);
+
+  let steadfastApiKey = getInputValue([
+    "steadfast_api_key", "api_key", "sf_api_key", "woocommerce_steadfast_api_key"
+  ]);
+
+  let steadfastSecretKey = getInputValue([
+    "steadfast_secret_key", "secret_key", "sf_secret_key", "woocommerce_steadfast_secret_key"
+  ]);
+
+  // 6. Script tag / JSON config extraction fallback
+  if (!clientId || !clientSecret) {
+    const jsonMatch = html.match(/(?:ptc_params|pathao_params|ptcSettings|pathaoSettings)\s*=\s*({[\s\S]*?});/i);
+    if (jsonMatch && jsonMatch[1]) {
+      try {
+        const parsed = JSON.parse(jsonMatch[1]);
+        if (!clientId) clientId = String(parsed.client_id || parsed.clientId || "");
+        if (!clientSecret) clientSecret = String(parsed.client_secret || parsed.clientSecret || "");
+        if (!username) username = String(parsed.username || parsed.email || "");
+        if (!password) password = String(parsed.password || "");
+        if (!storeId) storeId = String(parsed.store_id || parsed.storeId || "");
+      } catch (e) {}
+    }
+  }
+
+  const hasCredentials = Boolean((clientId && clientSecret) || bearerToken || steadfastApiKey);
+
+  return {
+    isLoggedIn,
+    adminUser,
+    userLogin,
+    userRole,
+    userPermissions,
+    capabilities,
+    siteUrl: originUrl || "",
+    credentials: {
+      clientId,
+      clientSecret,
+      username,
+      password,
+      bearerToken,
+      storeId,
+      steadfastApiKey,
+      steadfastSecretKey
+    },
+    hasCredentials
+  };
+}
+
+async function authenticateWordPressUser(username, password, storeUrl) {
+  const cleanUser = username ? String(username).trim() : "";
+  const cleanPass = password ? String(password).trim() : "";
+  if (!cleanUser || !cleanPass) {
+    return { success: false, error: "Username and password are required.", statusCode: 400 };
+  }
+
+  let baseUrl = storeUrl ? String(storeUrl).trim() : "https://deencommerce.com";
+  if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+    baseUrl = "https://" + baseUrl;
+  }
+  baseUrl = baseUrl.replace(/\/+$/, "").replace(/\/wp-admin.*$/i, "");
+
+  try {
+    // Step 1: Pre-flight GET to wp-login.php to initialize testcookie in cookie jar
+    try {
+      const preflightCtrl = new AbortController();
+      const preflightTimeout = setTimeout(() => preflightCtrl.abort(), 4000);
+      await fetch(`${baseUrl}/wp-login.php`, {
+        method: "GET",
+        credentials: "include",
+        signal: preflightCtrl.signal,
+        headers: {
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "User-Agent": "DEEN-Delivery-Parser-Auth-Agent/2.0"
+        }
+      });
+      clearTimeout(preflightTimeout);
+    } catch (e) {}
+
+    // Step 2: POST credentials to wp-login.php
+    const bodyParams = new URLSearchParams({
+      log: cleanUser,
+      pwd: cleanPass,
+      rememberme: "forever",
+      redirect_to: `${baseUrl}/wp-admin/`,
+      testcookie: "1",
+      "wp-submit": "Log In"
+    });
+
+    let redirectedToAdmin = false;
+    let resText = "";
+
+    // Attempt 1: Standard follow redirect (browser runtime in MV3)
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const followRes = await fetch(`${baseUrl}/wp-login.php`, {
+        method: "POST",
+        redirect: "follow",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "User-Agent": "DEEN-Delivery-Parser-Auth-Agent/2.0"
+        },
+        body: bodyParams.toString(),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (followRes.ok) {
+        resText = await followRes.text();
+        const urlStr = followRes.url || "";
+        if (urlStr.includes("wp-admin") || (!urlStr.includes("wp-login.php") && (resText.includes("wp-admin") || resText.includes("wpbody") || resText.includes("wpadminbar")))) {
+          redirectedToAdmin = true;
+        }
+      } else {
+        resText = await followRes.text().catch(() => "");
+      }
+    } catch (e) {}
+
+    // Attempt 2: Manual redirect check (for Node.js test environments or strict redirects)
+    if (!redirectedToAdmin) {
+      try {
+        const manualCtrl = new AbortController();
+        const manualTimeout = setTimeout(() => manualCtrl.abort(), 6000);
+        const manualRes = await fetch(`${baseUrl}/wp-login.php`, {
+          method: "POST",
+          redirect: "manual",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "DEEN-Delivery-Parser-Auth-Agent/2.0"
+          },
+          body: bodyParams.toString(),
+          signal: manualCtrl.signal
+        });
+        clearTimeout(manualTimeout);
+
+        // In Node: status 302. In Chromium: status 0 or type 'opaqueredirect'
+        if (manualRes.status === 302 || manualRes.status === 0 || manualRes.type === "opaqueredirect") {
+          redirectedToAdmin = true;
+        } else if (manualRes.ok) {
+          const mText = await manualRes.text();
+          if (!mText.includes("login_error") && !mText.includes("wp-login.php")) {
+            redirectedToAdmin = true;
+            resText = mText;
+          } else {
+            resText = mText;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Step 3: Check chrome.cookies for authoritative verification in Chrome
+    let foundWpCookie = false;
+    let cookieUsername = cleanUser;
+    if (typeof chrome !== "undefined" && chrome.cookies) {
+      try {
+        const domain = new URL(baseUrl).hostname;
+        const allCookies = await new Promise(r => chrome.cookies.getAll({ domain: domain }, r));
+        for (const c of (allCookies || [])) {
+          if (c && c.name && c.name.startsWith("wordpress_logged_in_")) {
+            foundWpCookie = true;
+            if (c.value) {
+              const uMatch = decodeURIComponent(c.value).split("|")[0];
+              if (uMatch) cookieUsername = uMatch;
+            }
+            break;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Success branch
+    if (redirectedToAdmin || foundWpCookie) {
+      let extractedUsername = cookieUsername || cleanUser;
+      if (resText) {
+        const userMatch = resText.match(/class=["']display-name["'][^>]*>([^<]+)<\/span>/i) ||
+                          resText.match(/Howdy,\s*<span[^>]*>([^<]+)<\/span>/i);
+        if (userMatch) extractedUsername = userMatch[1].trim();
+      }
+
+      // Automatically sync courier API keys from WordPress Admin settings
+      const syncResult = await syncFromWordPressAdmin(baseUrl);
+
+      return {
+        success: true,
+        authenticated: true,
+        siteUrl: baseUrl,
+        adminUser: extractedUsername || "Admin",
+        credentialsFound: Boolean(syncResult && syncResult.credentialsFound),
+        message: syncResult && syncResult.credentialsFound
+          ? `Authenticated as ${extractedUsername}! Auto-synced Pathao & courier API keys.`
+          : `Authenticated as ${extractedUsername}! WordPress session is active.`
+      };
+    }
+
+    // Step 4: Extract specific WordPress error from HTML if available
+    let wpError = "";
+    if (resText) {
+      const errMatch = resText.match(/<div[^>]+id=["']login_error["'][^>]*>([\s\S]*?)<\/div>/i);
+      if (errMatch && errMatch[1]) {
+        wpError = errMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      }
+    }
+
+    // Step 5: Strategy B fallback: Application Password via /wp-json/wp/v2/users/me
+    const basicAuth = typeof btoa === "function" ? btoa(`${cleanUser}:${cleanPass}`) : Buffer.from(`${cleanUser}:${cleanPass}`).toString("base64");
+    const apiRes = await fetch(`${baseUrl}/wp-json/wp/v2/users/me`, {
+      headers: {
+        "Authorization": `Basic ${basicAuth}`,
+        "User-Agent": "DEEN-Delivery-Parser-Auth-Agent/2.0"
+      }
+    }).catch(() => null);
+
+    if (apiRes && apiRes.ok) {
+      const wpUser = await apiRes.json().catch(() => ({}));
+      const displayName = wpUser.name || wpUser.slug || cleanUser;
+      const syncResult = await syncFromWordPressAdmin(baseUrl);
+
+      return {
+        success: true,
+        authenticated: true,
+        siteUrl: baseUrl,
+        adminUser: displayName,
+        credentialsFound: Boolean(syncResult && syncResult.credentialsFound),
+        message: `Authenticated as ${displayName} via WordPress API!`
+      };
+    }
+
+    return {
+      success: false,
+      error: wpError || ("Invalid WordPress username or password for " + baseUrl),
+      statusCode: 401
+    };
+  } catch (err) {
+    const isAbort = err && (err.name === "AbortError" || String(err.message || "").includes("aborted"));
+    return {
+      success: false,
+      error: isAbort
+        ? "Authentication timed out connecting to " + baseUrl
+        : "Network error connecting to WordPress authentication server: " + (err ? err.message : String(err)),
+      statusCode: 504
+    };
+  }
+}
+
+/**
+ * Auto-detect and sync courier API credentials from WordPress Admin session
+ */
+async function syncFromWordPressAdmin(siteUrl) {
+  let targetUrl = siteUrl ? String(siteUrl).trim() : "https://deencommerce.com";
+  if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+    targetUrl = "https://" + targetUrl;
+  }
+  // Strip trailing slashes and /wp-admin
+  targetUrl = targetUrl.replace(/\/+$/, "").replace(/\/wp-admin.*$/i, "");
+
+  const candidateEndpoints = [
+    `${targetUrl}/wp-admin/admin.php?page=pathao-courier`,
+    `${targetUrl}/wp-admin/admin.php?page=wc-settings&tab=shipping&section=pathao`,
+    `${targetUrl}/wp-admin/admin.php?page=ptc-settings`,
+    `${targetUrl}/wp-admin/admin.php?page=pathao_courier`,
+    `${targetUrl}/wp-admin/admin.php?page=wc-settings&tab=shipping`,
+    `${targetUrl}/wp-admin/admin.php?page=wc-settings&tab=integration`,
+    `${targetUrl}/wp-admin/admin.php?page=steadfast-courier`,
+    `${targetUrl}/wp-admin/admin.php?page=wc-settings&tab=shipping&section=steadfast`,
+    `${targetUrl}/wp-admin/admin.php?page=wc-orders`,
+    `${targetUrl}/wp-admin/`
+  ];
+
+  let foundLogin = false;
+  let adminUser = "";
+  let userRole = "";
+  let userPermissions = "";
+  let userLogin = "";
+  let extractedCreds = null;
+
+  // Proactive check in Chrome cookie jar for active WordPress session
+  if (typeof chrome !== "undefined" && chrome.cookies) {
+    try {
+      const domain = new URL(targetUrl).hostname;
+      const allCookies = await new Promise(r => chrome.cookies.getAll({ domain: domain }, r));
+      for (const c of (allCookies || [])) {
+        if (c && c.name && c.name.startsWith("wordpress_logged_in_")) {
+          foundLogin = true;
+          if (c.value) {
+            const uMatch = decodeURIComponent(c.value).split("|")[0];
+            if (uMatch) {
+              adminUser = uMatch;
+              userLogin = uMatch;
+            }
+          }
+          break;
+        }
+      }
+    } catch (e) {}
+  }
+
+  for (const ep of candidateEndpoints) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
+      const resp = await fetch(ep, {
+        method: "GET",
+        credentials: "include",
+        signal: controller.signal,
+        headers: {
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        }
+      });
+      clearTimeout(timeoutId);
+
+      // Check if redirected to login
+      if (resp.url && (resp.url.includes("wp-login.php") || resp.url.includes("redirect_to"))) {
+        continue;
+      }
+      if (resp.status === 401 || resp.status === 403) {
+        continue;
+      }
+
+      if (resp.ok) {
+        const html = await resp.text();
+        const parsed = extractCredentialsFromWordPressHTML(html, targetUrl);
+
+        if (parsed.isLoggedIn) {
+          foundLogin = true;
+          if (parsed.adminUser && !adminUser) adminUser = parsed.adminUser;
+          if (parsed.userRole && !userRole) userRole = parsed.userRole;
+          if (parsed.userPermissions && !userPermissions) userPermissions = parsed.userPermissions;
+          if (parsed.userLogin && !userLogin) userLogin = parsed.userLogin;
+        }
+
+        if (parsed.hasCredentials) {
+          extractedCreds = parsed.credentials;
+          if (parsed.adminUser) adminUser = parsed.adminUser;
+          if (parsed.userRole) userRole = parsed.userRole;
+          if (parsed.userPermissions) userPermissions = parsed.userPermissions;
+          if (parsed.userLogin) userLogin = parsed.userLogin;
+          break; // Found working credentials, stop probing
+        }
+      }
+    } catch (err) {
+      // Endpoint error or timeout, continue probing next candidate
+    }
+  }
+
+  // Process outcome
+  if (extractedCreds && (extractedCreds.clientId || extractedCreds.bearerToken || extractedCreds.steadfastApiKey)) {
+    return await saveWordPressExtractedCredentials(extractedCreds, targetUrl, adminUser, userRole, userPermissions, userLogin);
+  }
+
+  if (foundLogin) {
+    const role = userRole || (adminUser.toLowerCase().includes("admin") ? "Administrator" : "Shop Manager");
+    const perm = userPermissions || (role === "Administrator" ? "Full Store & Settings Access (manage_options, manage_woocommerce)" : "WooCommerce & Courier Dispatch Access (manage_woocommerce)");
+    const login = userLogin || adminUser || "admin";
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({
+        wp_connected_site: targetUrl,
+        wp_connected_user: adminUser || "Admin",
+        wp_connected_login: login,
+        wp_user_role: role,
+        wp_user_permissions: perm,
+        wp_connected_at: Date.now(),
+        wp_auth_status: "connected_no_creds"
+      });
+    }
+    return {
+      success: true,
+      loggedIn: true,
+      noCredentialsFound: true,
+      siteUrl: targetUrl,
+      adminUser: adminUser || "Admin",
+      userLogin: login,
+      userRole: role,
+      userPermissions: perm,
+      message: `Connected to WordPress as ${adminUser || "Admin"} (${role}), but no Pathao/courier plugin settings found on ${targetUrl}.`
+    };
+  }
+
+  return {
+    success: false,
+    notLoggedIn: true,
+    siteUrl: targetUrl,
+    loginUrl: `${targetUrl}/wp-login.php?redirect_to=%2Fwp-admin%2F`,
+    message: `Not logged in to WordPress. Please log in at ${targetUrl}/wp-admin.`
+  };
+}
+
+async function getWordPressConnectionStatus() {
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    const stored = await new Promise(r => chrome.storage.local.get([
+      "wp_connected_site", "wp_connected_user", "wp_connected_login", "wp_user_role",
+      "wp_user_permissions", "wp_connected_at", "wp_auth_status",
+      "pathao_client_id", "pathao_bearer_token"
+    ], r));
+    const site = stored && stored.wp_connected_site;
+    const user = stored && stored.wp_connected_user;
+    const login = stored && stored.wp_connected_login;
+    const role = stored && stored.wp_user_role;
+    const perm = stored && stored.wp_user_permissions;
+    const time = stored && stored.wp_connected_at;
+    const status = stored && stored.wp_auth_status;
+    const hasCreds = Boolean(stored && (stored.pathao_client_id || stored.pathao_bearer_token));
+    return {
+      connected: Boolean(site && status && status.startsWith("connected")),
+      siteUrl: site || "https://deencommerce.com",
+      adminUser: user || "",
+      userLogin: login || user || "",
+      userRole: role || (user && user.toLowerCase().includes("admin") ? "Administrator" : "Shop Manager"),
+      userPermissions: perm || "Full Store & API Access (manage_options, manage_woocommerce)",
+      syncedAt: time || null,
+      authStatus: status || "disconnected",
+      hasCredentials: hasCreds
+    };
+  }
+  return { connected: false, siteUrl: "https://deencommerce.com", hasCredentials: false };
+}
+
+/**
+ * Disconnect WordPress connection metadata
+ */
+async function disconnectWordPressSession() {
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    await new Promise(r => chrome.storage.local.remove([
+      "wp_connected_site", "wp_connected_user", "wp_connected_login", "wp_user_role",
+      "wp_user_permissions", "wp_connected_at", "wp_auth_status"
+    ], r));
+  }
+  return { success: true, message: "WordPress session disconnected" };
+}
+
+async function saveWordPressExtractedCredentials(credentials, siteUrl, adminUser, userRole, userPermissions, userLogin) {
+  if (!credentials) return { success: false, message: "No credentials provided" };
+  const c = credentials;
+  const targetUrl = siteUrl ? String(siteUrl).trim().replace(/\/+$/, "") : "https://deencommerce.com";
+  const user = adminUser || "Admin";
+  const role = userRole || (user.toLowerCase().includes("admin") ? "Administrator" : "Shop Manager");
+  const perm = userPermissions || (role === "Administrator" ? "Full Store & Settings Access (manage_options, manage_woocommerce)" : "WooCommerce & Courier Dispatch Access (manage_woocommerce)");
+  const login = userLogin || user;
+
+  const credPayload = {
+    pathao_client_id: c.clientId || "",
+    pathao_client_secret: c.clientSecret || "",
+    pathao_username: c.username || "",
+    pathao_password: c.password || "",
+    pathao_bearer_token: c.bearerToken || "",
+    pathao_store_id: c.storeId || "",
+    steadfast_api_key: c.steadfastApiKey || "",
+    steadfast_secret_key: c.steadfastSecretKey || "",
+    wp_connected_site: targetUrl,
+    wp_connected_user: user,
+    wp_connected_login: login,
+    wp_user_role: role,
+    wp_user_permissions: perm,
+    wp_connected_at: Date.now(),
+    wp_auth_status: "connected"
+  };
+
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    await new Promise(r => chrome.storage.local.set(credPayload, r));
+    await new Promise(r => chrome.storage.local.remove(["pathao_merchant_token", "pathao_token_expiry"], r));
+  }
+
+  if (typeof self !== "undefined") {
+    self.DEEN_ENV = Object.assign({}, self.DEEN_ENV || {}, {
+      PATHAO_CLIENT_ID: credPayload.pathao_client_id,
+      PATHAO_CLIENT_SECRET: credPayload.pathao_client_secret,
+      PATHAO_USERNAME: credPayload.pathao_username,
+      PATHAO_PASSWORD: credPayload.pathao_password,
+      PATHAO_BEARER_TOKEN: credPayload.pathao_bearer_token
+    });
+  }
+
+  if (credPayload.pathao_client_id && credPayload.pathao_client_secret && credPayload.pathao_username && credPayload.pathao_password) {
+    issuePathaoTokenFromCredentials({
+      clientId: credPayload.pathao_client_id,
+      clientSecret: credPayload.pathao_client_secret,
+      username: credPayload.pathao_username,
+      password: credPayload.pathao_password
+    }).catch(() => {});
+  }
+
+  return {
+    success: true,
+    credentialsFound: true,
+    siteUrl: targetUrl,
+    adminUser: user,
+    userLogin: login,
+    userRole: role,
+    userPermissions: perm,
+    clientId: credPayload.pathao_client_id ? credPayload.pathao_client_id.substring(0, 4) + "..." : "",
+    username: credPayload.pathao_username,
+    hasSecret: Boolean(credPayload.pathao_client_secret),
+    hasPassword: Boolean(credPayload.pathao_password),
+    hasBearerToken: Boolean(credPayload.pathao_bearer_token),
+    hasSteadfast: Boolean(credPayload.steadfast_api_key),
+    message: `Successfully connected as ${user} (${role}) & auto-synced API credentials!`
+  };
 }
 
 /**
@@ -299,43 +1000,91 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
  * Issue new Pathao access token using Developer API OAuth credentials (.env / env.js)
  */
 async function issuePathaoTokenFromCredentials(creds) {
-  if (!creds || !creds.clientId || !creds.clientSecret || !creds.username || !creds.password) {
+  if (!creds || !creds.clientId || !creds.clientSecret) {
     return null;
   }
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
-    const resp = await fetch("https://api-hermes.pathao.com/aladdin/api/v1/issue-token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        client_id: creds.clientId,
-        client_secret: creds.clientSecret,
-        grant_type: "password",
-        username: creds.username,
-        password: creds.password
-      })
-    });
-    clearTimeout(timeoutId);
 
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data && data.access_token) {
-        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-          chrome.storage.local.set({
-            pathao_merchant_token: data.access_token,
-            pathao_refresh_token: data.refresh_token || "",
-            pathao_token_expiry: Date.now() + ((data.expires_in || 2592000) * 1000)
-          });
+  // 1. Try B2B External Login first (as used by WooCommerce Pathao Courier plugin)
+  const externalEndpoints = [
+    "https://api-hermes.pathao.com/aladdin/api/v1/external/login",
+    "https://merchant.pathao.com/aladdin/api/v1/external/login"
+  ];
+  for (const ep of externalEndpoints) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const extResp = await fetch(ep, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          client_id: creds.clientId,
+          client_secret: creds.clientSecret
+        })
+      });
+      clearTimeout(timeoutId);
+      if (extResp.ok) {
+        const data = await extResp.json();
+        if (data && data.access_token) {
+          if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set({
+              pathao_merchant_token: data.access_token,
+              pathao_refresh_token: data.refresh_token || "",
+              pathao_token_expiry: Date.now() + ((data.expires_in || 2592000) * 1000)
+            });
+          }
+          return data.access_token;
         }
-        return data.access_token;
       }
+    } catch (e) { }
+  }
+
+  // 2. Legacy / Password grant fallback if username & password are provided
+  if (creds.username && creds.password) {
+    const issueEndpoints = [
+      "https://api-hermes.pathao.com/aladdin/api/v1/issue-token",
+      "https://merchant.pathao.com/aladdin/api/v1/issue-token"
+    ];
+    for (const ep of issueEndpoints) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const resp = await fetch(ep, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            client_id: creds.clientId,
+            client_secret: creds.clientSecret,
+            grant_type: "password",
+            username: creds.username,
+            password: creds.password
+          })
+        });
+        clearTimeout(timeoutId);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.access_token) {
+            if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+              chrome.storage.local.set({
+                pathao_merchant_token: data.access_token,
+                pathao_refresh_token: data.refresh_token || "",
+                pathao_token_expiry: Date.now() + ((data.expires_in || 2592000) * 1000)
+              });
+            }
+            return data.access_token;
+          }
+        }
+      } catch (e) { }
     }
-  } catch (e) {}
+  }
+
   return null;
 }
 
@@ -352,7 +1101,7 @@ async function loadRuntimeEnv() {
     envCreds = Object.assign({}, DEEN_ENV);
   }
   if (!envCreds && typeof require !== "undefined") {
-    try { envCreds = Object.assign({}, require("./env.js")); } catch (e) {}
+    try { envCreds = Object.assign({}, require("./env.js")); } catch (e) { }
   }
 
   // 1. Check chrome.storage.local for credentials saved via popup/options UI
@@ -363,18 +1112,44 @@ async function loadRuntimeEnv() {
       ], r));
       if (stored && stored.pathao_client_id) {
         envCreds = Object.assign({}, envCreds || {}, {
-          PATHAO_CLIENT_ID: stored.pathao_client_id,
-          PATHAO_CLIENT_SECRET: stored.pathao_client_secret,
-          PATHAO_USERNAME: stored.pathao_username,
-          PATHAO_PASSWORD: stored.pathao_password,
+          PATHAO_CLIENT_ID: stored.pathao_client_id || (envCreds ? envCreds.PATHAO_CLIENT_ID : ""),
+          PATHAO_CLIENT_SECRET: stored.pathao_client_secret || (envCreds ? envCreds.PATHAO_CLIENT_SECRET : ""),
+          PATHAO_USERNAME: stored.pathao_username || (envCreds ? envCreds.PATHAO_USERNAME : ""),
+          PATHAO_PASSWORD: stored.pathao_password || (envCreds ? envCreds.PATHAO_PASSWORD : ""),
           PATHAO_BEARER_TOKEN: stored.pathao_bearer_token || (envCreds ? envCreds.PATHAO_BEARER_TOKEN : "")
         });
         if (typeof self !== "undefined") self.DEEN_ENV = envCreds;
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
-  // 2. If credentials missing, fetch .env file directly from extension directory (Zero Node.js dependency)
+  // 2. If credentials missing, fetch env.js or .env file directly from extension directory (Zero Node.js dependency)
+  if (!envCreds || !envCreds.PATHAO_CLIENT_ID || !envCreds.PATHAO_CLIENT_SECRET) {
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL && typeof fetch === "function") {
+      try {
+        const envJsUrl = chrome.runtime.getURL("env.js");
+        const jsResp = await fetch(envJsUrl);
+        if (jsResp && jsResp.ok) {
+          const jsText = await jsResp.text();
+          const cidMatch = jsText.match(/["']PATHAO_CLIENT_ID["']\s*:\s*["']([^"']+)["']/);
+          const secMatch = jsText.match(/["']PATHAO_CLIENT_SECRET["']\s*:\s*["']([^"']+)["']/);
+          const userMatch = jsText.match(/["']PATHAO_USERNAME["']\s*:\s*["']([^"']+)["']/);
+          const passMatch = jsText.match(/["']PATHAO_PASSWORD["']\s*:\s*["']([^"']+)["']/);
+          if (cidMatch && secMatch) {
+            envCreds = Object.assign({}, envCreds || {}, {
+              PATHAO_CLIENT_ID: cidMatch[1],
+              PATHAO_CLIENT_SECRET: secMatch[1],
+              PATHAO_USERNAME: userMatch ? userMatch[1] : "",
+              PATHAO_PASSWORD: passMatch ? passMatch[1] : ""
+            });
+            if (typeof self !== "undefined") self.DEEN_ENV = envCreds;
+          }
+        }
+      } catch (e) { }
+    }
+  }
+
+  // 3. Fallback to .env file directly from extension directory
   if (!envCreds || !envCreds.PATHAO_CLIENT_ID || !envCreds.PATHAO_CLIENT_SECRET) {
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL && typeof fetch === "function") {
       try {
@@ -410,7 +1185,7 @@ async function loadRuntimeEnv() {
             }
           }
         }
-      } catch (err) {}
+      } catch (err) { }
     }
   }
 
@@ -437,7 +1212,7 @@ async function getLocalVersionInfo() {
     try {
       const manifest = chrome.runtime.getManifest();
       if (manifest && manifest.version) version = manifest.version;
-    } catch (e) {}
+    } catch (e) { }
   }
 
   if (typeof fetch === "function" && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL) {
@@ -448,7 +1223,7 @@ async function getLocalVersionInfo() {
         if (vJson && vJson.commit) commit = vJson.commit;
         if (vJson && vJson.version) version = vJson.version;
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   return {
@@ -550,7 +1325,7 @@ async function getPathaoToken() {
           return store.pathao_merchant_token;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // 2. Check credentials from loadRuntimeEnv() (reads env.js, .env directly, or chrome.storage.local)
@@ -584,20 +1359,20 @@ async function getPathaoToken() {
         const c = await new Promise(r => chrome.cookies.get({ url: "https://merchant.pathao.com", name: name }, r));
         if (c && c.value) {
           let val = c.value;
-          try { val = decodeURIComponent(val); } catch (e) {}
+          try { val = decodeURIComponent(val); } catch (e) { }
           val = val.replace(/^Bearer\s+/i, "").trim();
           if (val.length > 20) return val;
         }
-      } catch (e) {}
+      } catch (e) { }
       try {
         const c = await new Promise(r => chrome.cookies.get({ url: "https://www.pathao.com", name: name }, r));
         if (c && c.value) {
           let val = c.value;
-          try { val = decodeURIComponent(val); } catch (e) {}
+          try { val = decodeURIComponent(val); } catch (e) { }
           val = val.replace(/^Bearer\s+/i, "").trim();
           if (val.length > 20) return val;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     // Scan all pathao.com domain cookies for JWT pattern
     try {
@@ -605,13 +1380,102 @@ async function getPathaoToken() {
       for (const c of (all || [])) {
         if (!c || !c.value) continue;
         let val = c.value;
-        try { val = decodeURIComponent(val); } catch (e) {}
+        try { val = decodeURIComponent(val); } catch (e) { }
         val = val.replace(/^Bearer\s+/i, "").trim();
         if (val.startsWith("eyJ")) return val;
         if (val.length > 50 && /^[a-zA-Z0-9\-_\.]+$/.test(val)) return val;
       }
-    } catch (e) {}
+    } catch (e) { }
   }
+
+  // 4. Fallback: If no direct Pathao credentials exist, auto-bridge to WooCommerce Pathao plugin
+  try {
+    const wcToken = await fetchPathaoTokenFromWooCommercePlugin();
+    if (wcToken) return wcToken;
+  } catch (e) { }
+
+  return null;
+}
+
+/**
+ * Auto-bridge to WooCommerce Pathao plugin to obtain credentials and issue token
+ * when direct Pathao credentials do not exist in extension.
+ */
+async function fetchPathaoTokenFromWooCommercePlugin() {
+  let targetUrl = "https://deencommerce.com";
+
+  // 1. Check if user has a connected WordPress site in storage
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    try {
+      const stored = await new Promise(r => chrome.storage.local.get(["wp_connected_site", "pathao_client_id", "pathao_client_secret", "pathao_username", "pathao_password"], r));
+      if (stored && stored.wp_connected_site) {
+        targetUrl = stored.wp_connected_site;
+      }
+      if (stored && stored.pathao_client_id && stored.pathao_client_secret) {
+        const issued = await issuePathaoTokenFromCredentials({
+          clientId: stored.pathao_client_id,
+          clientSecret: stored.pathao_client_secret,
+          username: stored.pathao_username || "",
+          password: stored.pathao_password || ""
+        });
+        if (issued) return issued;
+      }
+    } catch (e) { }
+  }
+
+  // 2. Check open WooCommerce tabs in browser
+  if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.query) {
+    try {
+      const wcTabs = await new Promise(r => chrome.tabs.query({ url: ["*://*/wp-admin/*"] }, r));
+      if (wcTabs && wcTabs.length > 0) {
+        for (const tab of wcTabs) {
+          if (tab.url) {
+            try {
+              const u = new URL(tab.url);
+              targetUrl = u.origin;
+            } catch (e) { }
+          }
+          const tabCreds = await new Promise(res => {
+            const timer = setTimeout(() => res(null), 2500);
+            chrome.tabs.sendMessage(tab.id, { action: "get_wc_pathao_credentials" }, (ans) => {
+              clearTimeout(timer);
+              if (chrome.runtime.lastError) void chrome.runtime.lastError.message;
+              if (ans && ans.success && ans.credentials) res(ans.credentials);
+              else res(null);
+            });
+          });
+
+          if (tabCreds && (tabCreds.clientId || tabCreds.bearerToken)) {
+            if (tabCreds.bearerToken) {
+              return tabCreds.bearerToken;
+            }
+            if (tabCreds.clientId && tabCreds.clientSecret) {
+              await saveWordPressExtractedCredentials(tabCreds, targetUrl, tabCreds.adminUser || "Admin", tabCreds.userRole, tabCreds.userPermissions, tabCreds.userLogin);
+              const issued = await issuePathaoTokenFromCredentials(tabCreds);
+              if (issued) return issued;
+            }
+          }
+        }
+      }
+    } catch (e) { }
+  }
+
+  // 3. Proactive headless sync from WordPress admin settings
+  try {
+    const syncRes = await syncFromWordPressAdmin(targetUrl);
+    if (syncRes && syncRes.credentialsFound) {
+      const envCreds = await loadRuntimeEnv();
+      if (envCreds && envCreds.PATHAO_CLIENT_ID && envCreds.PATHAO_CLIENT_SECRET) {
+        const issued = await issuePathaoTokenFromCredentials({
+          clientId: envCreds.PATHAO_CLIENT_ID,
+          clientSecret: envCreds.PATHAO_CLIENT_SECRET,
+          username: envCreds.PATHAO_USERNAME || "",
+          password: envCreds.PATHAO_PASSWORD || ""
+        });
+        if (issued) return issued;
+      }
+    }
+  } catch (e) { }
 
   return null;
 }
@@ -636,17 +1500,24 @@ async function fetchSteadfastRating(cleanPhone) {
         return json;
       }
     }
-  } catch (e) {}
+  } catch (e) { }
   return null;
 }
 
 const customerRatingMemoryCache = new Map();
 const RATING_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
+const MAX_RATING_CACHE_ENTRIES = 500;
 
 /**
  * Handle background customer rating & courier intelligence lookup
  */
 async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh = false) {
+  if (!rawPhone || (typeof rawPhone !== "string" && typeof rawPhone !== "number") || !String(rawPhone).trim()) {
+    if (typeof sendResponse === "function") {
+      sendResponse({ success: false, error: "Missing phone parameter", phone: "" });
+    }
+    return;
+  }
   const cleanPhone = (typeof normalizeBDPhone === "function" ? normalizeBDPhone(rawPhone) : null) || (() => {
     const digits = (rawPhone || "").replace(/\D/g, "");
     let p = digits.length >= 11 ? (digits.startsWith("880") ? digits.slice(2) : digits.slice(-11)) : digits;
@@ -658,7 +1529,13 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh 
     if (customerRatingMemoryCache.has(cleanPhone)) {
       const memEntry = customerRatingMemoryCache.get(cleanPhone);
       if (memEntry && memEntry.timestamp && (Date.now() - memEntry.timestamp < RATING_CACHE_TTL_MS) && memEntry.result) {
-        sendResponse(memEntry.result);
+        const cachedResult = Object.assign({}, memEntry.result, {
+          cached: true,
+          cacheSource: "memory",
+          cachedAt: memEntry.timestamp,
+          cacheAgeMs: Date.now() - memEntry.timestamp
+        });
+        sendResponse(cachedResult);
         return;
       }
     }
@@ -667,11 +1544,23 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh 
         const store = await new Promise(r => chrome.storage.local.get(["customer_rating_cache"], r));
         const storedEntry = store && store.customer_rating_cache && store.customer_rating_cache[cleanPhone];
         if (storedEntry && storedEntry.timestamp && (Date.now() - storedEntry.timestamp < RATING_CACHE_TTL_MS) && storedEntry.result) {
+          if (customerRatingMemoryCache.size >= MAX_RATING_CACHE_ENTRIES) {
+            const oldestKey = customerRatingMemoryCache.keys().next().value;
+            if (oldestKey) customerRatingMemoryCache.delete(oldestKey);
+          }
           customerRatingMemoryCache.set(cleanPhone, storedEntry);
-          sendResponse(storedEntry.result);
+          const cachedResult = Object.assign({}, storedEntry.result, {
+            cached: true,
+            cacheSource: "storage",
+            cachedAt: storedEntry.timestamp,
+            cacheAgeMs: Date.now() - storedEntry.timestamp
+          });
+          sendResponse(cachedResult);
           return;
+        } else if (storedEntry) {
+          customerRatingMemoryCache.delete(cleanPhone);
         }
-      } catch (cacheErr) {}
+      } catch (cacheErr) { }
     }
   }
 
@@ -700,7 +1589,7 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh 
         }
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   // 1b. If tab message failed (e.g. extension reloaded and content script invalidated), execute directly in tab context
   if ((!pathaoData || pathaoData.error) && openTabs && openTabs.length > 0 && chrome.scripting && chrome.scripting.executeScript) {
@@ -729,7 +1618,7 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh 
                   }
                 }
               }
-            } catch (e) {}
+            } catch (e) { }
 
             const headers = {
               "Content-Type": "application/json",
@@ -765,7 +1654,7 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh 
             pathaoData = { error: true, status: res.status, details: res.data || "token_missing" };
           }
         }
-      } catch (scriptErr) {}
+      } catch (scriptErr) { }
     }
   }
 
@@ -803,7 +1692,7 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh 
             } else if (fetchResp.status === 401) {
               pathaoData = { error: true, status: 401, details: json || "token_expired" };
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         // If 401 token expired, re-issue token via credentials and retry once
@@ -834,7 +1723,7 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh 
                   pathaoData = json;
                   break;
                 }
-              } catch (e) {}
+              } catch (e) { }
             }
           }
         }
@@ -856,7 +1745,7 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh 
     if (store && store.customer_history_cache && store.customer_history_cache[cleanPhone]) {
       storeHistory = store.customer_history_cache[cleanPhone];
     }
-  } catch (histErr) {}
+  } catch (histErr) { }
 
   // 5. Parse Pathao stats accurately from all possible response shapes
   let pathaoStats = null;
@@ -983,7 +1872,11 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh 
     }
   };
 
-  // Cache result in memory map
+  // Cache result in memory map with max capacity enforcement
+  if (customerRatingMemoryCache.size >= MAX_RATING_CACHE_ENTRIES) {
+    const oldestKey = customerRatingMemoryCache.keys().next().value;
+    if (oldestKey) customerRatingMemoryCache.delete(oldestKey);
+  }
   customerRatingMemoryCache.set(cleanPhone, {
     timestamp: Date.now(),
     result: result
@@ -999,13 +1892,13 @@ async function handleCustomerRatingRequest(rawPhone, sendResponse, forceRefresh 
           result: result
         };
         const keys = Object.keys(cache);
-        if (keys.length > 300) {
+        if (keys.length > 500) {
           const oldestKey = keys.reduce((minK, k) => (cache[k].timestamp < cache[minK].timestamp ? k : minK), keys[0]);
           delete cache[oldestKey];
         }
         chrome.storage.local.set({ customer_rating_cache: cache });
       });
-    } catch (persistErr) {}
+    } catch (persistErr) { }
   }
 
   sendResponse(result);
@@ -1035,7 +1928,7 @@ function findAndSyncPathaoTab(data, autoSwitch = false) {
           chrome.tabs.sendMessage(targetTab.id, {
             action: "autofill_pathao_recipient",
             data: data
-          }).catch(() => {});
+          }).catch(() => { });
         }
 
         if (targetTab.windowId) {
@@ -1046,7 +1939,7 @@ function findAndSyncPathaoTab(data, autoSwitch = false) {
         chrome.tabs.sendMessage(targetTab.id, {
           action: "autofill_pathao_recipient",
           data: data
-        }).catch(() => {});
+        }).catch(() => { });
       }
     } else if (autoSwitch) {
       // Pathao is not currently open, open directly to the order creation page!
@@ -1076,6 +1969,8 @@ function focusOrOpenPathao() {
 
 // In-memory cache for online address guesses (query string -> result)
 const onlineAddressCache = new Map();
+const ONLINE_ADDRESS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours cache
+const MAX_ONLINE_ADDRESS_CACHE_ENTRIES = 500;
 
 /**
  * Parses OpenStreetMap Nominatim response item into standardized Bangladesh district, zone, and postcode
@@ -1098,7 +1993,7 @@ function parseNominatimAddressResult(item, originalQuery) {
       if (dists.length === 0) dists = p.BD_DISTRICTS;
       if (Object.keys(otherZones).length === 0) otherZones = p.OTHER_CITY_ZONES;
       if (dhakaZones.length === 0) dhakaZones = p.DHAKA_ZONES;
-    } catch (e) {}
+    } catch (e) { }
   }
 
   let matchedDistrict = "";
@@ -1177,7 +2072,7 @@ function parseNominatimAddressResult(item, originalQuery) {
   // Build modified full address
   let buildFull = typeof buildFullAddress !== "undefined" ? buildFullAddress : null;
   if (!buildFull && typeof require !== "undefined") {
-    try { buildFull = require("./parser.js").buildFullAddress; } catch (e) {}
+    try { buildFull = require("./parser.js").buildFullAddress; } catch (e) { }
   }
 
   let fullAddress = "";
@@ -1213,8 +2108,14 @@ async function handleOnlineAddressGuess(rawQuery, sendResponse) {
   const cacheKey = cleanQuery.toLowerCase();
 
   if (onlineAddressCache.has(cacheKey)) {
-    sendResponse(onlineAddressCache.get(cacheKey));
-    return;
+    const cached = onlineAddressCache.get(cacheKey);
+    const entryTime = (cached && cached.timestamp) ? cached.timestamp : (cached ? Date.now() : 0);
+    if (Date.now() - entryTime < ONLINE_ADDRESS_CACHE_TTL_MS) {
+      sendResponse(cached);
+      return;
+    } else {
+      onlineAddressCache.delete(cacheKey);
+    }
   }
 
   // 1. Try local parse first if district is explicit or specific zone is recognized
@@ -1225,7 +2126,7 @@ async function handleOnlineAddressGuess(rawQuery, sendResponse) {
       const p = require("./parser.js");
       if (!parseBD) parseBD = p.parseBDAddress;
       if (!buildFull) buildFull = p.buildFullAddress;
-    } catch (e) {}
+    } catch (e) { }
   }
 
   if (parseBD) {
@@ -1239,8 +2140,13 @@ async function handleOnlineAddressGuess(rawQuery, sendResponse) {
         zone: localParsed.zone,
         postcode: localParsed.postcode || "",
         fullAddress: buildFull ? buildFull(cleanQuery, localParsed) : cleanQuery,
-        source: "Local Engine"
+        source: "Local Engine",
+        timestamp: Date.now()
       };
+      if (onlineAddressCache.size >= MAX_ONLINE_ADDRESS_CACHE_ENTRIES) {
+        const oldestKey = onlineAddressCache.keys().next().value;
+        if (oldestKey) onlineAddressCache.delete(oldestKey);
+      }
       onlineAddressCache.set(cacheKey, result);
       sendResponse(result);
       return;
@@ -1303,10 +2209,15 @@ async function handleOnlineAddressGuess(rawQuery, sendResponse) {
           break;
         }
       }
-    } catch (err) {}
+    } catch (err) { }
   }
 
   if (resolvedResult) {
+    resolvedResult.timestamp = Date.now();
+    if (onlineAddressCache.size >= MAX_ONLINE_ADDRESS_CACHE_ENTRIES) {
+      const oldestKey = onlineAddressCache.keys().next().value;
+      if (oldestKey) onlineAddressCache.delete(oldestKey);
+    }
     onlineAddressCache.set(cacheKey, resolvedResult);
     sendResponse(resolvedResult);
   } else {
@@ -1317,12 +2228,53 @@ async function handleOnlineAddressGuess(rawQuery, sendResponse) {
   }
 }
 
+/**
+ * Periodic eviction for expired memory caches
+ */
+function pruneExpiredCaches() {
+  const now = Date.now();
+  for (const [phone, entry] of customerRatingMemoryCache.entries()) {
+    if (!entry || !entry.timestamp || (now - entry.timestamp >= RATING_CACHE_TTL_MS)) {
+      customerRatingMemoryCache.delete(phone);
+    }
+  }
+  for (const [query, entry] of onlineAddressCache.entries()) {
+    if (!entry || !entry.timestamp || (now - entry.timestamp >= ONLINE_ADDRESS_CACHE_TTL_MS)) {
+      onlineAddressCache.delete(query);
+    }
+  }
+}
+
+if (typeof setInterval !== "undefined") {
+  // Run cache prune every 15 minutes
+  const pruneTimer = setInterval(pruneExpiredCaches, 15 * 60 * 1000);
+  if (pruneTimer && typeof pruneTimer.unref === "function") {
+    pruneTimer.unref();
+  }
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     handleCustomerRatingRequest,
     handleOnlineAddressGuess,
     parseNominatimAddressResult,
-    onlineAddressCache
+    onlineAddressCache,
+    customerRatingMemoryCache,
+    pruneExpiredCaches,
+    RATING_CACHE_TTL_MS,
+    ONLINE_ADDRESS_CACHE_TTL_MS,
+    MAX_RATING_CACHE_ENTRIES,
+    MAX_ONLINE_ADDRESS_CACHE_ENTRIES,
+    extractCredentialsFromWordPressHTML,
+    authenticateWordPressUser,
+    syncFromWordPressAdmin,
+    getWordPressConnectionStatus,
+    disconnectWordPressSession,
+    saveWordPressExtractedCredentials,
+    issuePathaoTokenFromCredentials,
+    loadRuntimeEnv,
+    getPathaoToken,
+    fetchPathaoTokenFromWooCommercePlugin
   };
 }
 

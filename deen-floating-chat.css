@@ -1,0 +1,648 @@
+/* ==========================================================================
+   DEEN Delivery Parser - Floating AI Assistant Chatbox
+   Platforms: WordPress Admin, Pathao Merchant Portal, WhatsApp Web
+   Design: Modern Obsidian Glass & DEEN Orange (#ea580c)
+   ========================================================================== */
+
+/* Launcher Floating Button */
+#deen-chat-trigger {
+  position: fixed;
+  z-index: 9999990;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #ffffff;
+  padding: 6px 14px 6px 8px;
+  border-radius: 9999px;
+  border: 1px solid rgba(234, 88, 12, 0.55);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.55), 0 0 16px rgba(234, 88, 12, 0.35);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#deen-chat-trigger:hover {
+  transform: translateY(-2px) scale(1.03);
+  border-color: #ea580c;
+  box-shadow: 0 14px 30px -5px rgba(0, 0, 0, 0.65), 0 0 22px rgba(234, 88, 12, 0.5);
+}
+
+#deen-chat-trigger:active {
+  cursor: grabbing;
+}
+
+#deen-chat-trigger.deen-is-dragging {
+  cursor: grabbing !important;
+  transition: none !important;
+  transform: scale(1.06) !important;
+  border-color: #ea580c !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 28px rgba(234, 88, 12, 0.65) !important;
+  opacity: 0.96;
+}
+
+/* Rounded Official DEEN Brand Avatar in Launcher */
+.deen-chat-trigger-avatar-wrap {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.deen-chat-trigger-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid #ea580c;
+  box-shadow: 0 0 10px rgba(234, 88, 12, 0.45);
+  display: block;
+  pointer-events: none;
+  background-color: #ffffff;
+}
+
+.deen-chat-trigger-avatar-wrap .deen-chat-trigger-pulse {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  border: 1.5px solid #0f172a;
+  box-shadow: 0 0 6px #10b981;
+  animation: deenChatPulse 2s infinite;
+}
+
+/* Platform specific default positioning */
+body.wp-admin #deen-chat-trigger,
+.wp-admin #deen-chat-trigger {
+  bottom: 24px;
+  right: 24px;
+}
+
+/* Pathao positioning (above floating toolbar) */
+body[data-deen-platform="pathao"] #deen-chat-trigger {
+  bottom: 84px;
+  right: 24px;
+}
+
+/* WhatsApp Web positioning (above footer) */
+body[data-deen-platform="whatsapp"] #deen-chat-trigger {
+  bottom: 82px;
+  right: 24px;
+}
+
+/* Fallback default */
+#deen-chat-trigger {
+  bottom: 80px;
+  right: 24px;
+}
+
+.deen-chat-trigger-icon {
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deen-chat-trigger-label {
+  letter-spacing: 0.3px;
+  color: #f8fafc;
+}
+
+.deen-chat-trigger-badge {
+  background: #ea580c;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  min-width: 16px;
+  text-align: center;
+}
+
+/* Pulse animation dot */
+.deen-chat-trigger-pulse {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #10b981;
+  animation: deenChatPulse 2s infinite;
+}
+
+@keyframes deenChatPulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* Floating Chatbox Container Window */
+#deen-chat-widget {
+  position: fixed;
+  z-index: 9999995;
+  width: 390px;
+  height: 540px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  background: #0b1120;
+  border: 1px solid rgba(234, 88, 12, 0.35);
+  border-radius: 16px;
+  box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.75), 0 0 25px rgba(234, 88, 12, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  color: #f1f5f9;
+  line-height: 1.5;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+#deen-chat-widget.deen-chat-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(20px) scale(0.94);
+  visibility: hidden;
+}
+
+/* Platform specific default window placement */
+body.wp-admin #deen-chat-widget,
+.wp-admin #deen-chat-widget {
+  bottom: 24px;
+  right: 24px;
+}
+
+body[data-deen-platform="pathao"] #deen-chat-widget {
+  bottom: 84px;
+  right: 24px;
+}
+
+body[data-deen-platform="whatsapp"] #deen-chat-widget {
+  bottom: 82px;
+  right: 24px;
+}
+
+#deen-chat-widget {
+  bottom: 80px;
+  right: 24px;
+}
+
+/* Window Header */
+.deen-chat-header {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+
+.deen-chat-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.deen-chat-logo-badge {
+  width: 28px;
+  height: 28px;
+  background: #ea580c;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  box-shadow: 0 2px 8px rgba(234, 88, 12, 0.4);
+}
+
+.deen-chat-header-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid #ea580c;
+  box-shadow: 0 0 8px rgba(234, 88, 12, 0.4);
+  display: block;
+  flex-shrink: 0;
+  background-color: #ffffff;
+}
+
+.deen-chat-title-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.deen-chat-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deen-chat-platform-badge {
+  display: inline-block;
+  background: rgba(234, 88, 12, 0.18);
+  border: 1px solid rgba(234, 88, 12, 0.4);
+  color: #fdba74;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.deen-chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deen-chat-hdr-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.deen-chat-hdr-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.deen-chat-hdr-btn-close:hover {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  border-color: #ef4444 !important;
+}
+
+/* Context Telemetry Bar */
+.deen-chat-context-bar {
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.deen-chat-context-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deen-chat-context-dot {
+  color: #10b981;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.deen-chat-context-sync-tag {
+  font-size: 10px;
+  color: #38bdf8;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.deen-chat-context-sync-tag:hover {
+  text-decoration: underline;
+}
+
+/* Dynamic Chips Carousel */
+.deen-chat-chips-bar {
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+.deen-chat-chips-bar::-webkit-scrollbar {
+  height: 3px;
+}
+
+.deen-chat-chips-bar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.deen-chat-chip {
+  background: rgba(234, 88, 12, 0.12);
+  border: 1px solid rgba(234, 88, 12, 0.3);
+  color: #fdba74;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.deen-chat-chip:hover {
+  background: rgba(234, 88, 12, 0.25);
+  border-color: #ea580c;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+/* Chat Stream */
+.deen-chat-stream {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: radial-gradient(circle at 50% 0%, rgba(30, 41, 59, 0.35) 0%, transparent 70%);
+}
+
+.deen-chat-stream::-webkit-scrollbar {
+  width: 5px;
+}
+
+.deen-chat-stream::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+/* Message Bubbles */
+.deen-chat-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 88%;
+  animation: deenChatFadeIn 0.2s ease-out;
+}
+
+@keyframes deenChatFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.deen-chat-msg.user {
+  align-self: flex-end;
+}
+
+.deen-chat-msg.user .deen-chat-bubble {
+  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+  color: #ffffff;
+  border-radius: 14px 14px 2px 14px;
+  padding: 9px 13px;
+  font-size: 12.5px;
+  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.25);
+  word-break: break-word;
+}
+
+.deen-chat-msg.assistant {
+  align-self: flex-start;
+  max-width: 95%;
+}
+
+.deen-chat-msg.assistant .deen-chat-bubble {
+  background: #1e293b;
+  color: #f1f5f9;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px 14px 14px 2px;
+  padding: 11px 14px;
+  font-size: 12.5px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  word-break: break-word;
+}
+
+.deen-chat-bubble h3,
+.deen-chat-bubble h4 {
+  color: #fdba74;
+  margin: 4px 0 8px 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.deen-chat-bubble p {
+  margin: 0 0 6px 0;
+}
+
+.deen-chat-bubble p:last-child {
+  margin-bottom: 0;
+}
+
+.deen-chat-bubble ul,
+.deen-chat-bubble ol {
+  margin: 4px 0 8px 16px;
+  padding: 0;
+}
+
+.deen-chat-bubble li {
+  margin-bottom: 4px;
+}
+
+.deen-chat-bubble strong {
+  color: #ffffff;
+}
+
+.deen-chat-bubble code {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: #38bdf8;
+}
+
+.deen-chat-meta {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deen-chat-msg.user .deen-chat-meta {
+  align-self: flex-end;
+}
+
+/* Assistant Message Action Buttons */
+.deen-chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.deen-chat-act-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.deen-chat-act-btn:hover {
+  background: rgba(234, 88, 12, 0.2);
+  border-color: #ea580c;
+  color: #ffffff;
+}
+
+.deen-chat-act-btn.wa-insert {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+}
+
+.deen-chat-act-btn.wa-insert:hover {
+  background: rgba(16, 185, 129, 0.3);
+  border-color: #10b981;
+  color: #ffffff;
+}
+
+/* Typing Indicator */
+.deen-chat-typing {
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(15, 23, 42, 0.6);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.deen-chat-typing span.dot {
+  width: 6px;
+  height: 6px;
+  background: #ea580c;
+  border-radius: 50%;
+  animation: deenChatBounce 1.2s infinite ease-in-out;
+}
+
+.deen-chat-typing span.dot:nth-child(2) { animation-delay: 0.2s; }
+.deen-chat-typing span.dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes deenChatBounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.deen-typing-label {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-left: 6px;
+}
+
+.deen-hidden {
+  display: none !important;
+}
+
+/* Input Bar */
+.deen-chat-input-bar {
+  padding: 10px 12px;
+  background: #0f172a;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.deen-chat-input-bar textarea {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 12.5px;
+  resize: none;
+  min-height: 36px;
+  max-height: 100px;
+  outline: none;
+  line-height: 1.4;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.deen-chat-input-bar textarea:focus {
+  border-color: #ea580c;
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.2);
+}
+
+.deen-chat-input-bar textarea::placeholder {
+  color: #64748b;
+}
+
+.deen-chat-send-btn {
+  width: 36px;
+  height: 36px;
+  background: #ea580c;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.deen-chat-send-btn:hover {
+  background: #c2410c;
+  transform: scale(1.05);
+}
+
+.deen-chat-send-btn:active {
+  transform: scale(0.95);
+}
+
+.deen-chat-send-btn:disabled {
+  background: #334155;
+  color: #64748b;
+  cursor: not-allowed;
+  transform: none;
+}

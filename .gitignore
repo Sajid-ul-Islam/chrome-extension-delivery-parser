@@ -20,12 +20,18 @@ build/
 *.zip
 *.crx
 
-# Test Artifacts
+# Test Artifacts & Temporary Files
 temp_chrome_e2e_profile/
+test_artifacts/
 *.log
+patch_*.js
+fix_*.js
+temp_*.js
+append_*.js
+apply_*.js
+helper_*.js
 
 # Secrets & Environment Credentials (DO NOT COMMIT)
 .env
 env.js
 test_pathao_auth.js
-

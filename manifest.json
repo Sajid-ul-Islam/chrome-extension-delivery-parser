@@ -5,6 +5,7 @@
   "description": "Extract, parse, and export Pathao and courier deliveries directly to Excel and CSV with 1-click and live KPI metrics.",
   "icons": {
     "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
@@ -12,6 +13,7 @@
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
@@ -46,7 +48,10 @@
     "https://api.redx.com.bd/*",
     "https://openapi.redx.com.bd/*",
     "https://nominatim.openstreetmap.org/*",
-    "https://api.github.com/*"
+    "https://api.github.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.openai.com/*",
+    "https://api.groq.com/*"
   ],
   "web_accessible_resources": [
     {
@@ -57,9 +62,14 @@
         "version.json",
         "storage-engine.js",
         "courier-adapters.js",
+        "deen-assistant.js",
+        "deen-floating-chat.js",
+        "deen-floating-chat.css",
         "webmcp-provider.js"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "content_scripts": [
@@ -72,8 +82,20 @@
         "http://*.pathao.com/*",
         "http://pathao.com/*"
       ],
-      "js": ["xlsx.mini.min.js", "parser.js", "storage-engine.js", "courier-adapters.js", "content.js", "webmcp-provider.js"],
-      "css": ["content.css"],
+      "js": [
+        "xlsx.mini.min.js",
+        "parser.js",
+        "storage-engine.js",
+        "courier-adapters.js",
+        "deen-assistant.js",
+        "deen-floating-chat.js",
+        "content.js",
+        "webmcp-provider.js"
+      ],
+      "css": [
+        "content.css",
+        "deen-floating-chat.css"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -82,12 +104,25 @@
         "*://*.deencommerce.com/wp-admin/*",
         "*://*/wp-admin/*"
       ],
-      "js": ["parser.js", "storage-engine.js", "courier-adapters.js", "woocommerce.js", "webmcp-provider.js"],
-      "css": ["woocommerce.css"],
+      "js": [
+        "parser.js",
+        "storage-engine.js",
+        "courier-adapters.js",
+        "deen-assistant.js",
+        "deen-floating-chat.js",
+        "woocommerce.js",
+        "webmcp-provider.js"
+      ],
+      "css": [
+        "woocommerce.css",
+        "deen-floating-chat.css"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://*/*"],
+      "matches": [
+        "*://*/*"
+      ],
       "exclude_matches": [
         "https://merchant.pathao.com/*",
         "https://*.pathao.com/*",
@@ -96,8 +131,19 @@
         "http://*.pathao.com/*",
         "http://pathao.com/*"
       ],
-      "js": ["parser.js", "storage-engine.js", "courier-adapters.js", "phone-check.js", "webmcp-provider.js"],
-      "css": ["phone-check.css"],
+      "js": [
+        "parser.js",
+        "storage-engine.js",
+        "courier-adapters.js",
+        "deen-assistant.js",
+        "deen-floating-chat.js",
+        "phone-check.js",
+        "webmcp-provider.js"
+      ],
+      "css": [
+        "phone-check.css",
+        "deen-floating-chat.css"
+      ],
       "run_at": "document_idle"
     }
   ],

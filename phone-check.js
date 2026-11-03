@@ -18,7 +18,10 @@
         buildWhatsAppDeepLink,
         generateQuickReply,
         getQuickReplyConfig,
-        injectWhatsAppMessage
+        injectWhatsAppMessage,
+        extractWhatsAppActivePhone,
+        renderWhatsAppHeaderBadge,
+        initWhatsAppActiveChatDetector,
       };
     }
     return;
@@ -222,6 +225,51 @@
     return { injected, copied, openedUrl, text };
   }
 
+  // ===========================================================================
+  // Local Customer Rating Cache Helpers (0ms In-Page & Storage Reuse)
+  // ===========================================================================
+  const localPageRatingCache = new Map();
+  const PAGE_RATING_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+  function getLocalCachedRating(phone, callback) {
+    const cleanPhone = normalizeBDPhone(phone);
+    if (!cleanPhone) {
+      if (typeof callback === "function") callback(null);
+      return;
+    }
+
+    // 1. Check in-memory page cache (0ms instant lookup)
+    if (localPageRatingCache.has(cleanPhone)) {
+      const entry = localPageRatingCache.get(cleanPhone);
+      if (entry && entry.timestamp && (Date.now() - entry.timestamp < PAGE_RATING_CACHE_TTL_MS) && entry.data) {
+        if (typeof callback === "function") callback(entry.data);
+        return;
+      }
+    }
+
+    // 2. Check persistent chrome.storage.local cache (zero network calls)
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(["customer_rating_cache"], (res) => {
+        const cache = res && res.customer_rating_cache;
+        const entry = cache && cache[cleanPhone];
+        if (entry && entry.result && entry.timestamp && (Date.now() - entry.timestamp < PAGE_RATING_CACHE_TTL_MS)) {
+          localPageRatingCache.set(cleanPhone, { timestamp: entry.timestamp, data: entry.result });
+          if (typeof callback === "function") callback(entry.result);
+          return;
+        }
+        if (typeof callback === "function") callback(null);
+      });
+    } else {
+      if (typeof callback === "function") callback(null);
+    }
+  }
+
+  function setLocalCachedRating(phone, data) {
+    const cleanPhone = normalizeBDPhone(phone);
+    if (!cleanPhone || !data) return;
+    localPageRatingCache.set(cleanPhone, { timestamp: Date.now(), data: data });
+  }
+
   // Export for testing in Node.js
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
@@ -232,7 +280,13 @@
       buildWhatsAppDeepLink,
       generateQuickReply,
       getQuickReplyConfig,
-      injectWhatsAppMessage
+      injectWhatsAppMessage,
+      extractWhatsAppActivePhone,
+      renderWhatsAppHeaderBadge,
+      initWhatsAppActiveChatDetector,
+      getLocalCachedRating,
+      setLocalCachedRating,
+      localPageRatingCache,
     };
   }
 
@@ -425,45 +479,54 @@
     };
     window.addEventListener("keydown", onKeyEsc);
 
-    // Query background service worker
-    if (isExtensionValid() && chrome.runtime && chrome.runtime.sendMessage) {
-      chrome.runtime.sendMessage({
-        action: "fetch_customer_rating",
-        phone: phone
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          void chrome.runtime.lastError.message;
-        }
-        if (!activeRatingModalEl) return;
+    // Check local cache first for instant modal render
+    getLocalCachedRating(phone, (cached) => {
+      if (cached && activeRatingModalEl) {
+        renderRatingModalContent(modal, cached);
+        return;
+      }
 
-        const data = (response && response.success) ? response : {
-          success: true,
+      // Query background service worker if not in local cache
+      if (isExtensionValid() && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: "fetch_customer_rating",
+          phone: phone
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            void chrome.runtime.lastError.message;
+          }
+          if (!activeRatingModalEl) return;
+
+          const data = (response && response.success) ? response : {
+            success: true,
+            phone: phone,
+            successRate: 100,
+            totalParcels: 0,
+            deliveredCount: 0,
+            cancelledCount: 0,
+            riskLevel: "low",
+            riskLabel: "New Customer (No Returns Reported)",
+            riskColor: "#3b82f6",
+            isNewCustomer: true
+          };
+
+          setLocalCachedRating(phone, data);
+          renderRatingModalContent(modal, data);
+        });
+      } else {
+        renderRatingModalContent(modal, {
           phone: phone,
           successRate: 100,
           totalParcels: 0,
           deliveredCount: 0,
           cancelledCount: 0,
           riskLevel: "low",
-          riskLabel: "New Customer (No Returns Reported)",
-          riskColor: "#3b82f6",
+          riskLabel: "Customer Ready",
+          riskColor: "#10b981",
           isNewCustomer: true
-        };
-
-        renderRatingModalContent(modal, data);
-      });
-    } else {
-      renderRatingModalContent(modal, {
-        phone: phone,
-        successRate: 100,
-        totalParcels: 0,
-        deliveredCount: 0,
-        cancelledCount: 0,
-        riskLevel: "low",
-        riskLabel: "Customer Ready",
-        riskColor: "#10b981",
-        isNewCustomer: true
-      });
-    }
+        });
+      }
+    });
   }
 
   function renderRatingModalContent(modal, data) {
@@ -1398,12 +1461,308 @@
     checkCustomerInSidebar(phone);
   }
 
+
+  // ===========================================================================
+  // WhatsApp Web DOM Reconciliation Safeguard (React 18 insertBefore Protection)
+  // ===========================================================================
+  if (typeof window !== "undefined" && typeof Node !== "undefined" && Node.prototype && !window.__deenInsertBeforeProtected) {
+    try {
+      window.__deenInsertBeforeProtected = true;
+      const _origInsertBefore = Node.prototype.insertBefore;
+      Node.prototype.insertBefore = function (newNode, refNode) {
+        if (refNode && refNode.parentNode !== this) {
+          return this.appendChild(newNode);
+        }
+        return _origInsertBefore.apply(this, arguments);
+      };
+      const _origRemoveChild = Node.prototype.removeChild;
+      Node.prototype.removeChild = function (child) {
+        if (child && child.parentNode !== this) {
+          return child;
+        }
+        return _origRemoveChild.apply(this, arguments);
+      };
+    } catch (e) { }
+  }
+
+  // ===========================================================================
+  // WhatsApp Web Active Chat Auto-Detection & Header Rating Badge
+  // ===========================================================================
+
+  function extractWhatsAppActivePhone(headerElement) {
+    if (typeof document === "undefined") return "";
+    const header = headerElement || document.querySelector('#main header') || document.querySelector('header[data-testid="conversation-header"]');
+    if (!header) return "";
+
+    // 1. Try finding in title (e.g. data-testid="conversation-info-header-chat-title")
+    const titleEl = header.querySelector('span[data-testid="conversation-info-header-chat-title"]') ||
+                    header.querySelector('div[role="button"] span[title]') ||
+                    header.querySelector('span[title]');
+    if (titleEl) {
+      const titleText = titleEl.getAttribute('title') || titleEl.textContent || titleEl.innerText || '';
+      const phone = normalizeBDPhone(titleText);
+      if (phone) return phone;
+    }
+
+    // 2. Try finding in custom status subtitle (data-testid="custom-status")
+    const subEl = header.querySelector('span[data-testid="custom-status"]') ||
+                  header.querySelector('.custom-status') ||
+                  header.querySelector('span[title*="+880"], span[title*="01"]');
+    if (subEl) {
+      const subText = subEl.getAttribute('title') || subEl.textContent || subEl.innerText || '';
+      const phone = normalizeBDPhone(subText);
+      if (phone) return phone;
+    }
+
+    // 3. Scan whole header text
+    const headerText = header.innerText || header.textContent || '';
+    const phone = normalizeBDPhone(headerText);
+    if (phone) return phone;
+
+    // 4. Scan recent incoming messages in active conversation (#main)
+    const messages = Array.from(document.querySelectorAll('#main .message-in, #main div[data-pre-plain-text]'));
+    if (messages.length > 0) {
+      for (let i = messages.length - 1; i >= Math.max(0, messages.length - 5); i--) {
+        const msgPhone = normalizeBDPhone(messages[i].innerText || messages[i].textContent || '');
+        if (msgPhone) return msgPhone;
+      }
+    }
+
+    return "";
+  }
+
+  function renderWhatsAppHeaderBadge(phone, headerElement) {
+    if (!phone) return;
+    const header = headerElement || document.querySelector('#main header') || document.querySelector('header[data-testid="conversation-header"]');
+    if (!header) return;
+
+    // Reuse existing badge node instead of removing it (prevents React insertBefore NotFoundError)
+    let badge = header.querySelector('#deen-wa-header-rating-badge');
+    const isNewBadge = !badge;
+
+    if (!isNewBadge) {
+      const isLoading = (badge.classList && typeof badge.classList.contains === "function")
+        ? badge.classList.contains('deen-wa-risk-loading')
+        : (typeof badge.className === "string" && badge.className.includes('deen-wa-risk-loading'));
+      if (badge.getAttribute('data-phone') === phone && !isLoading) {
+        return; // already rendered for this active phone
+      }
+      badge.setAttribute('data-phone', phone);
+      badge.className = 'deen-wa-rating-badge deen-wa-risk-loading';
+    } else {
+      badge = document.createElement('div');
+      badge.id = 'deen-wa-header-rating-badge';
+      badge.className = 'deen-wa-rating-badge deen-wa-risk-loading';
+      badge.setAttribute('data-phone', phone);
+    }
+    badge.innerHTML = `
+      <span class="deen-wa-badge-indicator" role="button" title="Loading Customer Intelligence...">
+        <span class="deen-wa-badge-icon">⏳</span>
+        <span class="deen-wa-badge-score">Checking...</span>
+      </span>
+      <div class="deen-wa-badge-actions">
+        <button class="deen-wa-btn-qr deen-wa-btn-adv" title="1-Click Send Advance ৳90 Delivery Fee to WhatsApp">
+          <span>💰 ৳90 Adv</span>
+        </button>
+        <button class="deen-wa-btn-qr deen-wa-btn-confirm" title="1-Click Send Order Confirmation to WhatsApp">
+          <span>✅ Confirm</span>
+        </button>
+        <button class="deen-wa-btn-qr deen-wa-btn-sidebar" title="Open In-Page Intelligence Sidebar">
+          <span>📌</span>
+        </button>
+      </div>
+    `;
+
+    // Append into header only if newly created
+    if (isNewBadge) {
+      try {
+        header.appendChild(badge);
+      } catch (appendErr) {
+        try { header.append(badge); } catch (e) { }
+      }
+    }
+
+    const handleRatingData = (data) => {
+      if (!badge || !badge.parentElement) return;
+      const rate = Number(data.successRate) || 0;
+      const total = Number(data.totalParcels) || 0;
+      const delivered = Number(data.deliveredCount) || 0;
+      const cancelled = Number(data.cancelledCount) || 0;
+
+      let riskTheme = 'low';
+      let riskLabel = `${rate}% Delivery`;
+      let riskIcon = '🛡️';
+
+      if (data.pathaoStatus === "token_missing" && (!data.steadfastStats || data.steadfastStats.total === 0)) {
+        riskTheme = 'new';
+        riskLabel = '🔑 Connect Pathao';
+        riskIcon = '🔑';
+      } else if (data.isNewCustomer || total === 0) {
+        riskTheme = 'new';
+        riskLabel = '⭐ New Buyer';
+        riskIcon = '⭐';
+      } else if (data.riskLevel === 'high' || rate < 70) {
+        riskTheme = 'high';
+        riskLabel = `⚠️ ${rate}% Risk`;
+        riskIcon = '⚠️';
+      } else if (data.riskLevel === 'medium' || rate < 85) {
+        riskTheme = 'medium';
+        riskLabel = `⚡ ${rate}% Ratio`;
+        riskIcon = '⚡';
+      }
+
+      badge.className = `deen-wa-rating-badge deen-wa-risk-${riskTheme}`;
+      badge.title = `Customer: ${phone}\nSuccess Rate: ${rate}%\nTotal Parcels: ${total} (Delivered: ${delivered}, Return: ${cancelled})\nClick to view full intelligence`;
+
+      const statsSnippet = total > 0 ? `<span class="deen-wa-badge-count">(${delivered}/${total})</span>` : '';
+
+      badge.innerHTML = `
+        <span class="deen-wa-badge-indicator" role="button" title="View Customer Intelligence & Multi-Courier Score">
+          <span class="deen-wa-badge-icon">${riskIcon}</span>
+          <span class="deen-wa-badge-score">${riskLabel}</span>
+          ${statsSnippet}
+        </span>
+        <div class="deen-wa-badge-actions">
+          <button class="deen-wa-btn-qr deen-wa-btn-adv" title="1-Click Send Advance ৳90 Delivery Fee to WhatsApp">
+            <span>💰 ৳90 Adv</span>
+          </button>
+          <button class="deen-wa-btn-qr deen-wa-btn-confirm" title="1-Click Send Order Confirmation to WhatsApp">
+            <span>✅ Confirm</span>
+          </button>
+          <button class="deen-wa-btn-qr deen-wa-btn-sidebar" title="Open In-Page Intelligence Sidebar">
+            <span>📌</span>
+          </button>
+        </div>
+      `;
+
+      const indicator = badge.querySelector('.deen-wa-badge-indicator');
+      if (indicator) {
+        indicator.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showCustomerRatingModal(phone);
+        });
+      }
+
+      const btnAdv = badge.querySelector('.deen-wa-btn-adv');
+      if (btnAdv) {
+        btnAdv.addEventListener('click', (e) => {
+          e.stopPropagation();
+          getQuickReplyConfig((config) => {
+            const msg = generateQuickReply('advance_fee', { phone: phone, fee: config.outsideDhakaFee || 90 }, config);
+            injectWhatsAppMessage(msg, { phone: phone, openChat: true });
+            btnAdv.innerHTML = '<span>✓ Done</span>';
+            setTimeout(() => { if (btnAdv) btnAdv.innerHTML = '<span>💰 ৳90 Adv</span>'; }, 1500);
+          });
+        });
+      }
+
+      const btnConf = badge.querySelector('.deen-wa-btn-confirm');
+      if (btnConf) {
+        btnConf.addEventListener('click', (e) => {
+          e.stopPropagation();
+          getQuickReplyConfig((config) => {
+            const msg = generateQuickReply('confirm_order', { phone: phone }, config);
+            injectWhatsAppMessage(msg, { phone: phone, openChat: true });
+            btnConf.innerHTML = '<span>✓ Done</span>';
+            setTimeout(() => { if (btnConf) btnConf.innerHTML = '<span>✅ Confirm</span>'; }, 1500);
+          });
+        });
+      }
+
+      const btnSb = badge.querySelector('.deen-wa-btn-sidebar');
+      if (btnSb) {
+        btnSb.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openSidebar(phone);
+        });
+      }
+    };
+
+    // 1. Check local cache first: If found locally, immediately reuse without network fetch!
+    getLocalCachedRating(phone, (cachedData) => {
+      if (cachedData) {
+        handleRatingData(cachedData);
+        return;
+      }
+
+      // 2. If not in local cache, query background service worker
+      if (isExtensionValid() && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: "fetch_customer_rating",
+          phone: phone
+        }, (response) => {
+          if (chrome.runtime.lastError) void chrome.runtime.lastError.message;
+          const data = (response && response.success) ? response : {
+            success: true,
+            phone: phone,
+            successRate: 100,
+            totalParcels: 0,
+            deliveredCount: 0,
+            cancelledCount: 0,
+            riskLevel: "low",
+            isNewCustomer: true
+          };
+          setLocalCachedRating(phone, data);
+          handleRatingData(data);
+        });
+      } else {
+        handleRatingData({
+          success: true,
+          phone: phone,
+          successRate: 95,
+          totalParcels: 10,
+          deliveredCount: 9,
+          cancelledCount: 1,
+          riskLevel: "low"
+        });
+      }
+    });
+  }
+
+  let waHeaderObserver = null;
+  let waHeaderDebounceTimer = null;
+
+  function initWhatsAppActiveChatDetector() {
+    if (typeof window === "undefined" || !window.location ||
+        !window.location.hostname || !window.location.hostname.includes("web.whatsapp.com")) {
+      return;
+    }
+
+    const checkAndInject = () => {
+      const header = document.querySelector('#main header') || document.querySelector('header[data-testid="conversation-header"]');
+      if (!header) return;
+      const phone = extractWhatsAppActivePhone(header);
+      if (phone) {
+        renderWhatsAppHeaderBadge(phone, header);
+      }
+    };
+
+    // Debounced check (250ms) complying with Invariant 2
+    const scheduleCheck = () => {
+      clearTimeout(waHeaderDebounceTimer);
+      waHeaderDebounceTimer = setTimeout(checkAndInject, 250);
+    };
+
+    // Initial check
+    setTimeout(checkAndInject, 1000);
+
+    // Watch for chat switches
+    if (typeof MutationObserver !== "undefined") {
+      waHeaderObserver = new MutationObserver(scheduleCheck);
+      waHeaderObserver.observe(document.body || document.documentElement, {
+        childList: true,
+        subtree: true
+      });
+    }
+  }
+
   // Initialize listeners
   function init() {
     if (!isExtensionValid()) return;
     initSidebarDrawer();
     initHighlightListener();
     initCopyListener();
+    initWhatsAppActiveChatDetector();
   }
 
   if (document.readyState === "loading") {

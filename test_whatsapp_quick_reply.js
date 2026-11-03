@@ -2714,7 +2714,4 @@ console.log("\n==================================================");
 console.log("🎉 ALL 30 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
 console.log("==================================================");
 
-
-
-
-
+process.exit(0);

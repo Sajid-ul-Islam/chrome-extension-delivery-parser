@@ -114,6 +114,8 @@ global.document = {
   getElementById: (id) => {
     return global.mockDOM.find(e => e.id === id) || null;
   },
+  querySelector: (sel) => null,
+  querySelectorAll: (sel) => [],
   createElement: createMockElement,
   addEventListener: (evt, handler) => {
     global.docHandlers[evt] = global.docHandlers[evt] || [];

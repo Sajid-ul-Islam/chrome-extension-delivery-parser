@@ -3691,6 +3691,28 @@
         } else {
           sendResponse({ rawText: (document.body ? document.body.innerText : ""), count: 0 });
         }
+        return true;
+      } else if (request.action === "get_wc_pathao_credentials") {
+        try {
+          const domCreds = extractCredentialsFromDOM(document);
+          if (domCreds && (domCreds.clientId || domCreds.steadfastApiKey)) {
+            sendResponse({ success: true, credentials: domCreds, siteUrl: window.location.origin });
+            return true;
+          }
+        } catch (e) { }
+        // Proactively probe Pathao settings in background using active WooCommerce session
+        fetchWithTimeout(`${window.location.origin}/wp-admin/admin.php?page=pathao-courier`, { credentials: "same-origin" }, 3000)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+            const probed = extractCredentialsFromDOM(doc);
+            sendResponse({ success: Boolean(probed && probed.clientId), credentials: probed, siteUrl: window.location.origin });
+          })
+          .catch(() => {
+            sendResponse({ success: false, credentials: null });
+          });
+        return true; // Keep channel open for async response
       }
       return true;
     });
@@ -4583,6 +4605,176 @@
     });
   }
 
+  /**
+   * Extract Pathao / courier API credentials from page DOM elements (e.g. settings page)
+   */
+  function extractCredentialsFromDOM(doc) {
+    const root = doc || (typeof document !== "undefined" ? document : null);
+    if (!root || typeof root.querySelector !== "function") return null;
+
+    function getVal(selectors) {
+      for (const sel of selectors) {
+        try {
+          const el = root.querySelector(sel);
+          if (el && typeof el.value === "string" && el.value.trim()) {
+            return el.value.trim();
+          }
+        } catch (e) {}
+      }
+      return "";
+    }
+
+    const clientId = getVal([
+      "#ptc_client_id", "[name='ptc_client_id']", "#client_id", "[name='client_id']",
+      "#pathao_client_id", "[name='pathao_client_id']", "#wc_pathao_client_id",
+      "[name='wc_pathao_client_id']", "#woocommerce_pathao_client_id", "[name='woocommerce_pathao_client_id']"
+    ]);
+
+    const clientSecret = getVal([
+      "#ptc_client_secret", "[name='ptc_client_secret']", "#client_secret", "[name='client_secret']",
+      "#pathao_client_secret", "[name='pathao_client_secret']", "#wc_pathao_client_secret",
+      "[name='wc_pathao_client_secret']", "#woocommerce_pathao_client_secret", "[name='woocommerce_pathao_client_secret']"
+    ]);
+
+    const username = getVal([
+      "#ptc_username", "[name='ptc_username']", "#username", "[name='username']",
+      "#pathao_username", "[name='pathao_username']", "#pathao_email", "[name='pathao_email']",
+      "#ptc_email", "[name='ptc_email']"
+    ]);
+
+    const password = getVal([
+      "#ptc_password", "[name='ptc_password']", "#password", "[name='password']",
+      "#pathao_password", "[name='pathao_password']"
+    ]);
+
+    const bearerToken = getVal([
+      "#ptc_token", "[name='ptc_token']", "#pathao_token", "[name='pathao_token']",
+      "#bearer_token", "[name='bearer_token']", "#access_token", "[name='access_token']",
+      "#pathao_bearer_token", "[name='pathao_bearer_token']"
+    ]);
+
+    const storeId = getVal([
+      "#ptc_store_id", "[name='ptc_store_id']", "#pathao_store_id", "[name='pathao_store_id']",
+      "#store_id", "[name='store_id']", "#merchant_id", "[name='merchant_id']"
+    ]);
+
+    const steadfastApiKey = getVal([
+      "#steadfast_api_key", "[name='steadfast_api_key']", "#api_key", "[name='api_key']"
+    ]);
+
+    const steadfastSecretKey = getVal([
+      "#steadfast_secret_key", "[name='steadfast_secret_key']", "#secret_key", "[name='secret_key']"
+    ]);
+
+    if (!clientId && !bearerToken && !steadfastApiKey) return null;
+
+    let adminUser = "";
+    try {
+      const userEl = root.querySelector(".display-name") || root.querySelector("#wp-admin-bar-my-account .display-name");
+      if (userEl && userEl.textContent) adminUser = userEl.textContent.trim();
+    } catch (e) {}
+
+    let userLogin = "";
+    try {
+      const loginEl = root.querySelector("#wp-admin-bar-user-info .username") || root.querySelector(".username");
+      if (loginEl && loginEl.textContent) userLogin = loginEl.textContent.trim();
+    } catch (e) {}
+
+    let userRole = "Administrator";
+    let userPermissions = "Full Store & Settings Access (manage_options, manage_woocommerce)";
+    try {
+      const isShopMgr = root.body && (root.body.classList && (root.body.classList.contains("role-shop_manager") || root.body.classList.contains("shop_manager")));
+      const hasSettings = Boolean(root.getElementById && (root.getElementById("menu-settings") || root.getElementById("menu-plugins")));
+      if (isShopMgr && !hasSettings) {
+        userRole = "Shop Manager";
+        userPermissions = "WooCommerce & Courier Dispatch Access (manage_woocommerce)";
+      }
+    } catch (e) {}
+
+    return {
+      clientId,
+      clientSecret,
+      username,
+      password,
+      bearerToken,
+      storeId,
+      steadfastApiKey,
+      steadfastSecretKey,
+      adminUser,
+      userLogin,
+      userRole,
+      userPermissions
+    };
+  }
+
+  /**
+   * Auto-sync WordPress Admin credentials to DEEN Delivery Parser background worker
+   */
+  function initWordPressAdminAutoSync() {
+    if (!isExtensionValid() || typeof document === "undefined" || !document.body) return;
+
+    // Only run inside WordPress Admin
+    const isWpAdmin = document.body.classList.contains("wp-admin") ||
+                      Boolean(document.getElementById("wpadminbar")) ||
+                      (typeof window !== "undefined" && window.location && window.location.pathname.includes("/wp-admin"));
+    if (!isWpAdmin) return;
+
+    // Extract admin user display name if visible
+    let adminUser = "";
+    const userEl = document.querySelector("#wp-admin-bar-my-account .display-name, .display-name");
+    if (userEl && userEl.textContent) adminUser = userEl.textContent.trim();
+
+    // 1. Check if current page is a courier settings page with credentials in DOM
+    const creds = extractCredentialsFromDOM(document);
+    if (creds && (creds.clientId || creds.bearerToken || creds.steadfastApiKey)) {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: "sync_wordpress_credentials",
+          credentials: creds,
+          siteUrl: typeof window !== "undefined" && window.location ? window.location.origin : "https://deencommerce.com",
+          adminUser: adminUser || creds.adminUser || "Admin",
+          userLogin: creds.userLogin || adminUser || "admin",
+          userRole: creds.userRole || "Administrator",
+          userPermissions: creds.userPermissions || "Full Store & Settings Access (manage_options, manage_woocommerce)"
+        }, () => {});
+      }
+
+      // Inject friendly confirmation badge on settings page
+      if (!document.getElementById("deen-wp-synced-badge")) {
+        const targetHeader = document.querySelector(".wrap > h1, .wrap > h2, form[action*='options.php']");
+        if (targetHeader) {
+          const badge = document.createElement("div");
+          badge.id = "deen-wp-synced-badge";
+          badge.className = "deen-wp-synced-badge";
+          badge.style.cssText = "display: inline-flex; align-items: center; gap: 8px; margin: 10px 0 16px; padding: 8px 14px; background: #0f172a; border: 1px solid #10b981; border-radius: 8px; color: #10b981; font-size: 13px; font-weight: 600; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);";
+          badge.innerHTML = `<span>⚡ DEEN Delivery Parser:</span> <span style="color: #f8fafc; font-weight: 400;">Courier API Keys Auto-Synced to Chrome Extension</span> <span style="font-size: 11px; background: #10b981; color: #0f172a; padding: 2px 6px; border-radius: 4px; font-weight: 700;">ACTIVE</span>`;
+          if (targetHeader.nextSibling) {
+            targetHeader.parentNode.insertBefore(badge, targetHeader.nextSibling);
+          } else {
+            targetHeader.appendChild(badge);
+          }
+        }
+      }
+      return;
+    }
+
+    // 2. If on orders table and no credentials cached, trigger background auto-sync probe
+    if (typeof window !== "undefined" && window.location && (window.location.href.includes("page=wc-orders") || window.location.href.includes("post_type=shop_order"))) {
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(["pathao_client_id", "pathao_bearer_token", "wp_connected_site"], (res) => {
+          if (!isExtensionValid()) return;
+          const hasCreds = Boolean(res && (res.pathao_client_id || res.pathao_bearer_token));
+          if (!hasCreds && chrome.runtime && chrome.runtime.sendMessage) {
+            chrome.runtime.sendMessage({
+              action: "sync_from_wordpress",
+              siteUrl: window.location.origin
+            }, () => {});
+          }
+        });
+      }
+    }
+  }
+
   // Initialize
   function init() {
     if (!isExtensionValid()) return;
@@ -4597,6 +4789,7 @@
       injectOrderPreviewModalActions();
       initPathaoPluginAddressNormalizer();
       checkInPageUpdateNotice();
+      initWordPressAdminAutoSync();
     } catch (e) {
       if (!isExtensionValid()) return;
     }
@@ -4717,7 +4910,9 @@
       processNDRTrackingEvent: (typeof _couriers.processNDRTrackingEvent === "function" ? _couriers.processNDRTrackingEvent : null),
       BD_ISO_DISTRICTS: typeof BD_ISO_DISTRICTS !== "undefined" ? BD_ISO_DISTRICTS : (typeof require !== "undefined" ? require("./parser.js").BD_ISO_DISTRICTS : {}),
       detectDistrictFromISOCode: typeof detectDistrictFromISOCode !== "undefined" ? detectDistrictFromISOCode : (typeof require !== "undefined" ? require("./parser.js").detectDistrictFromISOCode : null),
-      getISOCodeFromDistrict: typeof getISOCodeFromDistrict !== "undefined" ? getISOCodeFromDistrict : (typeof require !== "undefined" ? require("./parser.js").getISOCodeFromDistrict : null)
+      getISOCodeFromDistrict: typeof getISOCodeFromDistrict !== "undefined" ? getISOCodeFromDistrict : (typeof require !== "undefined" ? require("./parser.js").getISOCodeFromDistrict : null),
+      extractCredentialsFromDOM,
+      initWordPressAdminAutoSync
     };
   }
 })();

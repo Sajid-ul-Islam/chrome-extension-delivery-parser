@@ -150,6 +150,14 @@
             <button class="deen-close-btn" id="deen-close-card" title="Minimize">✕</button>
           </div>
 
+          ${cachedNDRAlerts && cachedNDRAlerts.length > 0 ? `
+            <div class="deen-ndr-warning-bar" id="deen-ndr-bar">
+              <span class="deen-ndr-badge-pulse"></span>
+              <span class="deen-ndr-warning-text">🚨 <strong>${cachedNDRAlerts.length} Failed Delivery</strong> Alert(s)!</span>
+              <button class="deen-ndr-btn-quick-rescue" id="deen-btn-open-ndr-modal">Rescue Now</button>
+            </div>
+          ` : ''}
+
           <div class="deen-metrics-grid">
             <div class="deen-metric-box">
               <div class="deen-metric-label">Total Parcels</div>
@@ -233,6 +241,13 @@
         showToast(`Copied ${records.length} records to clipboard!`);
       });
 
+      const ndrModalBtn = container.querySelector("#deen-btn-open-ndr-modal");
+      if (ndrModalBtn) {
+        ndrModalBtn.addEventListener("click", () => {
+          showNDRRescueModal(cachedNDRAlerts);
+        });
+      }
+
       container.querySelector("#deen-btn-refresh").addEventListener("click", () => {
         runParse();
         renderWidget(container);
@@ -264,6 +279,230 @@
       toast.remove();
     }, 3000);
   }
+
+  // ==========================================
+  // Automated Non-Delivery Report (NDR) Rescue System
+  // ==========================================
+
+  let cachedNDRAlerts = [];
+  let ndrObserver = null;
+  let ndrDebounceTimer = null;
+
+  function scanAndDecorateNDRRows() {
+    if (typeof document === "undefined") return [];
+    const rows = Array.from(document.querySelectorAll("table tbody tr, .ant-table-tbody tr, tr[class*='row'], div[role='row']"));
+    const isConsignmentId = (s) => /[A-Z]{2}\d{6}[A-Z0-9]+/i.test(s);
+    const parcelRows = rows.filter(r => isConsignmentId(r.innerText || ''));
+
+    const detected = [];
+
+    for (const row of parcelRows) {
+      const text = (row.innerText || '').trim();
+      if (!text) continue;
+
+      const isNDRStatus = /(?:fail|attempt|unreachable|reschedule|rider|cancel|hold|contact|not_found|ব্যর্থ|যোগাযোগ|পুনঃনির্ধারিত|ঠিকানা)/i.test(text) &&
+                          !/(?:delivered|success|completed|গৃহীত|সফল|processing|picked)/i.test(text);
+
+      if (!isNDRStatus) continue;
+
+      const cidMatch = text.match(/[A-Z]{2}\d{6}[A-Z0-9]+/i);
+      const trackingId = cidMatch ? cidMatch[0] : '';
+      if (!trackingId) continue;
+
+      const phoneMatch = text.match(/(?:(?:\+8801|8801)|01)[3-9]\d{8}/);
+      const phone = phoneMatch ? phoneMatch[0] : '';
+
+      const orderIdMatch = text.match(/#?(\d{4,6})\b/);
+      const orderId = orderIdMatch ? orderIdMatch[1] : '';
+
+      let customerName = 'সম্মানিত গ্রাহক';
+      const cells = Array.from(row.querySelectorAll("td, th, [role='cell']"));
+      if (cells.length >= 3) {
+        const rawName = (cells[2]?.innerText || cells[1]?.innerText || '').split('\n')[0].trim();
+        if (rawName && !/^\d+$/.test(rawName) && rawName.length < 35 && !rawName.includes('৳')) {
+          customerName = rawName;
+        }
+      }
+
+      const eventPayload = {
+        status: text,
+        orderId,
+        phone,
+        customerName,
+        trackingId,
+        courier: 'pathao'
+      };
+
+      const couriers = (typeof window !== 'undefined' && window.DeenCouriers) ||
+                       (typeof require !== 'undefined' ? (() => { try { return require('./courier-adapters.js'); } catch (e) { return null; } })() : null);
+
+      let alert = null;
+      if (couriers && typeof couriers.processNDRTrackingEvent === 'function') {
+        alert = couriers.processNDRTrackingEvent(eventPayload);
+      }
+
+      if (!alert) {
+        let issueLabel = 'Customer Unreachable';
+        if (/reschedule|পুনঃনির্ধারিত/i.test(text)) issueLabel = 'Customer Rescheduled Delivery';
+        else if (/address|ঠিকানা|not_found/i.test(text)) issueLabel = 'Address Issue / Location Incomplete';
+
+        const rescueMsg = `আসসালামু আলাইকুম ${customerName},
+
+আপনার DEEN Commerce অর্ডার #${orderId || trackingId}-এর পার্সেলটি নিয়ে ডেলিভারি রাইডার আজ আপনার ঠিকানায় পৌঁছালেও যোগাযোগ করতে পারেননি (${issueLabel})।
+
+⚠️ পার্সেলটি আমাদের ওয়্যারহাউসে ফেরত যাওয়া ঠেকাতে দয়া করে এই মেসেজের উত্তর দিয়ে আপনার ফ্রি সময় বা লোকেশন জানিয়ে দিন। ধন্যবাদ!
+— DEEN Commerce Support`;
+
+        alert = {
+          isNDR: true,
+          alertRequired: true,
+          urgency: 'high',
+          trackingId,
+          orderId,
+          customerPhone: phone,
+          customerName,
+          issueType: 'unreachable',
+          issueLabel,
+          courier: 'pathao',
+          detectedAt: new Date().toISOString(),
+          rescueMessage: rescueMsg,
+          rescueWhatsAppMessage: rescueMsg,
+          whatsappDeepLink: phone ? `https://wa.me/88${phone}?text=${encodeURIComponent(rescueMsg)}` : null
+        };
+      }
+
+      if (alert && alert.isNDR) {
+        detected.push(alert);
+
+        const storage = (typeof window !== 'undefined' && window.DeenStorage) ||
+                        (typeof require !== 'undefined' ? (() => { try { return require('./storage-engine.js'); } catch (e) { return null; } })() : null);
+        if (storage && typeof storage.saveNDRAlertAsync === 'function') {
+          storage.saveNDRAlertAsync(trackingId, alert).catch(() => {});
+        }
+
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({ action: 'notify_ndr_alert', alert }, () => {
+            if (chrome.runtime.lastError) void chrome.runtime.lastError.message;
+          });
+        }
+
+        if (!row.querySelector('.deen-ndr-badge')) {
+          const badge = document.createElement('div');
+          badge.className = 'deen-ndr-badge';
+          badge.setAttribute('data-tracking', trackingId);
+          badge.innerHTML = `
+            <div class="deen-ndr-badge-inner">
+              <span class="deen-ndr-badge-pulse"></span>
+              <span class="deen-ndr-badge-title">🚨 NDR: ${alert.issueLabel}</span>
+              <button class="deen-ndr-badge-btn" title="1-Click Open WhatsApp Rescue Chat">
+                <span>💬 Rescue</span>
+              </button>
+            </div>
+          `;
+
+          const btn = badge.querySelector('.deen-ndr-badge-btn');
+          if (btn) {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (alert.whatsappDeepLink) {
+                window.open(alert.whatsappDeepLink, '_blank');
+                btn.innerHTML = '<span>✓ Rescued</span>';
+                setTimeout(() => { if (btn) btn.innerHTML = '<span>💬 Rescue</span>'; }, 3000);
+              } else if (phone) {
+                window.open(`https://wa.me/88${phone}`, '_blank');
+              }
+            });
+          }
+
+          const targetCell = cells[cells.length - 1] || row;
+          targetCell.appendChild(badge);
+        }
+      }
+    }
+
+    cachedNDRAlerts = detected;
+    return detected;
+  }
+
+  function showNDRRescueModal(alerts) {
+    if (!alerts || !alerts.length) return;
+    const existing = document.getElementById("deen-ndr-modal-backdrop");
+    if (existing) existing.remove();
+
+    const backdrop = document.createElement("div");
+    backdrop.id = "deen-ndr-modal-backdrop";
+    backdrop.className = "deen-ndr-modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="deen-ndr-modal">
+        <div class="deen-ndr-modal-header">
+          <div class="deen-ndr-modal-title">
+            <span>🚨 DEEN Non-Delivery Report (NDR) Rescue Center</span>
+          </div>
+          <button class="deen-ndr-modal-close" id="deen-ndr-close">✕</button>
+        </div>
+        <div class="deen-ndr-modal-body">
+          ${alerts.map((a, i) => `
+            <div class="deen-ndr-alert-card">
+              <div class="deen-ndr-card-info">
+                <div class="deen-ndr-card-order">Order #${a.orderId || a.trackingId} • ${a.trackingId}</div>
+                <div class="deen-ndr-card-customer">👤 ${a.customerName} • 📞 ${a.customerPhone || 'No Phone'}</div>
+                <div class="deen-ndr-card-reason">⚠️ ${a.issueLabel}</div>
+              </div>
+              <button class="deen-ndr-card-btn" data-index="${i}">
+                <span>💬 Rescue WhatsApp</span>
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(backdrop);
+    const closeBtn = backdrop.querySelector("#deen-ndr-close");
+    if (closeBtn) closeBtn.addEventListener("click", () => backdrop.remove());
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) backdrop.remove();
+    });
+
+    backdrop.querySelectorAll(".deen-ndr-card-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const idx = parseInt(btn.getAttribute("data-index"), 10);
+        const item = alerts[idx];
+        if (item && item.whatsappDeepLink) {
+          window.open(item.whatsappDeepLink, "_blank");
+          btn.innerHTML = "<span>✓ Rescued</span>";
+          setTimeout(() => { if (btn) btn.innerHTML = "<span>💬 Rescue WhatsApp</span>"; }, 3000);
+        } else if (item && item.customerPhone) {
+          window.open(`https://wa.me/88${item.customerPhone}`, "_blank");
+        }
+      });
+    });
+  }
+
+  function initNDRRescueListener() {
+    if (typeof document === "undefined") return;
+
+    // Initial scan
+    scanAndDecorateNDRRows();
+
+    // Debounced MutationObserver (300ms) complying with Invariant 2
+    if (typeof MutationObserver !== "undefined") {
+      const scheduleScan = () => {
+        clearTimeout(ndrDebounceTimer);
+        ndrDebounceTimer = setTimeout(() => {
+          scanAndDecorateNDRRows();
+          const widget = document.getElementById("deen-floating-widget");
+          if (widget && isExpanded) {
+            renderWidget(widget);
+          }
+        }, 300);
+      };
+
+      ndrObserver = new MutationObserver(scheduleScan);
+      ndrObserver.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
 
   // ==========================================
   // Pathao Recipient Details Auto-Fill System
@@ -1152,7 +1391,17 @@
     if (interval && typeof interval.unref === "function") {
       interval.unref();
     }
-  })();
+  
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+      scanAndDecorateNDRRows,
+      showNDRRescueModal,
+      initNDRRescueListener,
+      getNDRAlerts: () => cachedNDRAlerts
+    };
+  }
+
+})();
 
   // When arriving on page (e.g. after clicking trigger), immediately check for pending autofill
   checkPendingAutofill(0);
@@ -1161,11 +1410,11 @@
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => {
         checkPendingAutofill(0);
-        setTimeout(initFloatingWidget, 800);
+        setTimeout(() => { initFloatingWidget(); initNDRRescueListener(); }, 800);
       });
     } else {
       checkPendingAutofill(0);
-      setTimeout(initFloatingWidget, 800);
+      setTimeout(() => { initFloatingWidget(); initNDRRescueListener(); }, 800);
     }
   }
 })();

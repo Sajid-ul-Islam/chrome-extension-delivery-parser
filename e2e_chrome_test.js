@@ -127,9 +127,10 @@ async function main() {
     throw new Error(`Failed to connect to Chrome on port ${cdpPort} after 10 seconds`);
   }
 
+  let browserWs = null;
   try {
     // 3. Connect to Browser CDP
-    const browserWs = new WebSocket(versionData.webSocketDebuggerUrl);
+    browserWs = new WebSocket(versionData.webSocketDebuggerUrl);
     await new Promise((res, rej) => {
       browserWs.onopen = res;
       browserWs.onerror = rej;
@@ -454,7 +455,9 @@ View Details`;
     console.error('Test Execution Error:', err);
     process.exitCode = 1;
   } finally {
-    try { chromeProcess.kill(); } catch (e) {}
+    try { if (browserWs) browserWs.close(); } catch (e) {}
+    try { chromeProcess.kill(); }
+ catch (e) {}
     // Wait for Chrome to fully exit (Windows keeps file locks until then)
     try {
       await new Promise((resolve) => {
@@ -469,6 +472,7 @@ View Details`;
         await new Promise(r => setTimeout(r, 500));
       }
     }
+    process.exit(process.exitCode || 0);
   }
 }
 

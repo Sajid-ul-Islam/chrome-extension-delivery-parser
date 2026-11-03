@@ -36,6 +36,10 @@
                    (typeof globalThis !== "undefined" && globalThis.DeenStorage ? globalThis.DeenStorage : null) ||
                    (typeof require !== "undefined" ? (() => { try { return require("./storage-engine.js"); } catch (e) { return {}; } })() : {});
 
+  const _assistant = (typeof window !== "undefined" && window.DeenAssistant ? window.DeenAssistant : null) ||
+                     (typeof globalThis !== "undefined" && globalThis.DeenAssistant ? globalThis.DeenAssistant : null) ||
+                     (typeof require !== "undefined" ? (() => { try { return require("./deen-assistant.js"); } catch (e) { return {}; } })() : {});
+
   /**
    * ---------------------------------------------------------------------------
    * WebMCP Standard Registry & Polyfill
@@ -818,6 +822,109 @@
         scannedCount: events.length,
         ndrAlertsCount: ndrAlerts.length,
         ndrAlerts: ndrAlerts
+      };
+    }
+  });
+
+  /**
+   * 11. Sync WordPress Admin Credentials
+   * Auto-syncs courier and Pathao API credentials directly from an authenticated
+   * WordPress/WooCommerce admin session (e.g. deencommerce.com/wp-admin).
+   */
+  registryInstance.registerTool({
+    name: "sync_wordpress_admin_credentials",
+    description: "Auto-syncs courier and Pathao API credentials directly from an authenticated WordPress/WooCommerce admin session (e.g. deencommerce.com/wp-admin).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        siteUrl: {
+          type: "string",
+          description: "WordPress store root URL (e.g. https://deencommerce.com). Defaults to https://deencommerce.com."
+        }
+      }
+    },
+    readOnlyHint: false,
+    consequentialHint: false,
+    execute: async (params) => {
+      const siteUrl = (params && params.siteUrl) || "https://deencommerce.com";
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        return new Promise((resolve) => {
+          chrome.runtime.sendMessage({ action: "sync_from_wordpress", siteUrl }, (res) => {
+            if (chrome.runtime.lastError) {
+              resolve({ success: false, error: chrome.runtime.lastError.message });
+            } else {
+              resolve(res || { success: false, error: "No response from background worker" });
+            }
+          });
+        });
+      }
+      return {
+        success: true,
+        simulated: true,
+        siteUrl: siteUrl,
+        adminUser: "Store Admin",
+        hasCredentials: true,
+        message: "Simulated WordPress sync (testing mode)"
+      };
+    }
+  });
+
+  /**
+   * 12. Ask DEEN AI Assistant
+   * Executive AI Assistant for courier KPIs, COD, customer notes, and Banglish queries.
+   */
+  registryInstance.registerTool({
+    name: "ask_deen_ai_assistant",
+    description: "Ask the DEEN Commerce Executive AI Intelligence Assistant about courier delivery KPIs, uncollected COD, order distributions, customer notes, Banglish queries, or fraud risks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "User question, analytical query, or customer message/note to analyze."
+        },
+        records: {
+          type: "array",
+          description: "Optional list of active delivery or WooCommerce order records."
+        },
+        metrics: {
+          type: "object",
+          description: "Optional precomputed metrics object (paidCount, unpaidCount, totalCOD, etc.)."
+        },
+        phone: {
+          type: "string",
+          description: "Optional customer phone number for contextual customer lookup."
+        },
+        note: {
+          type: "string",
+          description: "Optional customer note or WhatsApp chat message."
+        }
+      },
+      required: ["query"]
+    },
+    readOnlyHint: true,
+    consequentialHint: false,
+    execute: async (params) => {
+      const p = params || {};
+      if (_assistant && typeof _assistant.generateDeenAssistantReply === "function") {
+        const reply = await _assistant.generateDeenAssistantReply({
+          query: p.query,
+          records: p.records || [],
+          metrics: p.metrics || null,
+          phone: p.phone || "",
+          note: p.note || ""
+        });
+        return {
+          success: true,
+          answer: reply.answer,
+          source: reply.source,
+          structuredInsights: reply.structuredInsights || null
+        };
+      }
+      return {
+        success: true,
+        answer: "DEEN Assistant Core is active.",
+        source: "simulated"
       };
     }
   });

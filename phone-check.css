@@ -961,3 +961,164 @@
 .deen-modal-qr-btn:active {
   transform: translateY(0) !important;
 }
+
+/* ==========================================================================
+   WhatsApp Web Active Chat Header Inline Rating Badge & Quick Actions
+   Eliminates manual text selection on web.whatsapp.com
+   ========================================================================== */
+
+.deen-wa-rating-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 3px 10px !important;
+  margin-left: 12px !important;
+  border-radius: 9999px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  box-sizing: border-box !important;
+  user-select: none !important;
+  white-space: nowrap !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  z-index: 999 !important;
+  cursor: default !important;
+}
+
+.deen-wa-badge-loading {
+  background: rgba(30, 41, 59, 0.85) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  color: #cbd5e1 !important;
+}
+
+.deen-wa-badge-pulse {
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 50% !important;
+  background: #38bdf8 !important;
+  box-shadow: 0 0 8px #38bdf8 !important;
+  animation: pulseBeacon 1.5s infinite ease-in-out !important;
+  display: inline-block !important;
+}
+
+/* Risk Variants */
+.deen-wa-risk-low {
+  background: rgba(16, 185, 129, 0.15) !important;
+  border: 1px solid rgba(16, 185, 129, 0.45) !important;
+  color: #34d399 !important;
+}
+
+.deen-wa-risk-medium {
+  background: rgba(245, 158, 11, 0.15) !important;
+  border: 1px solid rgba(245, 158, 11, 0.45) !important;
+  color: #fbbf24 !important;
+}
+
+.deen-wa-risk-high {
+  background: rgba(239, 68, 68, 0.18) !important;
+  border: 1px solid rgba(239, 68, 68, 0.5) !important;
+  color: #f87171 !important;
+  animation: waHighRiskGlow 2s infinite ease-in-out !important;
+}
+
+.deen-wa-risk-new {
+  background: rgba(59, 130, 246, 0.15) !important;
+  border: 1px solid rgba(59, 130, 246, 0.45) !important;
+  color: #60a5fa !important;
+}
+
+@keyframes waHighRiskGlow {
+  0%, 100% { box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25); }
+  50% { box-shadow: 0 4px 18px rgba(239, 68, 68, 0.55), 0 0 8px rgba(239, 68, 68, 0.4); }
+}
+
+.deen-wa-badge-indicator {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  cursor: pointer !important;
+  padding: 2px 4px !important;
+  border-radius: 4px !important;
+  transition: background 0.15s ease !important;
+}
+
+.deen-wa-badge-indicator:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.deen-wa-badge-icon {
+  font-size: 11px !important;
+}
+
+.deen-wa-badge-score {
+  font-weight: 700 !important;
+  letter-spacing: 0.3px !important;
+}
+
+.deen-wa-badge-count {
+  font-size: 10px !important;
+  opacity: 0.8 !important;
+}
+
+/* Quick Action Buttons inside Header Badge */
+.deen-wa-badge-actions {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  margin-left: 2px !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.15) !important;
+  padding-left: 6px !important;
+}
+
+.deen-wa-btn-qr {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 2px 7px !important;
+  border-radius: 6px !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+  cursor: pointer !important;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border: none !important;
+  white-space: nowrap !important;
+}
+
+.deen-wa-btn-adv {
+  background: linear-gradient(135deg, #128C7E 0%, #075E54 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 4px rgba(7, 94, 84, 0.35) !important;
+}
+
+.deen-wa-btn-adv:hover {
+  transform: translateY(-1px) scale(1.04) !important;
+  box-shadow: 0 2px 8px rgba(7, 94, 84, 0.5) !important;
+}
+
+.deen-wa-btn-confirm {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.deen-wa-btn-confirm:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  transform: translateY(-1px) scale(1.04) !important;
+}
+
+.deen-wa-btn-sidebar {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: #a5b4fc !important;
+  border: 1px solid rgba(99, 102, 241, 0.35) !important;
+  padding: 2px 5px !important;
+}
+
+.deen-wa-btn-sidebar:hover {
+  background: rgba(99, 102, 241, 0.35) !important;
+  color: #fff !important;
+  transform: translateY(-1px) scale(1.08) !important;
+}

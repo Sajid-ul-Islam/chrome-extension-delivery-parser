@@ -24,8 +24,10 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
     checkPendingStorage();
     initSyncTab();
     initQuickReplyTab();
+    initAssistantTab();
     initWebMCPTab();
     initCredentialsManager();
+    initWordPressConnectManager();
     initUpdateChecker();
   });
 }
@@ -37,19 +39,50 @@ function initTabs() {
   const tabs = document.querySelectorAll(".nav-tab");
   tabs.forEach(tab => {
     tab.addEventListener("click", () => {
+      const targetId = tab.getAttribute("data-tab");
+
+      // Compatibility handler for tab-paste trigger (e.g. from context menu)
+      if (targetId === "tab-paste") {
+        tabs.forEach(t => t.classList.remove("active"));
+        document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+        const currentTab = document.querySelector('.nav-tab[data-tab="tab-current"]');
+        if (currentTab) currentTab.classList.add("active");
+        const currentEl = document.getElementById("tab-current");
+        if (currentEl) currentEl.classList.add("active");
+        const pasteSub = document.querySelector('.delivery-sub-tab[data-sub="paste"]');
+        if (pasteSub) pasteSub.click();
+        return;
+      }
+
       tabs.forEach(t => t.classList.remove("active"));
       document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
 
       tab.classList.add("active");
-      const targetId = tab.getAttribute("data-tab");
       const targetEl = document.getElementById(targetId);
       if (targetEl) targetEl.classList.add("active");
     });
   });
+
+  // Delivery mode sub-tabs: Active Page Extractor vs Paste Courier Text
+  const deliverySubTabs = document.querySelectorAll(".delivery-sub-tab");
+  const viewExtract = document.getElementById("view-extract");
+  const viewPaste = document.getElementById("view-paste");
+
+  if (deliverySubTabs && deliverySubTabs.length > 0) {
+    deliverySubTabs.forEach(subTab => {
+      subTab.addEventListener("click", () => {
+        deliverySubTabs.forEach(t => t.classList.remove("active"));
+        subTab.classList.add("active");
+        const sub = subTab.getAttribute("data-sub");
+        if (viewExtract) viewExtract.classList.toggle("hidden", sub !== "extract");
+        if (viewPaste) viewPaste.classList.toggle("hidden", sub !== "paste");
+      });
+    });
+  }
 }
 
 /**
- * Display active page URL
+ * Display active page URL with intelligent detection badges
  */
 async function initActiveTabInfo() {
   try {
@@ -59,11 +92,29 @@ async function initActiveTabInfo() {
       [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     }
     const urlEl = document.getElementById("current-url");
+    const extractBtn = document.getElementById("btn-extract-tab");
     if (tab && (tab.url || tab.title)) {
-      const displayStr = tab.url || tab.title;
-      urlEl.textContent = displayStr;
-      urlEl.title = displayStr;
-    } else {
+      const url = tab.url || "";
+      let label = tab.url || tab.title;
+
+      if (url.includes("merchant.pathao.com")) {
+        label = "🟢 Pathao Merchant Orders Page Detected";
+        if (extractBtn) extractBtn.classList.add("btn-highlight-ready");
+      } else if (url.includes("wp-admin")) {
+        try {
+          const domain = new URL(url).hostname;
+          label = `🟢 WooCommerce Orders Detected (${domain})`;
+        } catch (e) {
+          label = "🟢 WooCommerce Orders Page Detected";
+        }
+        if (extractBtn) extractBtn.classList.add("btn-highlight-ready");
+      }
+
+      if (urlEl) {
+        urlEl.textContent = label;
+        urlEl.title = tab.url || tab.title;
+      }
+    } else if (urlEl) {
       urlEl.textContent = "No active tab detected";
     }
   } catch (err) {
@@ -302,6 +353,7 @@ function displayResults(result) {
   metrics.totalCOD = Number(metrics.totalCOD) || 0;
   metrics.netRevenue = Number(metrics.netRevenue) || 0;
   currentMetrics = metrics;
+  if (typeof updateAssistantContextPill === "function") updateAssistantContextPill();
 
   const mode = result.mode || "standard";
 
@@ -938,39 +990,60 @@ function initSyncTab() {
         }
       };
 
-      // Fetch customer rating from background service worker
-      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
-        chrome.runtime.sendMessage({
-          action: "fetch_customer_rating",
-          phone: phone
-        }, (res) => {
+      // 1. Check local persistent cache first for instant display
+      chrome.storage.local.get(["customer_rating_cache"], (stored) => {
+        const cache = stored && stored.customer_rating_cache;
+        const entry = cache && cache[phone];
+        if (entry && entry.result && entry.timestamp && (Date.now() - entry.timestamp < 24 * 60 * 60 * 1000)) {
           clearTimeout(safetyTimer);
           if (isFinished) return;
           isFinished = true;
           btnQuickCheck.disabled = false;
           btnQuickCheck.innerHTML = `<span>⚡ Check</span>`;
+          renderRatingCard(Object.assign({}, entry.result, { cached: true }));
+          return;
+        }
 
-          if (chrome.runtime.lastError) {
-            void chrome.runtime.lastError.message;
-          }
+        // 2. Fetch fresh rating from background service worker if not in local cache
+        if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({
+            action: "fetch_customer_rating",
+            phone: phone
+          }, (res) => {
+            clearTimeout(safetyTimer);
+            if (isFinished) return;
+            isFinished = true;
+            btnQuickCheck.disabled = false;
+            btnQuickCheck.innerHTML = `<span>⚡ Check</span>`;
 
-          const data = (res && res.success) ? res : {
-            phone: phone,
-            successRate: 100,
-            totalParcels: 0,
-            deliveredCount: 0,
-            cancelledCount: 0,
-            riskLevel: "low",
-            riskLabel: "New Customer (No Returns Reported)",
-            riskColor: "#3b82f6",
-            isNewCustomer: true,
-            pathaoStatus: "clean_record",
-            steadfastStatus: "not_connected"
-          };
+            if (chrome.runtime.lastError) {
+              void chrome.runtime.lastError.message;
+            }
 
-          renderRatingCard(data);
-        });
-      } else {
+            const data = (res && res.success) ? res : {
+              phone: phone,
+              successRate: 100,
+              totalParcels: 0,
+              deliveredCount: 0,
+              cancelledCount: 0,
+              riskLevel: "low",
+              riskLabel: "New Customer (No Returns Reported)",
+              riskColor: "#3b82f6",
+              isNewCustomer: true,
+              pathaoStatus: "clean_record",
+              steadfastStatus: "not_connected"
+            };
+
+            renderRatingCard(data);
+          });
+        } else {
+          clearTimeout(safetyTimer);
+          btnQuickCheck.disabled = false;
+          btnQuickCheck.innerHTML = `<span>⚡ Check</span>`;
+        }
+      });
+      return;
+      if (false) {
         clearTimeout(safetyTimer);
         btnQuickCheck.disabled = false;
         btnQuickCheck.innerHTML = `<span>⚡ Check</span>`;
@@ -1176,6 +1249,10 @@ function initWebMCPTab() {
     },
     get_woocommerce_active_orders: {
       limit: 10
+    },
+    ask_deen_ai_assistant: {
+      query: "Summarize our delivery performance, uncollected COD, and high return risks",
+      phone: "01715485035"
     },
     autofill_pathao_consignment: {
       phone: "01715485035",
@@ -1384,6 +1461,298 @@ function initCredentialsManager() {
 /**
  * GitHub Auto-Update Checker for Extension
  */
+
+/**
+ * WordPress Admin Auto-Connect & Credentials SSO Manager
+ * Allows 1-click auto-syncing from active WordPress sessions or direct WordPress credentials login.
+ */
+function initWordPressConnectManager() {
+  const wpStatus = document.getElementById("wp-connection-badge");
+  const wpSiteUrl = document.getElementById("wp-site-url");
+  const btnDetectWp = document.getElementById("btn-detect-active-wp");
+  const btnSyncWp = document.getElementById("btn-sync-from-wp");
+  const btnOpenWpLogin = document.getElementById("btn-open-wp-login");
+  const btnDisconnectWp = document.getElementById("btn-disconnect-wp");
+  const wpFeedback = document.getElementById("wp-sync-feedback");
+
+  const wpModeTabs = document.querySelectorAll(".wp-mode-tab");
+  const wpSessionPanel = document.getElementById("wp-mode-session-panel");
+  const wpLoginPanel = document.getElementById("wp-mode-login-panel");
+  const wpLoginUser = document.getElementById("wp-login-username");
+  const wpLoginPass = document.getElementById("wp-login-password");
+  const btnSubmitWpLogin = document.getElementById("btn-submit-wp-login");
+
+  const btnToggleManual = document.getElementById("btn-toggle-manual-cred");
+  const manualContainer = document.getElementById("manual-cred-container");
+  const manualArrow = document.getElementById("manual-toggle-arrow");
+
+  // Profile Card Elements
+  const profileCard = document.getElementById("wp-connected-profile");
+  const profileAvatar = document.getElementById("wp-profile-avatar");
+  const profileName = document.getElementById("wp-profile-name");
+  const profileRole = document.getElementById("wp-profile-role");
+  const profileSite = document.getElementById("wp-profile-site");
+  const profilePerm = document.getElementById("wp-profile-perm");
+  const profileTime = document.getElementById("wp-profile-time");
+  const btnRecheckWp = document.getElementById("btn-recheck-wp");
+  const btnDisconnectProfile = document.getElementById("btn-disconnect-profile");
+
+  function renderAuthenticatedProfile(data) {
+    if (!profileCard) return;
+    if (data && (data.connected || data.isLoggedIn || data.loggedIn)) {
+      profileCard.classList.remove("hidden");
+      const user = data.adminUser || data.userLogin || "Store Admin";
+      const login = data.userLogin ? `@${data.userLogin}` : "";
+      const site = String(data.siteUrl || "deencommerce.com").replace(/^https?:\/\//, "").replace(/\/+$/, "");
+      const role = data.userRole || (user.toLowerCase().includes("admin") ? "Administrator" : "Shop Manager");
+      const perm = data.userPermissions || (role === "Administrator" ? "Full Store & Settings Access (manage_options, manage_woocommerce)" : "WooCommerce & Courier Dispatch Access (manage_woocommerce)");
+
+      if (profileAvatar) profileAvatar.textContent = (user.trim()[0] || "A").toUpperCase();
+      if (profileName) profileName.textContent = login ? `${user} (${login})` : user;
+      if (profileRole) {
+        profileRole.textContent = role === "Administrator" ? "🛡️ Administrator" : `🛒 ${role}`;
+        profileRole.className = "wp-role-badge " + (role === "Administrator" ? "admin" : "shop-manager");
+      }
+      if (profileSite) profileSite.textContent = site;
+      if (profilePerm) profilePerm.textContent = perm;
+      if (profileTime) {
+        const timeStr = data.syncedAt ? new Date(data.syncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Active";
+        profileTime.textContent = `🟢 Session Active (${timeStr})`;
+      }
+    } else {
+      profileCard.classList.add("hidden");
+    }
+  }
+
+  if (btnRecheckWp) {
+    btnRecheckWp.addEventListener("click", () => {
+      if (btnSyncWp) btnSyncWp.click();
+    });
+  }
+
+  if (btnDisconnectProfile) {
+    btnDisconnectProfile.addEventListener("click", () => {
+      if (btnDisconnectWp) btnDisconnectWp.click();
+    });
+  }
+
+  function showWpFeedback(msg, isError = false) {
+    if (!wpFeedback) return;
+    wpFeedback.textContent = msg;
+    wpFeedback.className = "wp-feedback" + (isError ? " error" : "");
+    wpFeedback.classList.remove("hidden");
+    setTimeout(() => {
+      if (wpFeedback && !isError) wpFeedback.classList.add("hidden");
+    }, 6000);
+  }
+
+  function updateWpBadge(connected, text, stateClass) {
+    if (!wpStatus) return;
+    wpStatus.textContent = text;
+    wpStatus.className = "wp-status-badge " + stateClass;
+    if (btnDisconnectWp) {
+      btnDisconnectWp.classList.toggle("hidden", !connected);
+    }
+  }
+
+  // 1. Tab Mode Switcher (Session vs Login)
+  if (wpModeTabs && wpModeTabs.length > 0) {
+    wpModeTabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+        wpModeTabs.forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+        const mode = tab.getAttribute("data-wp-mode");
+        if (wpSessionPanel) wpSessionPanel.classList.toggle("hidden", mode !== "session");
+        if (wpLoginPanel) wpLoginPanel.classList.toggle("hidden", mode !== "login");
+      });
+    });
+  }
+
+  // 2. Load initial WordPress connection status
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+    chrome.runtime.sendMessage({ action: "get_wordpress_connection_status" }, (res) => {
+      if (chrome.runtime.lastError) return;
+      if (res && res.connected) {
+        const shortSite = String(res.siteUrl || "").replace(/^https?:\/\//, "");
+        const userLabel = res.adminUser ? " (" + res.adminUser + ")" : "";
+        updateWpBadge(true, "🟢 Connected: " + shortSite + userLabel, "active");
+        if (wpSiteUrl && res.siteUrl) wpSiteUrl.value = res.siteUrl;
+        renderAuthenticatedProfile(res);
+      } else {
+        updateWpBadge(false, "⚪ Not Connected", "missing");
+        renderAuthenticatedProfile(null);
+      }
+    });
+  }
+
+  // 3. 1-Click Active Session Auto-Sync
+  if (btnSyncWp) {
+    btnSyncWp.addEventListener("click", () => {
+      const siteUrl = (wpSiteUrl && wpSiteUrl.value.trim()) || "https://deencommerce.com";
+      const origText = btnSyncWp.innerHTML;
+      btnSyncWp.innerHTML = "<span>⏳ Probing WordPress...</span>";
+      btnSyncWp.disabled = true;
+
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ action: "sync_from_wordpress", siteUrl: siteUrl }, (res) => {
+          btnSyncWp.innerHTML = origText;
+          btnSyncWp.disabled = false;
+
+          if (chrome.runtime.lastError) {
+            showWpFeedback("❌ Communication error: " + chrome.runtime.lastError.message, true);
+            return;
+          }
+
+          if (res && res.success && res.credentialsFound) {
+            const shortSite = String(res.siteUrl || siteUrl).replace(/^https?:\/\//, "");
+            updateWpBadge(true, "🟢 Connected: " + shortSite + " (" + (res.adminUser || "Admin") + ")", "active");
+            showWpFeedback("✅ Successfully auto-synced Pathao & courier API keys from " + shortSite + "!");
+            renderAuthenticatedProfile(res);
+            showToast("✅ Auto-synced API keys from WordPress!");
+            if (typeof initCredentialsManager === "function") {
+              initCredentialsManager();
+            }
+          } else if (res && res.notLoggedIn) {
+            updateWpBadge(false, "⚠️ Not Logged In", "missing");
+            showWpFeedback("⚠️ Not logged in to " + siteUrl + ". Click '🔗 Open WP Admin' or switch to '🔐 Login with Credentials'.", true);
+            showToast("⚠️ Please log in to WordPress first");
+          } else if (res && res.noCredentialsFound) {
+            updateWpBadge(true, "🟡 Connected (No Keys)", "checking");
+            showWpFeedback("🟡 Connected as " + (res.adminUser || "Admin") + ", but no Pathao plugin settings found on " + siteUrl + ".", true);
+          } else {
+            showWpFeedback("❌ " + ((res && res.message) || "Failed to sync credentials from WordPress."), true);
+          }
+        });
+      } else {
+        btnSyncWp.innerHTML = origText;
+        btnSyncWp.disabled = false;
+      }
+    });
+  }
+
+  // 4. Direct WordPress Credentials Login
+  if (btnSubmitWpLogin) {
+    btnSubmitWpLogin.addEventListener("click", () => {
+      const username = wpLoginUser ? wpLoginUser.value.trim() : "";
+      const password = wpLoginPass ? wpLoginPass.value.trim() : "";
+      const storeUrl = (wpSiteUrl && wpSiteUrl.value.trim()) || "https://deencommerce.com";
+
+      if (!username || !password) {
+        showWpFeedback("⚠️ Please enter your WordPress username/email and password.", true);
+        return;
+      }
+
+      const origText = btnSubmitWpLogin.innerHTML;
+      btnSubmitWpLogin.innerHTML = "<span>⏳ Authenticating...</span>";
+      btnSubmitWpLogin.disabled = true;
+
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: "login_with_wordpress",
+          username: username,
+          password: password,
+          storeUrl: storeUrl
+        }, (res) => {
+          btnSubmitWpLogin.innerHTML = origText;
+          btnSubmitWpLogin.disabled = false;
+
+          if (chrome.runtime.lastError) {
+            showWpFeedback("❌ Communication error: " + chrome.runtime.lastError.message, true);
+            return;
+          }
+
+          if (res && res.success) {
+            const shortSite = String(res.siteUrl || storeUrl).replace(/^https?:\/\//, "");
+            updateWpBadge(true, "🟢 Connected: " + shortSite + " (" + (res.adminUser || "Admin") + ")", "active");
+            showWpFeedback("✅ " + (res.message || "Logged in and synced API credentials successfully!"));
+            renderAuthenticatedProfile(res);
+            showToast("✅ Authenticated with WordPress!");
+            if (wpLoginPass) wpLoginPass.value = "";
+            if (typeof initCredentialsManager === "function") {
+              initCredentialsManager();
+            }
+            // Switch back to session mode
+            const sessionTab = document.querySelector(".wp-mode-tab[data-wp-mode='session']");
+            if (sessionTab) sessionTab.click();
+          } else {
+            const errMsg = (res && (res.error || res.message)) || "Invalid WordPress credentials.";
+            showWpFeedback("❌ " + errMsg + " (Tip: You can also open WP Admin in a tab and use '⚡ 1-Click Active Session')", true);
+            showToast("❌ " + (errMsg.length > 35 ? "WordPress authentication failed" : errMsg));
+          }
+        });
+      } else {
+        btnSubmitWpLogin.innerHTML = origText;
+        btnSubmitWpLogin.disabled = false;
+      }
+    });
+  }
+
+  // 5. Open WordPress Login in Browser
+  if (btnOpenWpLogin) {
+    btnOpenWpLogin.addEventListener("click", () => {
+      let storeUrl = (wpSiteUrl && wpSiteUrl.value.trim()) || "https://deencommerce.com";
+      if (!storeUrl.startsWith("http://") && !storeUrl.startsWith("https://")) {
+        storeUrl = "https://" + storeUrl;
+      }
+      storeUrl = storeUrl.replace(/\/+$/, "").replace(/\/wp-admin.*$/i, "");
+      const loginUrl = storeUrl + "/wp-login.php?redirect_to=%2Fwp-admin%2F";
+
+      if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.create) {
+        chrome.tabs.create({ url: loginUrl });
+      } else if (typeof window !== "undefined") {
+        window.open(loginUrl, "_blank");
+      }
+      showWpFeedback("🔗 Opening WordPress admin login in a new tab. After signing in, return here and click 'Auto-Sync'!");
+    });
+  }
+
+  // 6. Detect Store URL from active browser tab
+  if (btnDetectWp) {
+    btnDetectWp.addEventListener("click", async () => {
+      try {
+        if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.query) {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab && tab.url && (tab.url.startsWith("http://") || tab.url.startsWith("https://"))) {
+            const u = new URL(tab.url);
+            if (wpSiteUrl) {
+              wpSiteUrl.value = u.origin;
+              showWpFeedback("🎯 Detected store URL from active tab: " + u.origin);
+            }
+            return;
+          }
+        }
+        showWpFeedback("⚠️ Could not detect a valid web store in the active tab.", true);
+      } catch (e) {
+        showWpFeedback("⚠️ Failed to inspect active tab.", true);
+      }
+    });
+  }
+
+  // 7. Disconnect WordPress session
+  if (btnDisconnectWp) {
+    btnDisconnectWp.addEventListener("click", () => {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ action: "disconnect_wordpress" }, () => {
+          updateWpBadge(false, "⚪ Disconnected", "missing");
+          renderAuthenticatedProfile(null);
+          showWpFeedback("WordPress session disconnected.");
+          showToast("WordPress session disconnected");
+        });
+      }
+    });
+  }
+
+  // 8. Toggle Manual Credentials Section
+  if (btnToggleManual && manualContainer) {
+    btnToggleManual.addEventListener("click", () => {
+      const isCollapsed = manualContainer.classList.toggle("collapsed");
+      if (manualArrow) {
+        manualArrow.textContent = isCollapsed ? "▾" : "▴";
+      }
+    });
+  }
+}
+
 function initUpdateChecker() {
   const banner = document.getElementById("github-update-banner");
   const commitBadge = document.getElementById("update-commit-badge");
@@ -1499,7 +1868,311 @@ if (typeof module !== "undefined" && module.exports) {
     initQuickReplyTab,
     initWebMCPTab,
     initCredentialsManager,
+    initWordPressConnectManager,
     initUpdateChecker
   };
 }
 
+
+
+/**
+ * ============================================================================
+ * DEEN AI Assistant Intelligence Tab Controller
+ * Ported from DEEN Commerce Sales-Analysis Intelligence Copilot
+ * ============================================================================
+ */
+function updateAssistantContextPill() {
+  const summaryEl = document.getElementById("assistant-context-summary");
+  if (!summaryEl) return;
+  const count = (currentRecords && currentRecords.length) || 0;
+  const cod = (currentMetrics && currentMetrics.totalCOD) || 0;
+  summaryEl.textContent = `Telemetry: ${count} parcels (৳${cod.toLocaleString()} COD)`;
+}
+
+async function initAssistantTab() {
+  const chatStream = document.getElementById("assistant-chat-stream");
+  const userInput = document.getElementById("assistant-user-input");
+  const sendBtn = document.getElementById("btn-assistant-send");
+  const modeIndicator = document.getElementById("assistant-mode-indicator");
+  const chipsScroll = document.getElementById("assistant-chips-scroll");
+  const btnToggleByok = document.getElementById("btn-toggle-byok-modal");
+  const btnCloseByok = document.getElementById("btn-close-byok-drawer");
+  const byokDrawer = document.getElementById("assistant-byok-drawer");
+  const byokStatusDot = document.getElementById("byok-status-dot");
+  const providerSelect = document.getElementById("byok-provider-select");
+  const apiKeyInput = document.getElementById("byok-api-key-input");
+  const modelInput = document.getElementById("byok-model-input");
+  const btnVis = document.getElementById("btn-byok-toggle-visibility");
+  const btnTest = document.getElementById("btn-byok-test-connection");
+  const btnSaveByok = document.getElementById("btn-byok-save");
+  const testStatus = document.getElementById("byok-test-result");
+  const btnClearHistory = document.getElementById("btn-clear-chat-history");
+
+  if (!chatStream || !userInput) return;
+
+  const assistant = (typeof window !== "undefined" && window.DeenAssistant) ||
+                    (typeof globalThis !== "undefined" && globalThis.DeenAssistant);
+
+  if (!assistant) {
+    console.warn("DeenAssistant module not loaded");
+    return;
+  }
+
+  function formatMarkdown(text) {
+    if (!text) return "";
+    let safe = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+    safe = safe.replace(/```([a-z]*)\n([\s\S]*?)```/g, "<pre><code>$2</code></pre>");
+    safe = safe.replace(/`([^`]+)`/g, "<code>$1</code>");
+    safe = safe.replace(/^### (.*$)/gim, "<strong>$1</strong><br/>");
+    safe = safe.replace(/^## (.*$)/gim, "<strong>$1</strong><br/>");
+    safe = safe.replace(/^# (.*$)/gim, "<strong>$1</strong><br/>");
+    safe = safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    safe = safe.replace(/^\s*-\s+(.*$)/gim, "• $1<br/>");
+    safe = safe.replace(/\n\n/g, "<br/><br/>").replace(/\n/g, "<br/>");
+    return safe;
+  }
+
+  function appendChatMessage(role, content, source) {
+    const msgDiv = document.createElement("div");
+    msgDiv.className = `chat-msg chat-msg-${role === "user" ? "user" : "bot"}`;
+
+    if (role === "user") {
+      msgDiv.innerHTML = `
+        <div class="chat-avatar chat-avatar-user">👤</div>
+        <div class="chat-bubble">
+          <div class="chat-sender">You</div>
+          <div class="chat-text">${formatMarkdown(content)}</div>
+        </div>
+      `;
+    } else {
+      const srcLabel = source ? `<span class="chat-tag">${source}</span>` : "";
+      msgDiv.innerHTML = `
+        <div class="chat-avatar">
+          <img src="icons/icon32.png" alt="DEEN AI" />
+        </div>
+        <div class="chat-bubble">
+          <div class="chat-sender">DEEN Assistant ${srcLabel}</div>
+          <div class="chat-text">${formatMarkdown(content)}</div>
+        </div>
+      `;
+    }
+
+    chatStream.appendChild(msgDiv);
+    chatStream.scrollTop = chatStream.scrollHeight;
+    return msgDiv;
+  }
+
+  async function refreshBYOKUI() {
+    const byok = await assistant.loadBYOKConfig();
+    const hasKey = Boolean(byok.apiKey && byok.apiKey.trim().length > 5);
+
+    if (providerSelect) providerSelect.value = byok.provider || "gemini";
+    if (apiKeyInput) apiKeyInput.value = byok.apiKey || "";
+    if (modelInput) modelInput.value = byok.model || "gemini-2.5-flash";
+
+    if (byokStatusDot) {
+      if (hasKey && byok.isActive) {
+        byokStatusDot.className = "byok-dot byok-dot-on";
+        byokStatusDot.title = `Active: ${byok.provider} (${byok.model})`;
+      } else {
+        byokStatusDot.className = "byok-dot byok-dot-off";
+        byokStatusDot.title = "No custom API key active. Using In-Memory Deterministic Engine.";
+      }
+    }
+
+    if (modeIndicator) {
+      if (hasKey && byok.isActive) {
+        modeIndicator.textContent = `Mode: ${byok.provider.toUpperCase()} (${byok.model})`;
+        modeIndicator.style.color = "#10b981";
+      } else {
+        modeIndicator.textContent = "Mode: In-Memory Deterministic Engine (Zero-Cost)";
+        modeIndicator.style.color = "#38bdf8";
+      }
+    }
+  }
+
+  await refreshBYOKUI();
+  updateAssistantContextPill();
+
+  const history = await assistant.loadChatHistory();
+  if (history && history.length > 0) {
+    chatStream.innerHTML = "";
+    history.forEach(m => appendChatMessage(m.role, m.content, m.source));
+  }
+
+  async function handleSendMessage(queryText) {
+    const text = (queryText || userInput.value || "").trim();
+    if (!text) return;
+
+    userInput.value = "";
+    userInput.style.height = "auto";
+    sendBtn.disabled = true;
+
+    appendChatMessage("user", text);
+    await assistant.saveChatMessage({ role: "user", content: text, timestamp: Date.now() });
+
+    const typingDiv = document.createElement("div");
+    typingDiv.className = "chat-msg chat-msg-bot";
+    typingDiv.id = "assistant-typing-placeholder";
+    typingDiv.innerHTML = `
+      <div class="chat-avatar">
+        <img src="icons/icon32.png" alt="DEEN AI" />
+      </div>
+      <div class="chat-bubble">
+        <div class="chat-sender">DEEN Assistant <span class="chat-tag">Analyzing...</span></div>
+        <div class="assistant-typing-indicator">
+          <span class="assistant-typing-dot"></span>
+          <span class="assistant-typing-dot"></span>
+          <span class="assistant-typing-dot"></span>
+        </div>
+      </div>
+    `;
+    chatStream.appendChild(typingDiv);
+    chatStream.scrollTop = chatStream.scrollHeight;
+
+    try {
+      const activePhone = (typeof lastCheckedPhone !== "undefined" && lastCheckedPhone) ? lastCheckedPhone : "";
+      const reply = await assistant.generateDeenAssistantReply({
+        query: text,
+        records: currentRecords || [],
+        metrics: currentMetrics || null,
+        phone: activePhone
+      });
+
+      const p = document.getElementById("assistant-typing-placeholder");
+      if (p) p.remove();
+
+      appendChatMessage("assistant", reply.answer, reply.source);
+      await assistant.saveChatMessage({
+        role: "assistant",
+        content: reply.answer,
+        source: reply.source,
+        timestamp: Date.now()
+      });
+    } catch (err) {
+      const p = document.getElementById("assistant-typing-placeholder");
+      if (p) p.remove();
+      appendChatMessage("assistant", `⚠️ An error occurred while generating response: ${err.message}`, "error");
+    } finally {
+      sendBtn.disabled = false;
+      userInput.focus();
+    }
+  }
+
+  sendBtn.addEventListener("click", () => handleSendMessage());
+  userInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  });
+
+  userInput.addEventListener("input", () => {
+    userInput.style.height = "auto";
+    userInput.style.height = Math.min(80, userInput.scrollHeight) + "px";
+  });
+
+  if (chipsScroll) {
+    chipsScroll.querySelectorAll(".assistant-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const prompt = chip.getAttribute("data-prompt");
+        if (prompt) handleSendMessage(prompt);
+      });
+    });
+  }
+
+  if (btnClearHistory) {
+    btnClearHistory.addEventListener("click", async () => {
+      if (confirm("Clear DEEN Assistant conversation history?")) {
+        await assistant.clearChatHistory();
+        chatStream.innerHTML = `
+          <div class="chat-msg chat-msg-bot">
+            <div class="chat-avatar">
+              <img src="icons/icon32.png" alt="DEEN AI" />
+            </div>
+            <div class="chat-bubble">
+              <div class="chat-sender">DEEN Assistant <span class="chat-tag">Executive Intelligence</span></div>
+              <div class="chat-text">
+                History cleared. How can I assist you with your courier parcels, COD, or sales analytics today?
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    });
+  }
+
+  if (btnToggleByok && byokDrawer) {
+    btnToggleByok.addEventListener("click", () => {
+      byokDrawer.classList.toggle("hidden");
+    });
+  }
+
+  if (btnCloseByok && byokDrawer) {
+    btnCloseByok.addEventListener("click", () => {
+      byokDrawer.classList.add("hidden");
+    });
+  }
+
+  if (btnVis && apiKeyInput) {
+    btnVis.addEventListener("click", () => {
+      apiKeyInput.type = apiKeyInput.type === "password" ? "text" : "password";
+      btnVis.textContent = apiKeyInput.type === "password" ? "👁️" : "🔒";
+    });
+  }
+
+  if (providerSelect && modelInput) {
+    providerSelect.addEventListener("change", () => {
+      if (providerSelect.value === "gemini") {
+        modelInput.value = "gemini-2.5-flash";
+      } else if (providerSelect.value === "openai") {
+        modelInput.value = "gpt-4o-mini";
+      } else if (providerSelect.value === "groq") {
+        modelInput.value = "llama-3.3-70b-versatile";
+      }
+    });
+  }
+
+  if (btnTest && testStatus) {
+    btnTest.addEventListener("click", async () => {
+      testStatus.classList.remove("hidden", "byok-test-success", "byok-test-error");
+      testStatus.textContent = "⏳ Testing API connection...";
+
+      const res = await assistant.testBYOKConnection({
+        provider: providerSelect.value,
+        apiKey: apiKeyInput.value.trim(),
+        model: modelInput.value.trim()
+      });
+
+      if (res.success) {
+        testStatus.classList.add("byok-test-success");
+        testStatus.textContent = `✅ Connection verified! (${res.provider} / ${res.model})`;
+      } else {
+        testStatus.classList.add("byok-test-error");
+        testStatus.textContent = `❌ ${res.error}`;
+      }
+    });
+  }
+
+  if (btnSaveByok) {
+    btnSaveByok.addEventListener("click", async () => {
+      const apiKey = apiKeyInput.value.trim();
+      const updated = await assistant.saveBYOKConfig({
+        provider: providerSelect.value,
+        apiKey: apiKey,
+        model: modelInput.value.trim(),
+        isActive: Boolean(apiKey.length > 0)
+      });
+
+      await refreshBYOKUI();
+      if (byokDrawer) byokDrawer.classList.add("hidden");
+      if (typeof showToast === "function") {
+        showToast(updated.isActive ? "🔑 AI key saved & activated!" : "ℹ️ AI key cleared. Using in-memory engine.");
+      }
+    });
+  }
+}
