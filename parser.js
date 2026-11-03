@@ -1109,6 +1109,35 @@ function matchWord(text, alias) {
 }
 
 /**
+ * 8 Administrative Divisions of Bangladesh
+ * Used to distinguish broad administrative division labels from specific districts
+ */
+const BD_DIVISIONS = ["Dhaka", "Chattogram", "Rajshahi", "Khulna", "Barishal", "Sylhet", "Rangpur", "Mymensingh"];
+
+/**
+ * Check if a district token is followed or preceded by a division keyword
+ * (e.g. "Chittagong Division", "বিভাগ চট্টগ্রাম", "Dhaka Division")
+ */
+function isDivisionReference(text, alias) {
+  if (!text || !alias) return false;
+  const esc = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pat1 = new RegExp(`(?:^|[\\s,;।–-])(?:division|বিভাগ)[\\s:ঃ#\\-]+${esc}(?=[\\s,;।–-]|$)`, "i");
+  const pat2 = new RegExp(`(?:^|[\\s,;।–-])${esc}[\\s:ঃ#\\-]*(?:division|বিভাগ)(?=[\\s,;।–-]|$)`, "i");
+  return pat1.test(text) || pat2.test(text);
+}
+
+/**
+ * Check if a district token is part of a street or road name
+ * (e.g. "Chittagong Road", "চট্টগ্রাম রোড", "Dhaka Highway")
+ */
+function isRoadReference(text, alias) {
+  if (!text || !alias) return false;
+  const esc = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pat = new RegExp(`(?:^|[\\s,;।–-])${esc}[\\s:ঃ#\\-]*(?:road|rd|highway|street|ave|avenue|lane|goli|গলি|রোড|রাস্তা|সড়ক|হাইওয়ে|মোড়|মোর|চত্বর|চত্ত্বর)(?=[\\s,;।–0-9]|$)`, "i");
+  return pat.test(text);
+}
+
+/**
  * Prominent Zones in Other Major Hubs across Bangladesh with English & Bengali aliases
  */
 const OTHER_CITY_ZONES = {
@@ -1122,6 +1151,12 @@ const OTHER_CITY_ZONES = {
     { name: "Board Bazar", aliases: ["board bazar", "বোর্ড বাজার"] },
     { name: "Chandona", aliases: ["chandona", "চান্দনা"] },
     { name: "Joydebpur", aliases: ["joydebpur", "joydevpur", "জয়দেবপুর", "জয়দেবপুর"] },
+    { name: "Kashimpur", aliases: ["kashimpur", "কাশিমপুর"] },
+    { name: "Rajendrapur", aliases: ["rajendrapur", "রাজেন্দ্রপুর"] },
+    { name: "Pubail", aliases: ["pubail", "পুবাইল"] },
+    { name: "Chowrasta", aliases: ["gazipur chowrasta", "chandana chowrasta", "গাজীপুর চৌরাস্তা", "চান্দনা চৌরাস্তা"] },
+    { name: "Shafipur", aliases: ["shafipur", "সফিপুর", "শফিপুর"] },
+    { name: "Mouchak", aliases: ["mouchak", "মৌচাক"] },
     { name: "Gazipur Sadar", aliases: ["gazipur sadar", "গাজীপুর সদর"] }
   ],
   "Narayanganj": [
@@ -1132,6 +1167,12 @@ const OTHER_CITY_ZONES = {
     { name: "Araihazar", aliases: ["araihazar", "আড়াইহাজার", "আড়াইহাজার"] },
     { name: "Sonargaon", aliases: ["sonargaon", "সোনারগাঁও", "সোনারগা"] },
     { name: "Kanchpur", aliases: ["kanchpur", "কাঁচপুর", "কাচপুর"] },
+    { name: "Chashara", aliases: ["chashara", "chasara", "চাষাড়া", "চাষাড়া"] },
+    { name: "Bhulta", aliases: ["bhulta", "ভুলতা", "ভূলতা"] },
+    { name: "Gausia", aliases: ["gausia", "গাউসিয়া", "গাউসিয়া"] },
+    { name: "Madanpur", aliases: ["madanpur", "মদনপুর"] },
+    { name: "Tarabo", aliases: ["tarabo", "তারাবো"] },
+    { name: "Signboard", aliases: ["signboard", "সাইনবোর্ড", "shimrail", "শিমরাইল"] },
     { name: "Narayanganj Sadar", aliases: ["narayanganj sadar", "নারায়ণগঞ্জ সদর"] }
   ],
   "Faridpur": [
@@ -1280,7 +1321,9 @@ const OTHER_CITY_ZONES = {
     { name: "Town Hall", aliases: ["town hall", "টাউন হল"] },
     { name: "Trishal", aliases: ["trishal", "ত্রিশাল"] },
     { name: "Muktagachha", aliases: ["muktagachha", "মুক্তাগাছা"] },
-    { name: "Bhaluka", aliases: ["bhaluka", "ভালুকা"] },
+    { name: "Bhaluka", aliases: ["bhaluka", "ভালুকা", "valuka"] },
+    { name: "Seedstore", aliases: ["seedstore", "সিডস্টোর", "seed store", "bhaluka seedstore"] },
+    { name: "Masterbari", aliases: ["masterbari", "মাস্টারবাড়ি", "মাস্টারবাড়ি"] },
     { name: "Fulbaria", aliases: ["fulbaria", "ফুলবাড়িয়া", "ফুলবাড়িয়া"] },
     { name: "Gaffargaon", aliases: ["gaffargaon", "গফরগাঁও", "গফরগাও"] },
     { name: "Nandail", aliases: ["nandail", "নান্দাইল"] },
@@ -1314,7 +1357,7 @@ const OTHER_CITY_ZONES = {
   ],
   "Feni": [
     { name: "Feni Sadar", aliases: ["feni sadar", "ফেনী সদর"] },
-    { name: "Daganbhuiyan", aliases: ["daganbhuiyan", "দাগনভূঞা", "দাগনভূঁইয়া"] },
+    { name: "Daganbhuiyan", aliases: ["daganbhuiyan", "daganbhuiya", "dagonbhuiyan", "dagonbhuiya", "দাগনভূঞা", "দাগনভূঁইয়া", "দাগনভুঁইয়া", "দাগনভূঁইয়া", "দাগনভূইয়া", "দাগনভূঁঞা"] },
     { name: "Chhagalnaiya", aliases: ["chhagalnaiya", "ছাগলনাইয়া", "ছাগলনাইয়া"] },
     { name: "Sonagazi", aliases: ["sonagazi", "সোনাগাজী", "সোনাগাজি"] },
     { name: "Parshuram", aliases: ["parshuram", "পরশুরাম"] },
@@ -1362,6 +1405,7 @@ const OTHER_CITY_ZONES = {
     { name: "Companiganj", aliases: ["companiganj", "কোম্পানীগঞ্জ", "কোম্পানিগঞ্জ"] },
     { name: "Hatiya", aliases: ["hatiya", "হাতিয়া", "হাতিয়া"] },
     { name: "Kabirhat", aliases: ["kabirhat", "কবিরহাট"] },
+    { name: "Sonaimuri", aliases: ["sonaimuri", "sonaimuri upazila", "সোনাইমুড়ী", "সোনাইমুড়ি", "সোনাইমুড়ী"] },
     { name: "Subarnachar", aliases: ["subarnachar", "সুবর্ণচর"] }
   ],
   "Jashore": [
@@ -1728,20 +1772,11 @@ function parseBDAddress(rawAddress) {
 
   let matchedDistrict = "";
   let matchedZone = "";
+  let isDefaulted = false;
+  let hasFalseDhaka = false;
 
-  // 2A. Check for explicit district label (e.g. "জেলা: ফরিদপুর", "District: Gazipur", "জেলাঃ ঢাকা")
-  const explicitDistMatch = clean.match(/(?:জেলা|District|Dist|Zilla|State|City)[\s:ঃ#\-]+([^\s,;।\n]+)/i);
-  if (explicitDistMatch) {
-    const rawDist = explicitDistMatch[1].trim().replace(/^[.,;:\s।–-]+|[.,;:\s।–-]+$/g, "");
-    for (const d of BD_DISTRICTS) {
-      if (d.name.toLowerCase() === rawDist.toLowerCase() || d.aliases.some(a => a.toLowerCase() === rawDist.toLowerCase() || matchWord(rawDist, a))) {
-        matchedDistrict = d.name;
-        break;
-      }
-    }
-  }
-
-  // 2B. Check for explicit thana/zone label (e.g. "থানা: শ্রীপুর", "উপজেলা: বোয়ালমারী", "Thana: Mirpur")
+  // 2A. Check explicit thana/zone label FIRST (e.g. "থানা: শ্রীপুর", "উপজেলা: তিতাস", "Thana: Titas")
+  // An explicit thana from OTHER_CITY_ZONES takes priority over any WooCommerce dropdown default (e.g. Dist: Dhaka)
   const explicitThanaMatch = clean.match(/(?:থানা|উপজেলা|Thana|Upazila|Upozila|Police\s*Station|P\.?S\.?)[\s:ঃ#\-]+([^\s,;।\n]+)/i);
   if (explicitThanaMatch) {
     const rawThana = explicitThanaMatch[1].trim().replace(/^[.,;:\s।–-]+|[.,;:\s।–-]+$/g, "");
@@ -1751,7 +1786,7 @@ function parseBDAddress(rawAddress) {
         const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
         if (zName.toLowerCase() === rawThana.toLowerCase() || aliases.some(a => a.toLowerCase() === rawThana.toLowerCase() || matchWord(rawThana, a))) {
           matchedZone = zName;
-          if (!matchedDistrict) matchedDistrict = distName;
+          matchedDistrict = distName;
           break;
         }
       }
@@ -1764,7 +1799,7 @@ function parseBDAddress(rawAddress) {
         const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
         if (zName.toLowerCase() === rawThana.toLowerCase() || aliases.some(a => a.toLowerCase() === rawThana.toLowerCase() || matchWord(rawThana, a))) {
           matchedZone = zName;
-          if (!matchedDistrict) matchedDistrict = "Dhaka";
+          matchedDistrict = "Dhaka";
           break;
         }
       }
@@ -1775,35 +1810,105 @@ function parseBDAddress(rawAddress) {
     }
   }
 
-  // 2C. Check all 63 NON-DHAKA districts FIRST (avoids Dhaka default when customer is outside Dhaka)
+  // 2B. Check explicit district label (e.g. "জেলা: ফরিদপুর", "District: Gazipur")
+  // Only use if matchedDistrict was not already set to an outside-Dhaka district by explicit thana
   if (!matchedDistrict) {
-    const nonDhakaDistricts = BD_DISTRICTS.filter(d => d.name !== "Dhaka");
-    for (const d of nonDhakaDistricts) {
-      for (const alias of d.aliases) {
-        if (matchWord(clean, alias)) {
+    const explicitDistMatch = clean.match(/(?:জেলা|District|Dist|Zilla|State|City)[\s:ঃ#\-]+([^\s,;।\n]+)/i);
+    if (explicitDistMatch) {
+      const rawDist = explicitDistMatch[1].trim().replace(/^[.,;:\s।–-]+|[.,;:\s।–-]+$/g, "");
+      for (const d of BD_DISTRICTS) {
+        if (d.name.toLowerCase() === rawDist.toLowerCase() || d.aliases.some(a => a.toLowerCase() === rawDist.toLowerCase() || matchWord(rawDist, a))) {
           matchedDistrict = d.name;
           break;
         }
       }
-      if (matchedDistrict) break;
     }
   }
 
-  // 2D. If no non-Dhaka district was found, check if Dhaka city or Dhaka postcode (1000-1236) is present
-  if (!matchedDistrict) {
-    const isDhakaPc = postcode && parseInt(postcode, 10) >= 1000 && parseInt(postcode, 10) <= 1236;
-    const dhakaObj = BD_DISTRICTS.find(d => d.name === "Dhaka");
-    const hasDhakaWord = dhakaObj && dhakaObj.aliases.some(a => matchWord(clean, a));
-    if (isDhakaPc || hasDhakaWord) {
-      matchedDistrict = "Dhaka";
-    }
-  }
-
-  // 2E. Check for ISO 3166-2:BD code (e.g. BD-15 -> Faridpur, BD-18 -> Gazipur)
+  // 2C. Check for ISO 3166-2:BD code (e.g. BD-15 -> Faridpur, BD-18 -> Gazipur)
   if (!matchedDistrict) {
     const isoDistrict = detectDistrictFromISOCode(clean);
     if (isoDistrict) {
       matchedDistrict = isoDistrict;
+    }
+  }
+
+  // 2D. Reverse zone matching from OTHER_CITY_ZONES (all 63 non-Dhaka districts)
+  // If an address contains a specific outside-Dhaka upazila (e.g. Titas, Sharsha, Bhaluka, Sonaimuri),
+  // this proves the true district, EVEN IF the customer or WooCommerce has "Dhaka" or a division name!
+  let foundOutsideZone = null;
+  let foundOutsideDist = null;
+  for (const [distName, zones] of Object.entries(OTHER_CITY_ZONES)) {
+    if (distName.toLowerCase() === "dhaka") continue;
+    for (const z of zones) {
+      const zName = typeof z === "string" ? z : z.name;
+      const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+      let found = false;
+      for (const alias of aliases) {
+        if (matchWord(clean, alias)) {
+          foundOutsideZone = zName;
+          foundOutsideDist = distName;
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (foundOutsideZone && foundOutsideDist) break;
+  }
+
+  // 2E. Check all 63 NON-DHAKA districts in BD_DISTRICTS
+  // Distinguish specific non-division districts (56 districts) from broad division capitals (7 districts)
+  const specificNonDivisionDistricts = BD_DISTRICTS.filter(d => !BD_DIVISIONS.includes(d.name) && d.name !== "Dhaka");
+  const divisionDistricts = BD_DISTRICTS.filter(d => BD_DIVISIONS.includes(d.name) && d.name !== "Dhaka");
+
+  let directSpecificDist = null;
+  let directDivisionDist = null;
+
+  for (const d of specificNonDivisionDistricts) {
+    for (const alias of d.aliases) {
+      if (matchWord(clean, alias)) {
+        if (isRoadReference(clean, alias)) continue;
+        if (!directSpecificDist) directSpecificDist = d.name;
+        break;
+      }
+    }
+    if (directSpecificDist) break;
+  }
+
+  for (const d of divisionDistricts) {
+    for (const alias of d.aliases) {
+      if (matchWord(clean, alias)) {
+        if (isRoadReference(clean, alias)) continue;
+        if (!directDivisionDist) directDivisionDist = d.name;
+        break;
+      }
+    }
+    if (directDivisionDist) break;
+  }
+
+  // Resolution hierarchy:
+  // 1) Specific non-division district (e.g. "Feni", "Cumilla", "Bogura", "Jashore", "Gazipur")
+  //    ALWAYS WINS over broad division names! In "Dagonbhuiyan, Feni, Chittagong", Feni wins 100%!
+  if (directSpecificDist) {
+    matchedDistrict = directSpecificDist;
+    if (foundOutsideZone && foundOutsideDist === directSpecificDist) {
+      matchedZone = foundOutsideZone;
+    }
+  }
+  // 2) Outside-Dhaka upazila from OTHER_CITY_ZONES (e.g. "Titas", "Sharsha", "Sonaimuri", "Bhaluka", "Joydebpur", "Kashimpur", "Kulaura")
+  //    ALWAYS WINS over broad division names or false Dhaka defaults!
+  //    In "Sharsha, Khulna", Jashore wins! In "Titas, Chittagong", Cumilla wins! In "Bhaluka, Dhaka", Mymensingh wins!
+  else if (foundOutsideDist && foundOutsideZone) {
+    matchedDistrict = foundOutsideDist;
+    matchedZone = foundOutsideZone;
+  }
+  // 3) Division district name (Chattogram, Rajshahi, Khulna, Barishal, Sylhet, Rangpur, Mymensingh) wins
+  //    when no specific non-division district or external upazila was detected
+  else if (directDivisionDist) {
+    matchedDistrict = directDivisionDist;
+    if (foundOutsideZone && foundOutsideDist === directDivisionDist) {
+      matchedZone = foundOutsideZone;
     }
   }
 
@@ -1824,30 +1929,8 @@ function parseBDAddress(rawAddress) {
     }
   }
 
-  // 2G. Check specific non-Dhaka zones from OTHER_CITY_ZONES with full Bengali alias matching
-  if (!matchedZone) {
-    for (const [distName, zones] of Object.entries(OTHER_CITY_ZONES)) {
-      if (distName.toLowerCase() === "dhaka") continue;
-      for (const z of zones) {
-        const zName = typeof z === "string" ? z : z.name;
-        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
-        let found = false;
-        for (const alias of aliases) {
-          if (matchWord(clean, alias)) {
-            matchedZone = zName;
-            if (!matchedDistrict) matchedDistrict = distName;
-            found = true;
-            break;
-          }
-        }
-        if (found) break;
-      }
-      if (matchedZone && matchedDistrict) break;
-    }
-  }
-
-  // 2H. Check Dhaka city or Dhaka zones ONLY if no non-Dhaka district was detected
-  if (!matchedDistrict || matchedDistrict === "Dhaka") {
+  // 2G. Check Dhaka city or Dhaka zones ONLY if no non-Dhaka district was detected
+  if (!matchedDistrict) {
     for (const z of DHAKA_ZONES) {
       const zName = typeof z === "string" ? z : z.name;
       const aliases = typeof z === "string" ? [z] : z.aliases;
@@ -1856,14 +1939,12 @@ function parseBDAddress(rawAddress) {
         if (matchWord(clean, alias)) {
           matchedZone = zName;
           found = true;
-          if (!matchedDistrict) {
-            if (["Savar", "Ashulia", "Dhamrai", "Keraniganj"].includes(zName)) {
-              matchedDistrict = "Dhaka";
-            } else if (zName === "Tongi") {
-              matchedDistrict = "Gazipur";
-            } else {
-              matchedDistrict = "Dhaka";
-            }
+          if (["Savar", "Ashulia", "Dhamrai", "Keraniganj"].includes(zName)) {
+            matchedDistrict = "Dhaka";
+          } else if (zName === "Tongi") {
+            matchedDistrict = "Gazipur";
+          } else {
+            matchedDistrict = "Dhaka";
           }
           break;
         }
@@ -1872,15 +1953,19 @@ function parseBDAddress(rawAddress) {
     }
   }
 
+  // 2H. Check Dhaka city or Dhaka postcode (1000-1236)
   if (!matchedDistrict) {
+    const isDhakaPc = postcode && parseInt(postcode, 10) >= 1000 && parseInt(postcode, 10) <= 1236;
     const dhakaObj = BD_DISTRICTS.find(d => d.name === "Dhaka");
-    if (dhakaObj) {
-      for (const alias of dhakaObj.aliases) {
-        if (matchWord(clean, alias)) {
-          matchedDistrict = "Dhaka";
-          break;
-        }
+    const hasDhakaWord = dhakaObj && dhakaObj.aliases.some(a => {
+      if (matchWord(clean, a)) {
+        if (isRoadReference(clean, a)) return false;
+        return true;
       }
+      return false;
+    });
+    if (isDhakaPc || hasDhakaWord) {
+      matchedDistrict = "Dhaka";
     }
   }
 
@@ -1931,9 +2016,16 @@ function parseBDAddress(rawAddress) {
   // Final Defaults
   if (!matchedDistrict) {
     matchedDistrict = "Dhaka";
+    isDefaulted = true;
   }
   if (!matchedZone) {
     matchedZone = matchedDistrict === "Dhaka" ? "Dhaka Sadar" : `${matchedDistrict} Sadar`;
+  }
+
+  // Detect False Dhaka
+  const hasDhakaWord = /\b(?:dhaka|dacca|ঢাকা)\b/i.test(clean);
+  if (matchedDistrict !== "Dhaka" && hasDhakaWord) {
+    hasFalseDhaka = true;
   }
 
   // 4. Identify Area / Sub-area (Sector, Block, Ward, Gram)
@@ -1976,6 +2068,11 @@ function parseBDAddress(rawAddress) {
 
   streetAddress = streetAddress.replace(/^[,;\\s।]+|[,;\\s।]+$/g, "");
 
+  if (matchedDistrict !== "Dhaka") {
+    streetAddress = streetAddress.replace(/(?:^|[,;\s]+)(?:(?:জেলা|District|Dist|Zilla|Zila|Jilla|Jela)[\s:ঃ#\-]*)?(?:Dhaka|Dacca|ঢাকা)(?:\s*(?:Division|বিভাগ))?(?:\s*,\s*BD[-_\s]?13)?(?=\b|[,;\s।–-]|$)/gi, "").trim();
+    streetAddress = streetAddress.replace(/^[,;\\s।]+|[,;\\s।]+$/g, "");
+  }
+
   if (!streetAddress || streetAddress.length < 3) {
     streetAddress = clean;
   }
@@ -2002,7 +2099,9 @@ function parseBDAddress(rawAddress) {
     area: matchedArea,
     postcode: postcode,
     streetAddress: streetAddress,
-    cityType: cityType
+    cityType: cityType,
+    isDefaulted: isDefaulted,
+    hasFalseDhaka: hasFalseDhaka
   };
 }
 
@@ -2146,6 +2245,11 @@ function normalizeAddressForPathao(rawAddress) {
       const esc = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       addr = addr.replace(new RegExp(`(?:[-:,;\\s।]+(?:(?:জেলা|District|Dist|Zilla|Zila|Jilla|Jela)[:\\sঃ]*)?${esc})+[-:,;\\s।]*$`, "i"), "");
     }
+
+    // If outside Dhaka, also strip false/trailing Dhaka or division references
+    if (parsed.district !== "Dhaka") {
+      addr = addr.replace(/(?:^|[,;\s]+)(?:(?:জেলা|District|Dist|Zilla|Zila|Jilla|Jela)[\s:ঃ#\-]*)?(?:Dhaka|Dacca|ঢাকা)(?:\s*(?:Division|বিভাগ))?(?:\s*,\s*BD[-_\s]?13)?(?=\b|[,;\s।–-]|$)/gi, "");
+    }
   }
 
   // 10. Title Case English words in street address
@@ -2172,8 +2276,14 @@ function normalizeAddressForPathao(rawAddress) {
 function buildFullAddress(rawAddress, parsedData) {
   if (!rawAddress || typeof rawAddress !== "string" || !rawAddress.trim()) return "";
 
-  // 1. Get base cleaned street address
+  // 1. Get base cleaned street address and convert any ISO 3166-2:BD code to real district
   let base = normalizeAddressForPathao(rawAddress);
+  if (typeof detectDistrictFromISOCode === "function" && /\bBD[-_\s]?[0-6]?\d\b/i.test(base)) {
+    base = base.replace(/(?:(?:State|District|Dist|Zilla|জেলা)[\s:ঃ#\-]*)?\bBD[-_\s]?([0-6]?\d)\b/gi, (match) => {
+      return detectDistrictFromISOCode(match) || match;
+    }).trim();
+    base = base.replace(/^[,.\s-]+|[,.\s-]+$/g, "").trim();
+  }
 
   // 2. Resolve location components
   let parsed = parsedData;
@@ -2183,11 +2293,38 @@ function buildFullAddress(rawAddress, parsedData) {
 
   if (!parsed) return base;
 
+  // If parsed location was completely defaulted (unresolved), do not append fake Dhaka or fake Sadar
+  if (parsed.isDefaulted) {
+    return base;
+  }
+
   const district = (parsed.district || "").trim();
   const zone = (parsed.zone || "").trim();
   const postcode = (parsed.postcode || "").trim();
 
   if (!district && !zone) return base;
+
+  // If district is outside Dhaka, strip any residual false Dhaka from base
+  if (district && district !== "Dhaka") {
+    base = base.replace(/(?:^|[,;\s]+)(?:(?:জেলা|District|Dist|Zilla|Zila|Jilla|Jela)[\s:ঃ#\-]*)?(?:Dhaka|Dacca|ঢাকা)(?:\s*(?:Division|বিভাগ))?(?:\s*,\s*BD[-_\s]?13)?(?=\b|[,;\s।–-]|$)/gi, "").trim();
+    base = base.replace(/^[,.\s-]+|[,.\s-]+$/g, "").trim();
+
+    // If destination is a specific non-division district (e.g. Feni, Cumilla, Jashore, Bogura), strip conflicting broad division names
+    if (typeof BD_DIVISIONS !== "undefined" && !BD_DIVISIONS.includes(district)) {
+      const otherDivisions = BD_DIVISIONS.filter(div => div !== "Dhaka" && div !== district);
+      for (const divName of otherDivisions) {
+        const divObj = BD_DISTRICTS.find(d => d.name === divName);
+        const divAliases = divObj ? [divObj.name, ...divObj.aliases] : [divName];
+        for (const dAlias of divAliases) {
+          if (typeof isRoadReference === "function" && isRoadReference(base, dAlias)) continue;
+          const escAlias = dAlias.replace(/[.*+?^${}()|[\]\\]/g, "\\\\$&");
+          const divRegex = new RegExp("(?:^|[,;\\s]+)(?:(?:বিভাগ|Division)[\\s:ঃ#\\-]*)?" + escAlias + "(?:\\s*(?:Division|বিভাগ))?(?=\\b|[,;\\s।–-]|$)", "gi");
+          base = base.replace(divRegex, "").trim();
+        }
+      }
+      base = base.replace(/^[,.\s-]+|[,.\s-]+$/g, "").trim();
+    }
+  }
 
   let parts = [base];
 
@@ -2313,12 +2450,13 @@ function normalizeDisplayAddress(rawAddress, customerName) {
     let seg = rawParts[i].trim();
     if (!seg) continue;
 
-    // Check if seg is an ISO code like BD-08, BD-15
-    if (/^bd[-_\s]?[0-6]?\d$/i.test(seg)) {
+    // Check if seg is or contains an ISO code like BD-08, BD-15
+    if (/\bBD[-_\s]?[0-6]?\d\b/i.test(seg)) {
       if (typeof detectDistrictFromISOCode === "function") {
         const resolved = detectDistrictFromISOCode(seg);
         if (resolved) {
-          seg = resolved;
+          seg = seg.replace(/(?:(?:State|District|Dist|Zilla|জেলা|বিভাগ)[\s:ঃ#\-]*)?\bBD[-_\s]?[0-6]?\d\b/gi, resolved).trim();
+          seg = seg.replace(/^[.,;:\s।–-]+|[.,;:\s।–-]+$/g, "").trim();
         } else {
           continue;
         }
@@ -2921,6 +3059,52 @@ function normalizeCustomerAndOrderData(rawDetails) {
   if (address && typeof parseBDAddress === "function") {
     parsed = parseBDAddress(address);
   }
+
+  // Cross-reference with Customer Note and explicit City/State fields
+  const rawNote = d.notes || d.customerNote || d.customer_note || d.instruction || d.order_comments || "";
+  const explicitCityState = [
+    d.shippingCity,
+    d.shipping_city,
+    d.billingCity,
+    d.billing_city,
+    d.shippingState,
+    d.shipping_state,
+    d.billingState,
+    d.billing_state
+  ].filter(Boolean).join(", ");
+
+  const needsRescue = parsed.isDefaulted || (parsed.district === "Dhaka" && (parsed.hasFalseDhaka || !/\b(?:dhaka|dacca|ঢাকা)\b/i.test(address) || rawNote || explicitCityState));
+
+  if (needsRescue && typeof parseBDAddress === "function") {
+    // 1. Check explicit city/state fields first if not generic Dhaka
+    if (explicitCityState) {
+      const cityStateParsed = parseBDAddress(explicitCityState);
+      if (!cityStateParsed.isDefaulted && cityStateParsed.district && cityStateParsed.district !== "Dhaka") {
+        parsed.district = cityStateParsed.district;
+        if (cityStateParsed.zone && !parsed.zone) parsed.zone = cityStateParsed.zone;
+        parsed.cityType = cityStateParsed.cityType;
+        parsed.isDefaulted = false;
+        if (typeof buildFullAddress === "function") {
+          address = buildFullAddress(address, parsed);
+        }
+      }
+    }
+
+    // 2. Check Customer Note
+    if ((parsed.isDefaulted || parsed.district === "Dhaka") && rawNote) {
+      const noteParsed = parseBDAddress(rawNote);
+      if (!noteParsed.isDefaulted && noteParsed.district && noteParsed.district !== "Dhaka") {
+        parsed.district = noteParsed.district;
+        if (noteParsed.zone && !parsed.zone) parsed.zone = noteParsed.zone;
+        parsed.cityType = noteParsed.cityType;
+        parsed.isDefaulted = false;
+        if (typeof buildFullAddress === "function") {
+          address = buildFullAddress(address, parsed);
+        }
+      }
+    }
+  }
+
   const district = parsed.district || d.district || "";
   const zone = parsed.zone || d.zone || "";
 
@@ -3280,6 +3464,113 @@ ${paymentBlock}
   }
 }
 
+/**
+ * Universal Structured Order Extractor
+ * Parses unformatted customer messages from WhatsApp, Facebook, Messenger, SMS or CRM
+ * and extracts normalized recipient name, phone, address, district, zone, items, and COD.
+ */
+function extractStructuredOrderFromText(rawText) {
+  if (!rawText || typeof rawText !== "string") {
+    return {
+      name: "",
+      phone: "",
+      address: "",
+      district: "",
+      zone: "",
+      area: "",
+      postcode: "",
+      fullAddress: "",
+      cityType: "Inside Dhaka",
+      items: [],
+      subtotal: "0",
+      deliveryFee: 50,
+      cod: "0",
+      notes: ""
+    };
+  }
+
+  const clean = rawText.trim();
+
+  // 1. Phone number
+  const phone = normalizeBDPhone(clean) || "";
+
+  // 2. Customer Name
+  let name = "";
+  const nameMatch = clean.match(/(?:^|[\r\n,;])\s*(?:name|customer|recipient|নাম|কাস্টমার|প্রাপক)[\s:ঃ#\-]+([^\r\n,;]+)/i);
+  if (nameMatch) {
+    name = nameMatch[1].trim();
+  }
+
+  // 3. COD / Price Amount
+  let cod = "";
+  const codMatch = clean.match(/(?:^|[\r\n,;\s])(?:cod|total|grand\s*total|amount|tk|taka|প্রদেয়|মোট|সর্বমোট|টাকা|মূল্য|বিল|ক্যাশ)[\s:ঃ#\-=]+([০-৯0-9,]+)/i) ||
+                   clean.match(/(?:৳|tk\.?|bdt)\s*([০-৯0-9,]+)/i) ||
+                   clean.match(/([০-৯0-9,]+)\s*(?:৳|টাকা|tk\b)/i);
+  if (codMatch) {
+    cod = bengaliToAsciiDigits(codMatch[1]).replace(/,/g, "").trim();
+  }
+
+  // 4. Address
+  let addressText = "";
+  const addrMatch = clean.match(/(?:^|[\r\n])\s*(?:address|delivery\s*address|location|shipping\s*address|ঠিকানা|ডেলিভারি\s*ঠিকানা|লোকেশন|বাসা)[\s:ঃ#\-]+([^\r\n]+(?:[\r\n]+(?!(?:name|phone|mobile|cod|total|tk|নাম|ফোন|মোবাইল|টাকা)[\s:ঃ#\-]).+)*)/i);
+  if (addrMatch) {
+    addressText = addrMatch[1].trim();
+  } else {
+    const lines = clean.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean);
+    const candidateLines = [];
+    for (const line of lines) {
+      if (phone && line.includes(phone)) continue;
+      if (name && line.toLowerCase().includes(name.toLowerCase())) continue;
+      if (/^(?:cod|total|amount|tk|taka|টাকা|দাম|মূল্য)[:\s]/i.test(line)) continue;
+      if (/^(?:item|product|সাইজ|কালার|size|color|পণ্য)[:\s]/i.test(line)) continue;
+      if (/(?:road|house|sector|block|vill|thana|district|জেলা|থানা|উপজেলা|গ্রাম|রোড|বাসা|বাড়ি|পোস্ট|ডাকঘর)/i.test(line) ||
+          BD_DISTRICTS.some(d => d.aliases.some(a => matchWord(line, a)))) {
+        candidateLines.push(line);
+      }
+    }
+    if (candidateLines.length > 0) {
+      addressText = candidateLines.join(", ");
+    }
+  }
+
+  // 5. Parse Address
+  const parsedAddr = parseBDAddress(addressText || clean);
+  const fullAddress = buildFullAddress(addressText || clean, parsedAddr);
+
+  // Fallback for Name if not labeled
+  if (!name) {
+    const lines = clean.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean);
+    for (const line of lines) {
+      if (phone && line.includes(phone)) continue;
+      if (addressText && addressText.includes(line)) continue;
+      if (/(?:cod|tk|টাকা|order|অর্ডার)/i.test(line)) continue;
+      if (!isInvalidCustomerName(line) && line.length >= 2 && line.length <= 35) {
+        name = line.replace(/^(?:mr\.?|md\.?|মো\.?|মোঃ)\s*/i, "").trim();
+        break;
+      }
+    }
+  }
+
+  const isOutside = parsedAddr.cityType === "Outside Dhaka";
+  const fee = isOutside ? 90 : 50;
+
+  return {
+    name: name || "Customer",
+    phone: phone,
+    address: parsedAddr.streetAddress || addressText,
+    district: parsedAddr.district,
+    zone: parsedAddr.zone,
+    area: parsedAddr.area,
+    postcode: parsedAddr.postcode,
+    fullAddress: fullAddress,
+    cityType: parsedAddr.cityType,
+    isOutsideDhaka: isOutside,
+    hasFalseDhaka: parsedAddr.hasFalseDhaka || false,
+    deliveryFee: fee,
+    cod: cod || (fee ? String(fee) : "0")
+  };
+}
+
 // Make functions accessible in content scripts, background worker, popup, and tests
 const PARSER_EXPORTS = {
   cleanLines,
@@ -3317,12 +3608,16 @@ const PARSER_EXPORTS = {
   extractItemNameWithSize,
   cleanHtmlEntities,
   isExcludedMetaOrButtonRow,
+  BD_DIVISIONS,
   BD_ISO_DISTRICTS,
   detectDistrictFromISOCode,
   getISOCodeFromDistrict,
   matchWord,
+  isDivisionReference,
+  isRoadReference,
   buildFullAddress,
-  normalizeDisplayAddress
+  normalizeDisplayAddress,
+  extractStructuredOrderFromText
 };
 
 if (typeof window !== "undefined") {

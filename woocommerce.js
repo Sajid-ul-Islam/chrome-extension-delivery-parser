@@ -472,8 +472,15 @@
       const bstateMatch = rawHtml.match(/name=['"]_?billing_state['"][^>]*value=['"]([^'"]+)['"]/i);
       const bpostMatch = rawHtml.match(/name=['"]_?billing_postcode['"][^>]*value=['"]([^'"]+)['"]/i);
 
-      const shipParts = [sa1Match ? sa1Match[1] : "", sa2Match ? sa2Match[1] : "", scityMatch ? scityMatch[1] : "", sstateMatch ? sstateMatch[1] : "", spostMatch ? spostMatch[1] : ""].filter(Boolean);
-      const billParts = [ba1Match ? ba1Match[1] : "", ba2Match ? ba2Match[1] : "", bcityMatch ? bcityMatch[1] : "", bstateMatch ? bstateMatch[1] : "", bpostMatch ? bpostMatch[1] : ""].filter(Boolean);
+      let isoDetect = typeof detectDistrictFromISOCode === "function" ? detectDistrictFromISOCode : null;
+      if (!isoDetect && typeof require !== "undefined") {
+        try { isoDetect = require("./parser.js").detectDistrictFromISOCode; } catch (e) {}
+      }
+      const sstateVal = sstateMatch ? (isoDetect ? (isoDetect(sstateMatch[1]) || sstateMatch[1]) : sstateMatch[1]) : "";
+      const bstateVal = bstateMatch ? (isoDetect ? (isoDetect(bstateMatch[1]) || bstateMatch[1]) : bstateMatch[1]) : "";
+
+      const shipParts = [sa1Match ? sa1Match[1] : "", sa2Match ? sa2Match[1] : "", scityMatch ? scityMatch[1] : "", sstateVal, spostMatch ? spostMatch[1] : ""].filter(Boolean);
+      const billParts = [ba1Match ? ba1Match[1] : "", ba2Match ? ba2Match[1] : "", bcityMatch ? bcityMatch[1] : "", bstateVal, bpostMatch ? bpostMatch[1] : ""].filter(Boolean);
       const address = (shipParts.length > 0 ? shipParts : billParts).join(", ");
 
       const noteM = rawHtml.match(/name=['"](?:customer_note|order_comments)['"][^>]*>([\s\S]*?)<\/textarea>/i) ||
@@ -713,8 +720,15 @@
       const bstate = doc.querySelector("#_billing_state, input[name='_billing_state'], #billing_state, input[name='billing_state']");
       const bpost = doc.querySelector("#_billing_postcode, input[name='_billing_postcode'], #billing_postcode, input[name='billing_postcode']");
 
-      const shipParts = [sa1 ? sa1.value : "", sa2 ? sa2.value : "", scity ? scity.value : "", sstate ? sstate.value : "", spost ? spost.value : ""].filter(Boolean);
-      const billParts = [ba1 ? ba1.value : "", ba2 ? ba2.value : "", bcity ? bcity.value : "", bstate ? bstate.value : "", bpost ? bpost.value : ""].filter(Boolean);
+      let isoDetectDom = typeof detectDistrictFromISOCode === "function" ? detectDistrictFromISOCode : null;
+      if (!isoDetectDom && typeof require !== "undefined") {
+        try { isoDetectDom = require("./parser.js").detectDistrictFromISOCode; } catch (e) {}
+      }
+      const sstateValDom = sstate ? (isoDetectDom ? (isoDetectDom(sstate.value) || sstate.value) : sstate.value) : "";
+      const bstateValDom = bstate ? (isoDetectDom ? (isoDetectDom(bstate.value) || bstate.value) : bstate.value) : "";
+
+      const shipParts = [sa1 ? sa1.value : "", sa2 ? sa2.value : "", scity ? scity.value : "", sstateValDom, spost ? spost.value : ""].filter(Boolean);
+      const billParts = [ba1 ? ba1.value : "", ba2 ? ba2.value : "", bcity ? bcity.value : "", bstateValDom, bpost ? bpost.value : ""].filter(Boolean);
       const parts = shipParts.length > 0 ? shipParts : billParts;
       if (parts.length > 0) address = parts.join(", ");
 
@@ -1281,6 +1295,10 @@
       phone: payload.phone,
       name: payload.name || "",
       address: payload.address || "",
+      district: payload.district || "",
+      zone: payload.zone || "",
+      area: payload.area || "",
+      postcode: payload.postcode || "",
       cod: payload.cod || "",
       orderId: payload.orderId || "",
       source: "woocommerce",
@@ -4190,6 +4208,7 @@
             addrInput.dispatchEvent(new Event("input", { bubbles: true }));
             addrInput.dispatchEvent(new Event("change", { bubbles: true }));
             updateDetectedDisplay();
+            if (matchBtn) matchBtn.click();
             if (revertBtn && revertBtn.style) revertBtn.style.display = "inline-flex";
             if (statusHint) {
               statusHint.textContent = "✅ Full Address Applied!";
@@ -4220,8 +4239,8 @@
             const localParsed = parseBD ? parseBD(raw) : null;
             const hasExplicitDhaka = /\b(?:dhaka|dacca|ঢাকা)\b/i.test(raw);
 
-            // Fast path: if local parse already detected a non-Dhaka district or explicit Dhaka
-            if (localParsed && ((localParsed.district && localParsed.district !== "Dhaka") || (localParsed.district === "Dhaka" && hasExplicitDhaka))) {
+            // Fast path: if local parse already detected a non-Dhaka district or genuine explicit Dhaka (not defaulted or false Dhaka)
+            if (localParsed && ((localParsed.district && localParsed.district !== "Dhaka") || (localParsed.district === "Dhaka" && hasExplicitDhaka && !localParsed.isDefaulted && !localParsed.hasFalseDhaka))) {
               const full = buildFull ? buildFull(raw, localParsed) : raw;
               addrInput.value = full;
               addrInput.dispatchEvent(new Event("input", { bubbles: true }));
@@ -4364,30 +4383,36 @@
               }
             }
 
-            setTimeout(() => {
-              if (zoneSelect && parsed.zone) {
-                const zOptions = Array.from(zoneSelect.options || []);
-                let zAliases = [parsed.zone];
-                if (allOtherZones[parsed.district]) {
-                  const fz = allOtherZones[parsed.district].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === parsed.zone.toLowerCase());
-                  if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
-                } else if (dhakaZones) {
-                  const fz = dhakaZones.find(z => (typeof z === "object" ? z.name : z).toLowerCase() === parsed.zone.toLowerCase());
-                  if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
-                }
+            const applyZoneMatch = (retriesLeft) => {
+              if (!zoneSelect || !parsed.zone) return;
+              const zOptions = Array.from(zoneSelect.options || []);
+              if (zOptions.length <= 1 && retriesLeft > 0) {
+                setTimeout(() => applyZoneMatch(retriesLeft - 1), 350);
+                return;
+              }
+              let zAliases = [parsed.zone];
+              if (allOtherZones[parsed.district]) {
+                const fz = allOtherZones[parsed.district].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === parsed.zone.toLowerCase());
+                if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
+              } else if (dhakaZones) {
+                const fz = dhakaZones.find(z => (typeof z === "object" ? z.name : z).toLowerCase() === parsed.zone.toLowerCase());
+                if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
+              }
 
-                const zOpt = zOptions.find(o => {
-                  const t = (o.text || "").toLowerCase();
-                  return zAliases.some(a => t.includes(a.toLowerCase()) || a.toLowerCase().includes(t));
-                });
-                if (zOpt) {
-                  zoneSelect.value = zOpt.value;
-                  zoneSelect.dispatchEvent(new Event("change", { bubbles: true }));
-                  if (typeof jQuery !== "undefined") {
-                    jQuery(zoneSelect).trigger("change");
-                  }
-                  matchedZone = true;
+              const zOpt = zOptions.find(o => {
+                const t = (o.text || "").toLowerCase();
+                return zAliases.some(a => t.includes(a.toLowerCase()) || a.toLowerCase().includes(t));
+              });
+              if (zOpt) {
+                zoneSelect.value = zOpt.value;
+                zoneSelect.dispatchEvent(new Event("change", { bubbles: true }));
+                if (typeof jQuery !== "undefined") {
+                  jQuery(zoneSelect).trigger("change");
                 }
+                matchedZone = true;
+              } else if (retriesLeft > 0) {
+                setTimeout(() => applyZoneMatch(retriesLeft - 1), 350);
+                return;
               }
 
               if (statusHint) {
@@ -4398,7 +4423,9 @@
                 }
                 setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3000);
               }
-            }, 400);
+            };
+
+            setTimeout(() => applyZoneMatch(3), 350);
           });
         }
 
@@ -4411,6 +4438,10 @@
       const rawCurrent = addrInput.value || "";
       if (rawCurrent.trim().length > 5 && addrInput.dataset.deenNormalized !== "true") {
         addrInput.dataset.deenRawAddress = rawCurrent;
+        let buildFull = typeof buildFullAddress === "function" ? buildFullAddress : null;
+        if (!buildFull && typeof require !== "undefined") {
+          try { buildFull = require("./parser.js").buildFullAddress; } catch (e) {}
+        }
         const cleaned = normalizeAddressForPathao(rawCurrent).replace(/[,.\s-]+$/, "");
         if (cleaned && cleaned !== rawCurrent) {
           addrInput.value = cleaned;
@@ -4424,8 +4455,12 @@
             statusHint.textContent = "✨ Auto-cleaned for Pathao";
             setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3000);
           }
+          const matchBtn = helper && typeof helper.querySelector === "function" ? helper.querySelector("#deen-ptc-btn-match") : null;
+          if (matchBtn && typeof matchBtn.click === "function") matchBtn.click();
         } else {
           addrInput.dataset.deenNormalized = "true";
+          const matchBtn = helper && typeof helper.querySelector === "function" ? helper.querySelector("#deen-ptc-btn-match") : null;
+          if (matchBtn && typeof matchBtn.click === "function") matchBtn.click();
         }
 
         const detectedEl = helper && typeof helper.querySelector === "function" ? helper.querySelector("#deen-ptc-detected-text") : null;
@@ -4512,6 +4547,18 @@
       if (!btn.dataset.deenNormalizerBound && typeof btn.addEventListener === "function") {
         btn.dataset.deenNormalizerBound = "true";
         btn.addEventListener("click", () => {
+          try {
+            const row = btn.closest("tr");
+            if (row && typeof extractRowOrderDetails === "function") {
+              const rowDetails = extractRowOrderDetails(row);
+              if (rowDetails && rowDetails.orderId) {
+                if (typeof window !== "undefined") {
+                  window.__deenActivePathaoOrderId = rowDetails.orderId;
+                  window.__deenActivePathaoOrderDetails = rowDetails;
+                }
+              }
+            }
+          } catch (e) {}
           setTimeout(() => {
             const addrInput = document.querySelector("#ptc_wc_shipping_address, [name='ptc_wc_shipping_address']");
             if (addrInput) {

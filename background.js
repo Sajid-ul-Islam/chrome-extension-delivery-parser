@@ -2067,6 +2067,27 @@ function parseNominatimAddressResult(item, originalQuery) {
     matchedZone = addr.county.replace(/(?:উপজেলা|upazila|thana|থানা)/gi, "").trim();
   }
 
+  // If matchedDistrict is still empty, perform reverse zone lookup from candidate zone texts across OTHER_CITY_ZONES
+  if (!matchedDistrict) {
+    for (const [distName, zones] of Object.entries(otherZones)) {
+      if (distName.toLowerCase() === "dhaka") continue;
+      for (const z of zones) {
+        const zName = typeof z === "string" ? z : z.name;
+        const aliases = typeof z === "string" ? [z] : (z.aliases || [z.name]);
+        for (const zText of candidateZoneTexts) {
+          const cleanZ = zText.replace(/(?:উপজেলা|upazila|thana|থানা|পৌরসভা|municipality)/gi, "").trim();
+          if (zName.toLowerCase() === cleanZ.toLowerCase() || aliases.some(a => a.toLowerCase() === cleanZ.toLowerCase())) {
+            matchedDistrict = distName;
+            matchedZone = zName;
+            break;
+          }
+        }
+        if (matchedDistrict) break;
+      }
+      if (matchedDistrict) break;
+    }
+  }
+
   if (!matchedDistrict && !matchedZone) return null;
 
   // Build modified full address
@@ -2131,9 +2152,9 @@ async function handleOnlineAddressGuess(rawQuery, sendResponse) {
 
   if (parseBD) {
     const localParsed = parseBD(cleanQuery);
-    // If local parsed found a non-Dhaka district or if Dhaka was explicitly in the text
+    // If local parsed found a non-Dhaka district or genuine explicit Dhaka (not defaulted or false Dhaka)
     const hasExplicitDhaka = /\b(?:dhaka|dacca|ঢাকা)\b/i.test(cleanQuery);
-    if ((localParsed.district && localParsed.district !== "Dhaka") || (localParsed.district === "Dhaka" && hasExplicitDhaka)) {
+    if ((localParsed.district && localParsed.district !== "Dhaka") || (localParsed.district === "Dhaka" && hasExplicitDhaka && !localParsed.isDefaulted && !localParsed.hasFalseDhaka)) {
       const result = {
         success: true,
         district: localParsed.district,

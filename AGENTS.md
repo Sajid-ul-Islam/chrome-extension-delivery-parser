@@ -11,8 +11,8 @@ The codebase adheres strictly to **Google Chrome Manifest V3**:
 | Component | File | Execution Context | Key Responsibilities |
 | :--- | :--- | :--- | :--- |
 | **Parser Core** | [`parser.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/parser.js) | Global / Shared | Centralized parsing engine, regex anchors, BD address normalizer, ISO district detection, delivery fee calculations, WhatsApp message generator. |
-| **WebMCP Provider** | [`webmcp-provider.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/webmcp-provider.js) | Content Script / Page | W3C WebMCP tool registry (`navigator.modelContext` / `window.modelContext`). Exposes 12 structured AI tools to browser agents. |
-| **DEEN Assistant Core** | [`deen-assistant.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/deen-assistant.js) | Global / Shared / Extension UI | Zero-cost deterministic query engine, Banglish/Bengali customer note & message analyzer, BYOK (Gemini, OpenAI, Groq) client, and conversation store. |
+| **WebMCP Provider** | [`webmcp-provider.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/webmcp-provider.js) | Content Script / Page | W3C WebMCP tool registry (`navigator.modelContext` / `window.modelContext`). Exposes 14 structured AI tools to browser agents. |
+| **DEEN Assistant Core** | [`deen-assistant.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/deen-assistant.js) | Global / Shared / Extension UI | Autonomous analytical query engine, in-browser SQL executor (<2ms), SVG visual chart generator, C-level executive reporter, Banglish/Bengali customer note interpreter, and BYOK (Gemini, OpenAI, Groq) client. |
 | **Floating Assistant Chatbox** | [`deen-floating-chat.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/deen-floating-chat.js) | Content Script (WordPress, Pathao, WhatsApp Web) | In-page collapsible floating Copilot window with draggable circular brand launcher, coordinate persistence, contextual telemetry banner, dynamic prompt chips, 1-click WhatsApp message injector, zero-cost + BYOK completions. |
 | **WooCommerce Integration** | [`woocommerce.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/woocommerce.js) | Content Script (`*://*/wp-admin/*`) | WooCommerce table parsing, order details extraction, 2x Retina Order Receipt canvas rendering, Pathao popup address auto-normalizer, same-origin Pathao settings probe (`get_wc_pathao_credentials`). |
 | **Universal Phone Check** | [`phone-check.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/phone-check.js) | Content Script (`*://*/*`) | Highlight & copy phone detector across WhatsApp Web, Facebook, CRMs; WhatsApp Web active chat header auto-detection & inline rating badge; interactive floating action pill & sidebar drawer. |
@@ -94,7 +94,7 @@ The 2x Retina Order Receipt canvas rendered by `renderOrderReceiptCanvas`:
 
 ## 3. Automated Verification & Test Suites
 
-Before committing or pushing any change, **all 16 test suites must pass 100%**:
+Before committing or pushing any change, **all 17 test suites must pass 100%**:
 
 ```powershell
 # Run complete test suite:
@@ -116,7 +116,8 @@ node test_whatsapp_active_chat.js; `
 node test_floating_chat.js; `
 node test_ndr_rescue_listener.js; `
 node test_cache_eviction.js; `
-node test_local_rating_cache_reuse.js
+node test_local_rating_cache_reuse.js; `
+node test_analytical_agent.js
 ```
 
 ### Test Suite Directory:
@@ -136,6 +137,7 @@ node test_local_rating_cache_reuse.js
 14. [`test_ndr_rescue_listener.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_ndr_rescue_listener.js) — Pathao NDR failed delivery attempt detector, Bengali retry/return keyword filters, delivered parcel exclusion, alert storage, table row decoration, and 1-click WhatsApp rescue modal.
 15. [`test_cache_eviction.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_cache_eviction.js) — Cache capacity limit (500 entries) FIFO eviction, 10-minute rating TTL, 24-hour address TTL, and periodic sweeper (`pruneExpiredCaches`).
 16. [`test_local_rating_cache_reuse.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_local_rating_cache_reuse.js) — Unified local rating cache, zero-network instant reuse across background and in-page contexts, and force-refresh cache bypass.
+17. [`test_analytical_agent.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_analytical_agent.js) — In-browser SQL execution engine, DataFrame descriptive statistics, native SVG bar/donut charts, C-level executive reports, universal table scraper, and WebMCP analytical tools.
 
 ---
 

@@ -749,7 +749,7 @@
     }, 4000);
   }
 
-  function trySelectAntdOption(inputEl, searchValue) {
+  function trySelectAntdOption(inputEl, searchValue, aliases = []) {
     if (!inputEl || !searchValue) return false;
     try {
       inputEl.focus();
@@ -757,19 +757,57 @@
       inputEl.dispatchEvent(new Event("input", { bubbles: true }));
       inputEl.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown" }));
 
-      setTimeout(() => {
+      const searchCandidates = [searchValue, ...(aliases || [])].map(s => (s || "").toLowerCase().trim()).filter(Boolean);
+
+      const findAndClick = () => {
         const options = Array.from(document.querySelectorAll(".ant-select-item-option-content, .ant-select-dropdown [role='option'], .ant-select-item-option"));
         for (const opt of options) {
-          if ((opt.textContent || "").trim().toLowerCase().includes(searchValue.toLowerCase())) {
-            opt.click();
-            break;
+          const optText = (opt.textContent || "").trim().toLowerCase();
+          for (const cand of searchCandidates) {
+            if (optText === cand || optText.includes(cand) || cand.includes(optText)) {
+              opt.click();
+              return true;
+            }
           }
+        }
+        return false;
+      };
+
+      setTimeout(() => {
+        if (!findAndClick() && aliases && aliases.length > 0) {
+          const nextAlias = aliases[0];
+          setReactInputValue(inputEl, nextAlias, true);
+          inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+          inputEl.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown" }));
+          setTimeout(findAndClick, 200);
         }
       }, 250);
       return true;
     } catch (e) {
       return false;
     }
+  }
+
+  function retrySelectAntdZone(targetZone, zoneAliases = [], maxAttempts = 8, interval = 250) {
+    let attempt = 0;
+    const intervalId = setInterval(() => {
+      attempt++;
+      const fields = findPathaoRecipientFields();
+      if (!fields.zoneSelect) {
+        if (attempt >= maxAttempts) clearInterval(intervalId);
+        return;
+      }
+
+      const isLoading = fields.zoneSelect.closest(".ant-select-loading") || document.querySelector(".ant-select-loading");
+      if (isLoading && attempt < maxAttempts) {
+        return;
+      }
+
+      const ok = trySelectAntdOption(fields.zoneSelect, targetZone, zoneAliases);
+      if (ok || attempt >= maxAttempts) {
+        clearInterval(intervalId);
+      }
+    }, interval);
   }
 
   function renderAddressHelperPill(details) {
@@ -874,8 +912,15 @@
       highlightField(fields.name);
     }
 
-    // 3. Fill Address (Cleaned Street Address preferred)
-    const addressToFill = (parsedAddr && parsedAddr.streetAddress) ? parsedAddr.streetAddress : (data.address || "");
+    // 3. Fill Address (Canonical Full Address preferred for courier clarity)
+    let addressToFill = "";
+    if (typeof buildFullAddress === "function" && (data.address || (parsedAddr && parsedAddr.raw))) {
+      addressToFill = buildFullAddress(data.address || parsedAddr.raw, parsedAddr);
+    } else if (parsedAddr && parsedAddr.streetAddress) {
+      addressToFill = parsedAddr.streetAddress;
+    } else {
+      addressToFill = data.address || "";
+    }
     if (addressToFill && fields.address) {
       setReactInputValue(fields.address, addressToFill, true);
       highlightField(fields.address);
@@ -887,18 +932,27 @@
       highlightField(fields.cod);
     }
 
-    // 5. Select City and Zone
+    // 5. Select City and Zone with alias fallback & polling retry
     const targetCity = (parsedAddr && parsedAddr.district) || data.district || "Dhaka";
     const targetZone = (parsedAddr && parsedAddr.zone) || data.zone || "";
 
-    if (fields.citySelect && targetCity) {
-      trySelectAntdOption(fields.citySelect, targetCity);
+    let cityAliases = [];
+    if (typeof BD_DISTRICTS !== "undefined") {
+      const dObj = BD_DISTRICTS.find(d => d.name.toLowerCase() === targetCity.toLowerCase());
+      if (dObj) cityAliases = dObj.aliases;
     }
-    if (fields.zoneSelect && targetZone) {
-      setTimeout(() => {
-        const freshFields = findPathaoRecipientFields();
-        if (freshFields.zoneSelect) trySelectAntdOption(freshFields.zoneSelect, targetZone);
-      }, 400);
+
+    let zoneAliases = [];
+    if (typeof OTHER_CITY_ZONES !== "undefined" && OTHER_CITY_ZONES[targetCity]) {
+      const zObj = OTHER_CITY_ZONES[targetCity].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === targetZone.toLowerCase());
+      if (zObj && typeof zObj === "object") zoneAliases = zObj.aliases || [];
+    }
+
+    if (fields.citySelect && targetCity) {
+      trySelectAntdOption(fields.citySelect, targetCity, cityAliases);
+    }
+    if (targetZone) {
+      retrySelectAntdZone(targetZone, zoneAliases);
     }
 
     // 6. Inject Smart Address Helper Pill

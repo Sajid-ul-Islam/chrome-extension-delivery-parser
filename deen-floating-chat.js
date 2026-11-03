@@ -54,11 +54,39 @@
     if (!text) return '';
     let html = String(text);
 
+    // Extract raw chart/svg blocks to prevent escaping them
+    const rawBlocks = [];
+    html = html.replace(/(<div class="deen-chart-card"[\s\S]*?<\/div>|<svg[\s\S]*?<\/svg>)/gi, (match) => {
+      const token = `__DEEN_RAW_BLOCK_${rawBlocks.length}__`;
+      rawBlocks.push(match);
+      return token;
+    });
+
     // Escape raw HTML entities
     html = html
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
+
+    // Format markdown tables (| col1 | col2 | ...)
+    html = html.replace(/((?:\|[^\n]+\|\r?\n)+)/g, (tableBlock) => {
+      const lines = tableBlock.trim().split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) return tableBlock;
+      const headerCols = lines[0].split('|').slice(1, -1).map(c => c.trim());
+      const rows = lines.slice(2).map(line => line.split('|').slice(1, -1).map(c => c.trim()));
+      
+      let tableHtml = '<div style="overflow-x:auto; margin: 8px 0;"><table style="width:100%; border-collapse: collapse; font-size: 11px; text-align: left;">';
+      tableHtml += '<thead><tr style="border-bottom: 1px solid #334155; background: rgba(30,41,59,0.7);">';
+      headerCols.forEach(h => { tableHtml += `<th style="padding: 6px 8px; color: #94a3b8; font-weight: 600;">${h}</th>`; });
+      tableHtml += '</tr></thead><tbody>';
+      rows.forEach(r => {
+        tableHtml += '<tr style="border-bottom: 1px solid rgba(51,65,85,0.4);">';
+        r.forEach(cell => { tableHtml += `<td style="padding: 5px 8px; color: #f8fafc;">${cell}</td>`; });
+        tableHtml += '</tr>';
+      });
+      tableHtml += '</tbody></table></div>';
+      return tableHtml;
+    });
 
     // Headers (### Header)
     html = html.replace(/^### (.*$)/gim, '<h4>$1</h4>');
@@ -81,10 +109,93 @@
     html = html.replace(/\n\n+/g, '</p><p>');
     html = html.replace(/\n/g, '<br>');
 
+    // Restore raw HTML blocks
+    for (let i = 0; i < rawBlocks.length; i++) {
+      html = html.replace(`__DEEN_RAW_BLOCK_${i}__`, rawBlocks[i]);
+    }
+
     return `<p>${html}</p>`.replace(/<p><\/p>/g, '');
   }
 
   // 2. Platform Context Gatherers
+  function gatherGenericTableContext() {
+    if (typeof document === 'undefined') return { records: [], metrics: {}, totalCount: 0 };
+
+    const tables = Array.from(document.querySelectorAll('table, [role="table"], .table, .grid'));
+    if (tables.length === 0) return { records: [], metrics: {}, totalCount: 0 };
+
+    let bestTable = tables[0];
+    let maxRows = 0;
+    for (const tbl of tables) {
+      const rows = tbl.querySelectorAll('tr, [role="row"]');
+      if (rows.length > maxRows) {
+        maxRows = rows.length;
+        bestTable = tbl;
+      }
+    }
+
+    const rows = Array.from(bestTable.querySelectorAll('tr, [role="row"]'));
+    if (rows.length < 2) return { records: [], metrics: {}, totalCount: 0 };
+
+    const records = [];
+    let totalCOD = 0;
+
+    const headerRow = rows[0];
+    const headerCells = (headerRow && typeof headerRow.querySelectorAll === 'function')
+      ? Array.from(headerRow.querySelectorAll('th, td, [role="columnheader"]')).map(c => (c.innerText || '').trim().toLowerCase())
+      : [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const text = row.innerText || '';
+      if (!text.trim()) continue;
+
+      const cells = (row && typeof row.querySelectorAll === 'function')
+        ? Array.from(row.querySelectorAll('td, th, [role="cell"]')).map(c => (c.innerText || '').trim())
+        : (text.split(/\s{2,}|\t/) || []);
+      
+      const phoneMatch = text.match(/(?:(?:\+8801|8801)|01)[3-9]\d{8}/);
+      const phone = phoneMatch ? phoneMatch[0] : '';
+
+      const idMatch = text.match(/(?:#|ID:?\s*|ord_?)([A-Z0-9_-]+)/i) || text.match(/\b\d{4,8}\b/);
+      const orderId = idMatch ? idMatch[1] || idMatch[0] : `ROW_${i}`;
+
+      const priceMatch = text.match(/(?:৳|BDT|TK|\$)\s*([\d,]+(?:\.\d{2})?)/i) || text.match(/\b([\d,]+(?:\.\d{2})?)\s*(?:৳|BDT|TK)/i);
+      let amount = 0;
+      if (priceMatch) {
+        amount = parseFloat(priceMatch[1].replace(/,/g, '')) || 0;
+      } else {
+        const nums = text.match(/\b\d+(?:\.\d{2})?\b/g) || [];
+        const possiblePrices = nums.map(Number).filter(n => n >= 100 && n <= 50000);
+        amount = possiblePrices.length > 0 ? possiblePrices[possiblePrices.length - 1] : 0;
+      }
+      totalCOD += amount;
+
+      const isOutside = /Outside|ঢাকার\s*বাইরে|Chittagong|Sylhet|Rajshahi|Khulna|Barishal|Rangpur|Mymensingh/i.test(text);
+
+      records.push({
+        orderId,
+        customerName: cells[1] || cells[0] || 'Customer',
+        phone,
+        cod: amount,
+        isOutsideDhaka: isOutside,
+        status: /delivered|completed/i.test(text) ? 'Completed' : (/paid/i.test(text) ? 'Paid' : 'Pending'),
+        rawText: text
+      });
+    }
+
+    const metrics = {
+      totalParcels: records.length,
+      paidCount: records.filter(r => /paid|completed/i.test(r.status)).length,
+      unpaidCount: records.filter(r => !/paid|completed/i.test(r.status)).length,
+      totalCOD,
+      totalCharge: records.length * 70,
+      netRevenue: Math.max(0, totalCOD - (records.length * 70))
+    };
+
+    return { records, metrics, totalCount: records.length };
+  }
+
   function gatherWordPressContext() {
     if (typeof document === 'undefined') return { records: [], metrics: {}, totalCount: 0 };
     
@@ -292,6 +403,16 @@
         phone: data.phone,
         customerName: data.customerName,
         recentText: data.recentText
+      };
+    } else {
+      const data = gatherGenericTableContext();
+      activeContext = {
+        platform: data.totalCount > 0 ? 'generic_table' : currentPlatform,
+        records: data.records,
+        metrics: data.metrics,
+        phone: '',
+        customerName: '',
+        recentText: ''
       };
     }
     updateContextBanner();
@@ -667,10 +788,11 @@
     let chips = [];
     if (currentPlatform === 'wordpress') {
       chips = [
-        { label: '📊 Audit Orders', query: 'Summarize the orders on this page including total COD, paid vs unpaid, and delivery fees.' },
+        { label: '📊 Executive Report', query: 'Generate a full executive report with core financial metrics, visual portfolio breakdown, and operational risk radar.' },
+        { label: '📈 Visual Chart', query: 'Show me a visual chart breakdown of revenue and volume across districts.' },
+        { label: '🔍 Run SQL Query', query: 'SELECT district, COUNT(*) as orders, SUM(cod) as revenue FROM orders GROUP BY district ORDER BY revenue DESC;' },
         { label: '💰 COD Breakdown', query: 'What is the total cash on delivery amount to collect from these orders?' },
-        { label: '⚠️ Risk Check', query: 'Identify high-risk orders with low delivery rates or outside Dhaka delivery.' },
-        { label: '📍 Districts', query: 'Show the delivery district breakdown for these orders.' },
+        { label: '⚠️ Risk Radar', query: 'Identify high-risk orders with low delivery rates or outside Dhaka delivery.' },
         { label: '📝 Note Check', query: 'Analyze customer notes on this page for special delivery instructions.' }
       ];
     } else if (currentPlatform === 'pathao') {
@@ -1025,6 +1147,7 @@ ${contextHint}
     gatherWordPressContext,
     gatherPathaoContext,
     gatherWhatsAppContext,
+    gatherGenericTableContext,
     cleanWhatsAppMessageForInput,
     renderMarkdownToHTML,
     getOfficialDeenLogoUrl,

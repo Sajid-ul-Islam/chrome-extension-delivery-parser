@@ -338,6 +338,42 @@
 
   /**
    * ---------------------------------------------------------------------------
+   * Tool: extract_structured_order_from_text
+   * ---------------------------------------------------------------------------
+   * Parses unformatted customer messages from WhatsApp, Facebook, SMS, or CRM
+   * and extracts recipient name, phone, normalized address, district, zone, and COD.
+   */
+  registryInstance.registerTool({
+    name: "extract_structured_order_from_text",
+    description: "Extract structured order information (customer name, phone, clean address, district, zone, items, and COD) from unformatted chat messages, WhatsApp, SMS, or CRM notes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        rawText: {
+          type: "string",
+          description: "Unformatted customer message, order note, or chat text"
+        }
+      },
+      required: ["rawText"]
+    },
+    readOnlyHint: true,
+    idempotentHint: true,
+    execute: async ({ rawText }) => {
+      const extFn = (typeof _parser.extractStructuredOrderFromText === "function")
+        ? _parser.extractStructuredOrderFromText
+        : (typeof extractStructuredOrderFromText === "function" ? extractStructuredOrderFromText : null);
+
+      if (!extFn) {
+        return { success: false, error: "Extractor engine not available" };
+      }
+
+      const res = extFn(rawText);
+      return Object.assign({ success: true }, res);
+    }
+  });
+
+  /**
+   * ---------------------------------------------------------------------------
    * Tool 4: calculate_delivery_fee
    * ---------------------------------------------------------------------------
    * Computes inside (৳50) vs outside (৳90) shipping fee with auto-correction
@@ -925,6 +961,96 @@
         success: true,
         answer: "DEEN Assistant Core is active.",
         source: "simulated"
+      };
+    }
+  });
+
+  /**
+   * 13. Execute In-Browser SQL Query
+   * Executes arbitrary analytical SQL across current page delivery / order records.
+   */
+  registryInstance.registerTool({
+    name: "execute_sql_query",
+    description: "Execute an in-browser analytical SQL query (SELECT, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT) directly across active delivery or order records in < 2ms.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sql: {
+          type: "string",
+          description: "SQL query string to execute, e.g. 'SELECT district, COUNT(*) as orders, SUM(cod) as revenue FROM orders GROUP BY district ORDER BY revenue DESC;'"
+        },
+        records: {
+          type: "array",
+          description: "Optional array of order/parcel records. If omitted, uses active table records from window context."
+        }
+      },
+      required: ["sql"]
+    },
+    readOnlyHint: true,
+    consequentialHint: false,
+    execute: async (params) => {
+      const p = params || {};
+      let recs = p.records || [];
+      if ((!recs || recs.length === 0) && typeof window !== "undefined") {
+        if (window.deenParsedParcels && Array.isArray(window.deenParsedParcels.records)) {
+          recs = window.deenParsedParcels.records;
+        }
+      }
+      if (_assistant && typeof _assistant.executeSQL === "function") {
+        const res = _assistant.executeSQL(p.sql, recs);
+        return {
+          ...res,
+          markdownTable: typeof _assistant.formatSQLResultToMarkdown === "function" ? _assistant.formatSQLResultToMarkdown(res) : ""
+        };
+      }
+      return {
+        success: false,
+        error: "DEEN Assistant SQL Engine not available in current scope."
+      };
+    }
+  });
+
+  /**
+   * 14. Generate Analytical Executive Report
+   * Generates a C-level executive logistics, financial, and operational report with visual SVG charts.
+   */
+  registryInstance.registerTool({
+    name: "generate_analytical_report",
+    description: "Generate a comprehensive C-level executive logistics & financial report with KPI scorecards, territory audit, and embedded visual SVG charts.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        records: {
+          type: "array",
+          description: "Optional array of order/delivery records to analyze."
+        },
+        reportType: {
+          type: "string",
+          description: "Optional report type: 'executive', 'territory', 'financial', or 'risk'."
+        }
+      }
+    },
+    readOnlyHint: true,
+    consequentialHint: false,
+    execute: async (params) => {
+      const p = params || {};
+      let recs = p.records || [];
+      if ((!recs || recs.length === 0) && typeof window !== "undefined") {
+        if (window.deenParsedParcels && Array.isArray(window.deenParsedParcels.records)) {
+          recs = window.deenParsedParcels.records;
+        }
+      }
+      if (_assistant && typeof _assistant.generateExecutiveReport === "function") {
+        const report = _assistant.generateExecutiveReport(recs);
+        return {
+          success: true,
+          report: report,
+          totalOrdersAnalyzed: recs.length
+        };
+      }
+      return {
+        success: false,
+        error: "DEEN Executive Reporter not available in current scope."
       };
     }
   });

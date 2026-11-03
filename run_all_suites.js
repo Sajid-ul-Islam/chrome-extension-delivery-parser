@@ -16,7 +16,8 @@ const suites = [
   'test_floating_chat.js',
   'test_ndr_rescue_listener.js',
   'test_cache_eviction.js',
-  'test_local_rating_cache_reuse.js'
+  'test_local_rating_cache_reuse.js',
+  'test_analytical_agent.js'
 ];
 
 let failed = 0;

@@ -446,3 +446,48 @@ if (result.riskLevel === "high") {
    - Consequential tools (`consequentialHint: true`, e.g. `autofill_pathao_consignment`) signal to agentic runtimes that explicit merchant confirmation should be requested before parcel creation.
 3. **No Unfiltered Cookie Scraping**:
    - The background service worker never scans cookies globally; it targets only `pathao.com` authentication tokens strictly for live rating verification.
+
+---
+
+### Tool 13: `execute_sql_query`
+* **Purpose**: Execute an in-browser analytical SQL query (`SELECT`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`) directly across active delivery or order records in < 2ms without external server dependencies.
+* **Semantic Hints**: `readOnlyHint: true`
+* **Input Schema**:
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "sql": {
+        "type": "string",
+        "description": "SQL query to execute, e.g. 'SELECT district, COUNT(*) as orders, SUM(cod) as revenue FROM orders GROUP BY district ORDER BY revenue DESC;'"
+      },
+      "records": {
+        "type": "array",
+        "description": "Optional list of order or delivery records to query. If omitted, uses active table records."
+      }
+    },
+    "required": ["sql"]
+  }
+  ```
+
+---
+
+### Tool 14: `generate_analytical_report`
+* **Purpose**: Generate a comprehensive C-level executive logistics, financial, and operational report with financial KPI scorecards, territory delivery audit, operational risk radar, and embedded visual SVG charts.
+* **Semantic Hints**: `readOnlyHint: true`
+* **Input Schema**:
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "records": {
+        "type": "array",
+        "description": "Optional array of order or delivery records to analyze."
+      },
+      "reportType": {
+        "type": "string",
+        "description": "Optional report type: 'executive', 'territory', 'financial', or 'risk'."
+      }
+    }
+  }
+  ```

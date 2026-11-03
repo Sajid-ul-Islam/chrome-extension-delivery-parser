@@ -211,6 +211,121 @@ const addrBandarban = parseBDAddress("Lama, Bandarban");
 assert.strictEqual(addrBandarban.district, "Bandarban", "Bandarban district mismatch");
 console.log('  ✅ Case 20: 100% 64 Districts and Upazilas coverage verified across Bangladesh');
 
+// Case 21: False Dhaka override via outside-Dhaka upazilas (Titas, Sharsha, Bhaluka)
+const addrTitasDhaka = parseBDAddress("Noyakandi, Titas, Dhaka");
+assert.strictEqual(addrTitasDhaka.district, "Cumilla", "Titas must resolve to Cumilla, overriding false Dhaka");
+assert.strictEqual(addrTitasDhaka.zone, "Titas", "Zone must be Titas");
+assert.strictEqual(addrTitasDhaka.cityType, "Outside Dhaka", "Must be Outside Dhaka");
+assert.strictEqual(addrTitasDhaka.hasFalseDhaka, true, "Must flag hasFalseDhaka as true");
+const fullTitasDhaka = buildFullAddress("Noyakandi, Titas, Dhaka", addrTitasDhaka);
+assert.strictEqual(fullTitasDhaka, "Noyakandi, Titas, Cumilla", "Full address must strip false Dhaka and append Cumilla");
+
+const addrSharshaDhaka = parseBDAddress("Benapole, Sharsha, Dhaka");
+assert.strictEqual(addrSharshaDhaka.district, "Jashore", "Sharsha must resolve to Jashore, overriding false Dhaka");
+assert.strictEqual(addrSharshaDhaka.zone, "Sharsha", "Zone must be Sharsha");
+const fullSharshaDhaka = buildFullAddress("Benapole, Sharsha, Dhaka", addrSharshaDhaka);
+assert.strictEqual(fullSharshaDhaka, "Benapole, Sharsha, Jashore", "Full address must strip false Dhaka and append Jashore");
+
+const addrBhalukaDhaka = parseBDAddress("Chowrasta, Bhaluka, Dhaka");
+assert.strictEqual(addrBhalukaDhaka.district, "Mymensingh", "Bhaluka must resolve to Mymensingh, overriding false Dhaka");
+assert.strictEqual(addrBhalukaDhaka.zone, "Bhaluka", "Zone must be Bhaluka");
+const fullBhalukaDhaka = buildFullAddress("Chowrasta, Bhaluka, Dhaka", addrBhalukaDhaka);
+assert.strictEqual(fullBhalukaDhaka, "Chowrasta, Bhaluka, Mymensingh", "Full address must strip false Dhaka and append Mymensingh");
+
+const addrExplicitThanaDist = parseBDAddress("Vill: Noyakandi, Thana: Titas, Dist: Dhaka");
+assert.strictEqual(addrExplicitThanaDist.district, "Cumilla", "Thana: Titas must override Dist: Dhaka dropdown default");
+assert.strictEqual(addrExplicitThanaDist.zone, "Titas", "Zone must be Titas");
+const fullExplicitThanaDist = buildFullAddress("Vill: Noyakandi, Thana: Titas, Dist: Dhaka", addrExplicitThanaDist);
+assert.strictEqual(fullExplicitThanaDist, "Village: Noyakandi, Thana: Titas, Cumilla", "Full address must strip false Dist: Dhaka");
+console.log('  ✅ Case 21: False Dhaka override via outside-Dhaka upazilas (Titas, Sharsha, Bhaluka) verified');
+
+// Case 22: Division label isolation vs actual district (Feni vs Chittagong Division)
+const addrFeniDiv = parseBDAddress("Dagonbhuiyan, Feni, Chittagong Division");
+assert.strictEqual(addrFeniDiv.district, "Feni", "Feni must win over Chittagong Division");
+assert.strictEqual(addrFeniDiv.zone, "Daganbhuiyan", "Zone must be Daganbhuiyan");
+const fullFeniDiv = buildFullAddress("Dagonbhuiyan, Feni, Chittagong Division", addrFeniDiv);
+assert.strictEqual(fullFeniDiv, "Dagonbhuiyan, Feni", "Full address must strip Chittagong Division and keep clean Feni");
+console.log('  ✅ Case 22: Division label isolation (Feni vs Chittagong Division) verified');
+
+// Case 23: Road name collision safety ("Chittagong Road, Jatrabari, Dhaka")
+const addrCtgRoad = parseBDAddress("Chittagong Road, Jatrabari, Dhaka");
+assert.strictEqual(addrCtgRoad.district, "Dhaka", "Chittagong Road must not trigger Chattogram district");
+assert.strictEqual(addrCtgRoad.zone, "Jatrabari", "Zone must be Jatrabari");
+assert.strictEqual(addrCtgRoad.cityType, "Inside Dhaka", "Must be Inside Dhaka");
+const fullCtgRoad = buildFullAddress("Chittagong Road, Jatrabari, Dhaka", addrCtgRoad);
+assert.strictEqual(fullCtgRoad, "Chittagong Road, Jatrabari, Dhaka", "Must preserve Dhaka address without adding Chattogram");
+console.log('  ✅ Case 23: Road name collision safety (Chittagong Road in Jatrabari) verified');
+
+// Case 24: Sonaimuri Upazila in Noakhali District
+const addrSonaimuri = parseBDAddress("Shapla Chottor, Sonaimuri");
+assert.strictEqual(addrSonaimuri.district, "Noakhali", "Sonaimuri must resolve to Noakhali");
+assert.strictEqual(addrSonaimuri.zone, "Sonaimuri", "Zone must be Sonaimuri");
+assert.strictEqual(addrSonaimuri.cityType, "Outside Dhaka", "Must be Outside Dhaka");
+const fullSonaimuri = buildFullAddress("Shapla Chottor, Sonaimuri", addrSonaimuri);
+assert.strictEqual(fullSonaimuri, "Shapla Chottor, Sonaimuri, Noakhali", "Must append Noakhali, never Dhaka Sadar");
+console.log('  ✅ Case 24: Sonaimuri upazila (Noakhali) verified without Dhaka default');
+
+// Case 25: Specific district vs broad division collision without "Division" label
+const addrFeniCtg = parseBDAddress("Dagonbhuiyan, Feni, Chittagong");
+assert.strictEqual(addrFeniCtg.district, "Feni", "Feni must win over Chittagong without Division keyword");
+assert.strictEqual(addrFeniCtg.zone, "Daganbhuiyan", "Zone must be Daganbhuiyan");
+const fullFeniCtg = buildFullAddress("Dagonbhuiyan, Feni, Chittagong", addrFeniCtg);
+assert.strictEqual(fullFeniCtg, "Dagonbhuiyan, Feni", "Full address must strip Chittagong and preserve clean Feni");
+console.log('  ✅ Case 25: Specific district vs broad division (Feni vs Chittagong) verified');
+
+// Case 26: Outside-Dhaka upazila vs broad division collision (Sharsha, Benapole, Khulna)
+const addrSharshaKhulna = parseBDAddress("Benapole, Sharsha, Khulna");
+assert.strictEqual(addrSharshaKhulna.district, "Jashore", "Sharsha upazila must resolve to parent district Jashore, not Khulna division");
+assert.strictEqual(addrSharshaKhulna.zone, "Sharsha", "Zone must be Sharsha");
+const fullSharshaKhulna = buildFullAddress("Benapole, Sharsha, Khulna", addrSharshaKhulna);
+assert.strictEqual(fullSharshaKhulna, "Benapole, Sharsha, Jashore", "Full address must strip Khulna division and preserve Jashore");
+console.log('  ✅ Case 26: Outside-Dhaka upazila vs broad division (Sharsha vs Khulna) verified');
+
+// Case 27: Outside-Dhaka upazila vs false Dhaka (Kashimpur jail gate, Dhaka)
+const addrKashimpur = parseBDAddress("Kashimpur jail gate, Dhaka");
+assert.strictEqual(addrKashimpur.district, "Gazipur", "Kashimpur must resolve to Gazipur, stripping false Dhaka");
+assert.strictEqual(addrKashimpur.zone, "Kashimpur", "Zone must be Kashimpur");
+const fullKashimpur = buildFullAddress("Kashimpur jail gate, Dhaka", addrKashimpur);
+assert.strictEqual(fullKashimpur, "Kashimpur Jail Gate, Gazipur", "Full address must strip false Dhaka and append Gazipur");
+console.log('  ✅ Case 27: Outside-Dhaka upazila vs false Dhaka (Kashimpur in Gazipur) verified');
+
+// Case 28: Division district with matching zone (Agrabad Commercial Area, Chittagong)
+const addrAgrabad = parseBDAddress("Agrabad Commercial Area, Chittagong");
+assert.strictEqual(addrAgrabad.district, "Chattogram", "Chattogram must be matched when Agrabad is present");
+assert.strictEqual(addrAgrabad.zone, "Agrabad", "Zone must be Agrabad");
+console.log('  ✅ Case 28: Division district with authentic zone (Agrabad in Chattogram) verified');
+
+// Case 29: Customer Note Rescue with false Dhaka in address
+const rawOrderWithNote = {
+  name: "আব্দুল করিম",
+  phone: "01812345678",
+  address: "Holding 12, Amtoli Bazar, Dhaka",
+  notes: "দয়া করে পার্সেলটি বরিশাল কাশীপুর বাজারে পাঠাবেন"
+};
+const rescuedOrder = normalizeCustomerAndOrderData(rawOrderWithNote);
+assert.strictEqual(rescuedOrder.district, "Barishal", "Customer note must rescue address to Barishal, overriding false Dhaka");
+assert(rescuedOrder.address.includes("Barishal"), "Rescued address must include Barishal");
+assert(!rescuedOrder.address.includes("Dhaka"), "Rescued address must strip false Dhaka");
+console.log('  ✅ Case 29: Customer note rescue of false Dhaka verified');
+
+// Case 30: Universal Structured Order Extractor (extractStructuredOrderFromText)
+const rawChatOrder = `
+অর্ডার কনফার্ম করুন:
+নাম: মেহরাব হোসেন
+ফোন: 01712345678
+ঠিকানা: বাসা নং ৪২, রোড ৭, সেক্টর ৪, উত্তরা, ঢাকা
+পণ্য: DEEN Executive Polo Shirt - L (৳1250)
+ডেলিভারি চার্জ: ৫০ টাকা
+মোট: ১৩০০ টাকা
+`;
+const extractedChat = extractStructuredOrderFromText(rawChatOrder);
+assert.strictEqual(extractedChat.name, "মেহরাব হোসেন", "Name must be extracted from unformatted text");
+assert.strictEqual(extractedChat.phone, "01712345678", "Phone must be extracted from unformatted text");
+assert.strictEqual(extractedChat.district, "Dhaka", "District must be Dhaka");
+assert.strictEqual(extractedChat.zone, "Uttara", "Zone must be Uttara");
+assert.strictEqual(extractedChat.cod, "1300", "COD must be 1300");
+console.log('  ✅ Case 30: Universal Structured Order Extractor from raw chat text verified');
+
 // =========================================================================
 // Feature 5: Pathao Bulk Batch CSV Generation Tests
 // =========================================================================
