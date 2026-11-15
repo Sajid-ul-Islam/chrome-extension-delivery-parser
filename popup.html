@@ -24,16 +24,16 @@
         </div>
       </div>
       <div class="update-banner-actions">
-        <button id="btn-download-update" class="btn-update-action btn-update-download" title="Download latest ZIP from GitHub">
+        <button id="btn-download-update" class="btn-update-action btn-update-download" title="Download latest ZIP from GitHub" aria-label="Download latest ZIP from GitHub">
           <span>📦 Download ZIP</span>
         </button>
-        <button id="btn-copy-git-pull" class="btn-update-action btn-update-git" title="Copy 'git pull origin main' to clipboard">
+        <button id="btn-copy-git-pull" class="btn-update-action btn-update-git" title="Copy 'git pull origin main' to clipboard" aria-label="Copy 'git pull origin main' to clipboard">
           <span>📋 git pull</span>
         </button>
-        <button id="btn-reload-update" class="btn-update-action btn-update-reload" title="Hot-reload updated extension in Chrome">
+        <button id="btn-reload-update" class="btn-update-action btn-update-reload" title="Hot-reload updated extension in Chrome" aria-label="Hot-reload updated extension in Chrome">
           <span>🔄 Reload App</span>
         </button>
-        <button id="btn-dismiss-update" class="btn-update-dismiss" title="Dismiss banner">✕</button>
+        <button id="btn-dismiss-update" class="btn-update-dismiss" title="Dismiss banner" aria-label="Dismiss banner">✕</button>
       </div>
     </div>
 
@@ -49,7 +49,10 @@
         </div>
       </div>
       <div class="header-badges">
-        <button id="btn-check-updates-header" class="btn-header-update" title="Check GitHub for Updates">
+        <button id="btn-open-sidepanel" class="btn-header-update" title="Open in Chrome Side Panel" aria-label="Open in Chrome Side Panel">
+          <span>📌 Side Panel</span>
+        </button>
+        <button id="btn-check-updates-header" class="btn-header-update" title="Check GitHub for Updates" aria-label="Check GitHub for Updates">
           <span>🔄 Updates</span>
         </button>
         <span class="status-beacon">
@@ -61,45 +64,42 @@
     </header>
 
     <!-- Navigation Tabs -->
-    <nav class="nav-tabs">
-      <button class="nav-tab active" data-tab="tab-current" title="Parse and export WooCommerce & Pathao orders">
+    <nav class="nav-tabs" role="tablist" aria-label="Main Navigation">
+      <button id="nav-btn-deliveries" class="nav-tab active" role="tab" aria-selected="true" aria-controls="tab-current" data-tab="tab-current" title="Parse and export WooCommerce &amp; Pathao orders">
         <span>📦 Deliveries</span>
       </button>
-      <button class="nav-tab" data-tab="tab-sync" title="Check customer delivery ratio and fraud rating">
+      <button id="nav-btn-courier-check" class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-sync" data-tab="tab-sync" title="Check customer delivery ratio and fraud rating">
         <span>🛡️ Courier Check</span>
       </button>
-      <button class="nav-tab" data-tab="tab-store" title="Connect WordPress and Pathao API keys">
+      <button id="nav-btn-store" class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-store" data-tab="tab-store" title="Connect WordPress and Pathao API keys">
         <span>🌐 Store Connect</span>
       </button>
-      <button class="nav-tab" data-tab="tab-quickreply" title="Configure bKash, Nagad & WhatsApp messages">
+      <button id="nav-btn-whatsapp" class="nav-tab" role="tab" aria-selected="false" aria-controls="tab-quickreply" data-tab="tab-quickreply" title="Configure bKash, Nagad &amp; WhatsApp messages">
         <span>💬 WhatsApp</span>
       </button>
-      <button class="nav-tab nav-tab-ai" data-tab="tab-assistant" title="DEEN AI Intelligence Assistant">
-        <span>🤖 Assistant</span>
-      </button>
-      <button class="nav-tab nav-tab-ai" data-tab="tab-webmcp" title="W3C WebMCP AI Agent Tools">
+      <button id="nav-btn-webmcp" class="nav-tab nav-tab-ai" role="tab" aria-selected="false" aria-controls="tab-webmcp" data-tab="tab-webmcp" title="W3C WebMCP AI Agent Tools">
         <span>⚡ AI Tools</span>
       </button>
       <!-- Hidden compatibility tab for context menu & pending text storage -->
-      <button class="nav-tab hidden" data-tab="tab-paste" style="display:none;"></button>
+      <button id="nav-btn-paste" class="nav-tab hidden" role="tab" aria-selected="false" aria-controls="tab-paste" data-tab="tab-paste" style="display:none;" tabindex="-1"></button>
     </nav>
 
     <!-- ====================================================================
          Tab 1: Deliveries (Extractor, Paste & Export Table)
          ==================================================================== -->
-    <div id="tab-current" class="tab-content active">
+    <div id="tab-current" class="tab-content active" role="tabpanel" aria-labelledby="nav-btn-deliveries">
       <!-- Input Mode Sub-Bar: Active Page vs Paste Text -->
-      <div class="delivery-sub-nav">
-        <button type="button" class="delivery-sub-tab active" data-sub="extract">
+      <div class="delivery-sub-nav" role="tablist" aria-label="Delivery Input Mode">
+        <button type="button" id="sub-tab-btn-extract" class="delivery-sub-tab active" role="tab" aria-selected="true" aria-controls="view-extract" data-sub="extract">
           <span>⚡ Active Page Extractor</span>
         </button>
-        <button type="button" class="delivery-sub-tab" data-sub="paste">
+        <button type="button" id="sub-tab-btn-paste" class="delivery-sub-tab" role="tab" aria-selected="false" aria-controls="view-paste" data-sub="paste">
           <span>📋 Paste Courier Text</span>
         </button>
       </div>
 
       <!-- Mode A: Active Tab Extractor -->
-      <div id="view-extract" class="delivery-sub-view">
+      <div id="view-extract" class="delivery-sub-view" role="tabpanel" aria-labelledby="sub-tab-btn-extract">
         <div class="extract-banner">
           <div class="url-row">
             <span class="dot-indicator"></span>
@@ -112,7 +112,7 @@
       </div>
 
       <!-- Mode B: Paste Input (Collapsible/Toggled) -->
-      <div id="view-paste" class="delivery-sub-view hidden">
+      <div id="view-paste" class="delivery-sub-view hidden" role="tabpanel" aria-labelledby="sub-tab-btn-paste">
         <div class="paste-area-wrapper">
           <textarea
             id="raw-text-input"
@@ -277,7 +277,7 @@
     <!-- ====================================================================
          Tab 2: Courier Rating (Customer Phone Check & Fraud Intelligence)
          ==================================================================== -->
-    <div id="tab-sync" class="tab-content">
+    <div id="tab-sync" class="tab-content" role="tabpanel" aria-labelledby="nav-btn-courier-check">
       <div class="sync-panel">
         <!-- Quick manual phone check input -->
         <div class="quick-check-box">
@@ -369,7 +369,7 @@
     <!-- ====================================================================
          Tab 3: Store Connect (WordPress Auto-Connect & Courier API Keys)
          ==================================================================== -->
-    <div id="tab-store" class="tab-content">
+    <div id="tab-store" class="tab-content" role="tabpanel" aria-labelledby="nav-btn-store">
       <div class="store-connect-panel">
         <!-- WordPress / DeenCommerce Admin Auto-Connect Card -->
         <div class="wp-connect-card">
@@ -418,17 +418,17 @@
           </p>
 
           <!-- Mode Switcher: 1-Click Session Sync vs Direct WP Login -->
-          <div class="wp-mode-tabs">
-            <button type="button" class="wp-mode-tab active" data-wp-mode="session">
+          <div class="wp-mode-tabs" role="tablist" aria-label="WordPress Connection Method">
+            <button type="button" id="wp-tab-btn-session" class="wp-mode-tab active" role="tab" aria-selected="true" aria-controls="wp-mode-session-panel" data-wp-mode="session">
               <span>⚡ 1-Click Active Session (Recommended)</span>
             </button>
-            <button type="button" class="wp-mode-tab" data-wp-mode="login">
+            <button type="button" id="wp-tab-btn-login" class="wp-mode-tab" role="tab" aria-selected="false" aria-controls="wp-mode-login-panel" data-wp-mode="login">
               <span>🔐 Login with Credentials</span>
             </button>
           </div>
 
           <!-- Mode 1: Active Session Auto-Sync -->
-          <div id="wp-mode-session-panel" class="wp-mode-panel active">
+          <div id="wp-mode-session-panel" class="wp-mode-panel active" role="tabpanel" aria-labelledby="wp-tab-btn-session">
             <div class="wp-site-row">
               <div class="wp-input-wrapper">
                 <span class="wp-input-icon">🔗</span>
@@ -452,7 +452,7 @@
           </div>
 
           <!-- Mode 2: Direct WordPress Login Form -->
-          <div id="wp-mode-login-panel" class="wp-mode-panel hidden">
+          <div id="wp-mode-login-panel" class="wp-mode-panel hidden" role="tabpanel" aria-labelledby="wp-tab-btn-login">
             <div class="cred-inputs-grid">
               <div class="cred-field">
                 <label for="wp-login-username">WP Username / Email</label>
@@ -524,7 +524,7 @@
     <!-- ====================================================================
          Tab 4: WhatsApp Advance COD & Settings
          ==================================================================== -->
-    <div id="tab-quickreply" class="tab-content">
+    <div id="tab-quickreply" class="tab-content" role="tabpanel" aria-labelledby="nav-btn-whatsapp">
       <div class="qr-panel">
         <!-- Settings Form -->
         <div class="qr-settings-card">
@@ -578,10 +578,14 @@
             </div>
           </div>
 
-          <div class="qr-form-grid qr-grid-1col">
+          <div class="qr-form-grid qr-grid-2col">
             <div class="qr-field">
               <label class="qr-label">Outside Dhaka Delivery Fee (৳)</label>
               <input type="number" id="qr-outside-fee" placeholder="90" value="90" class="qr-input" />
+            </div>
+            <div class="qr-field">
+              <label class="qr-label">Free Shipping Subtotal Threshold (৳)</label>
+              <input type="number" id="qr-free-threshold" placeholder="2500" value="2500" class="qr-input" title="Orders with product subtotal equal to or above this amount receive free shipping" />
             </div>
           </div>
 
@@ -627,136 +631,9 @@
     </div>
 
     <!-- ====================================================================
-         Tab 5: DEEN AI Intelligence Assistant (Copilot & Analytics)
-         ==================================================================== -->
-    <div id="tab-assistant" class="tab-content">
-      <div class="assistant-panel">
-        <!-- Top Sub-Bar: Telemetry Context & BYOK Key Settings -->
-        <div class="assistant-top-bar">
-          <div class="assistant-context-pill" id="assistant-context-pill" title="Live orders & courier data attached to AI reasoning">
-            <span class="assistant-pulse-dot"></span>
-            <span id="assistant-context-summary">Telemetry: 0 parcels (৳0 COD)</span>
-          </div>
-          <div class="assistant-top-actions">
-            <button id="btn-toggle-byok-modal" class="btn-assistant-action" title="Configure Google Gemini, OpenAI, or Groq API Key">
-              <span>⚙️ AI Key</span>
-              <span id="byok-status-dot" class="byok-dot byok-dot-off"></span>
-            </button>
-            <button id="btn-clear-chat-history" class="btn-assistant-action btn-assistant-clear" title="Clear Chat History">
-              <span>🗑️</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- BYOK API Key Drawer/Modal (Collapsible) -->
-        <div id="assistant-byok-drawer" class="assistant-byok-drawer hidden">
-          <div class="byok-card">
-            <div class="byok-header">
-              <div class="byok-title">
-                <span>🔑 Bring Your Own Key (BYOK)</span>
-                <span class="byok-badge">Direct Client API</span>
-              </div>
-              <button id="btn-close-byok-drawer" class="byok-close-btn">&times;</button>
-            </div>
-            <p class="byok-desc">
-              Your key stays 100% locally in your browser. Get a free high-quota key at
-              <a href="https://aistudio.google.com/app/apikey" target="_blank" class="byok-link">Google AI Studio</a>.
-            </p>
-            <div class="byok-field-group">
-              <label class="byok-label">AI Provider</label>
-              <select id="byok-provider-select" class="byok-select">
-                <option value="gemini">Google Gemini (Recommended / Free Flash)</option>
-                <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
-                <option value="groq">Groq Cloud (Ultra-Fast LLaMA 3.3)</option>
-              </select>
-            </div>
-            <div class="byok-field-group">
-              <label class="byok-label">API Key</label>
-              <div class="byok-input-row">
-                <input type="password" id="byok-api-key-input" class="byok-input" placeholder="AIzaSy... or sk-..." />
-                <button type="button" id="btn-byok-toggle-visibility" class="byok-btn-vis" title="Toggle Visibility">👁️</button>
-              </div>
-            </div>
-            <div class="byok-field-group">
-              <label class="byok-label">Model Identifier</label>
-              <input type="text" id="byok-model-input" class="byok-input" placeholder="gemini-2.5-flash" value="gemini-2.5-flash" />
-            </div>
-            <div class="byok-footer">
-              <button id="btn-byok-test-connection" class="btn-secondary byok-test-btn">
-                <span>⚡ Test Ping</span>
-              </button>
-              <button id="btn-byok-save" class="btn-primary byok-save-btn">
-                <span>💾 Save &amp; Activate</span>
-              </button>
-            </div>
-            <div id="byok-test-result" class="byok-test-status hidden"></div>
-          </div>
-        </div>
-
-        <!-- Chat Messages Stream -->
-        <div id="assistant-chat-stream" class="assistant-chat-stream">
-          <!-- Default Welcome Message -->
-          <div class="chat-msg chat-msg-bot">
-            <div class="chat-avatar">
-              <img src="icons/icon32.png" alt="DEEN AI" />
-            </div>
-            <div class="chat-bubble">
-              <div class="chat-sender">DEEN Assistant <span class="chat-tag">Executive Intelligence</span></div>
-              <div class="chat-text">
-                Assalamu Alaikum! I am <strong>DEEN Assistant</strong>, ported from DEEN Commerce Sales-Analysis Intelligence.<br/><br/>
-                I have real-time access to your parsed delivery telemetry, Pathao &amp; Steadfast fraud scores, and BD territory distribution.
-                Ask me about today's delivery ratio, uncollected COD, high-risk orders, or paste a customer message/note to evaluate return risks!
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Prompt Recommendation Chips Carousel -->
-        <div class="assistant-chips-container">
-          <div class="assistant-chips-scroll" id="assistant-chips-scroll">
-            <button class="assistant-chip" data-prompt="Summarize our delivery performance, COD pipeline, and RTO risk.">
-              <span>📊 Delivery &amp; RTO Summary</span>
-            </button>
-            <button class="assistant-chip" data-prompt="How much COD is currently uncollected and what is our net revenue?">
-              <span>💰 Uncollected COD</span>
-            </button>
-            <button class="assistant-chip" data-prompt="Are there any high return risk customers or low delivery ratios?">
-              <span>⚠️ High Risk Customers</span>
-            </button>
-            <button class="assistant-chip" data-prompt="Show order distribution across Bangladesh districts and delivery fees.">
-              <span>🗺️ Districts &amp; Delivery Fees</span>
-            </button>
-            <button class="assistant-chip" data-prompt="Analyze this customer note: 'dheke nibo bhalo na hole ferot dibo'">
-              <span>📝 Analyze Note: 'dheke nibo'</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Chat Input Form -->
-        <div class="assistant-input-bar">
-          <div class="assistant-input-wrapper">
-            <textarea
-              id="assistant-user-input"
-              rows="1"
-              placeholder="Ask DEEN Assistant about deliveries, revenue, notes, or Banglish queries... (Enter to send)"
-              class="assistant-textarea"
-            ></textarea>
-            <button id="btn-assistant-send" class="btn-assistant-send" title="Send message (Enter)">
-              <span>🚀</span>
-            </button>
-          </div>
-          <div class="assistant-input-footer">
-            <span class="assistant-mode-badge" id="assistant-mode-indicator">Mode: In-Memory Deterministic Engine</span>
-            <span class="assistant-hint">Shift+Enter for new line</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ====================================================================
          Tab 5: WebMCP AI Agent Tools (Developer & Automation)
          ==================================================================== -->
-    <div id="tab-webmcp" class="tab-content">
+    <div id="tab-webmcp" class="tab-content" role="tabpanel" aria-labelledby="nav-btn-webmcp">
       <div class="webmcp-panel">
         <div class="sync-banner webmcp-banner">
           <div class="sync-badge webmcp-badge">🤖 W3C WebMCP Protocol Active</div>
@@ -783,6 +660,7 @@
             <option value="calculate_multi_factor_risk">calculate_multi_factor_risk (Predictive Fraud Engine)</option>
             <option value="recommend_dynamic_courier">recommend_dynamic_courier (Cost &amp; SLA Routing Arbitrage)</option>
             <option value="sync_wordpress_admin_credentials">sync_wordpress_admin_credentials (WordPress Admin SSO)</option>
+            <option value="run_tinyfish_web_agent">run_tinyfish_web_agent (TinyFish Cloud Web Agent)</option>
           </select>
 
           <div id="webmcp-tool-desc" class="webmcp-desc-box">
@@ -792,7 +670,7 @@
           <!-- Tool Arguments JSON Input -->
           <div class="webmcp-args-group">
             <div class="webmcp-args-header">
-              <label class="webmcp-args-label">Arguments (JSON Payload)</label>
+              <label for="webmcp-args-input" class="webmcp-args-label">Arguments (JSON Payload)</label>
               <span class="webmcp-json-hint">Valid JSON</span>
             </div>
             <textarea id="webmcp-args-input" rows="4" class="webmcp-code-editor" placeholder="{ ... }"></textarea>
@@ -811,16 +689,81 @@
           </div>
           <pre id="webmcp-output-json" class="webmcp-output-console">Execute a tool to inspect response...</pre>
         </div>
+
+        <!-- TinyFish Cloud Web Agent Runner (SSE Live Stream + BYOK) -->
+        <div class="webmcp-card tinyfish-card">
+          <div class="webmcp-card-header">
+            <label class="webmcp-label">🐟 TinyFish Cloud Web Agent (SSE)</label>
+            <span id="tinyfish-key-status" class="webmcp-count-badge">Not Configured</span>
+          </div>
+
+          <!-- BYOK Configuration Row -->
+          <div class="tinyfish-config-row">
+            <div class="cred-field tinyfish-key-field">
+              <label for="tinyfish-api-key">TinyFish API Key (BYOK)</label>
+              <input type="password" id="tinyfish-api-key" placeholder="tf_... (stored locally in chrome.storage)" autocomplete="off" />
+            </div>
+            <div class="cred-field tinyfish-profile-field">
+              <label for="tinyfish-browser-profile">Browser Profile</label>
+              <select id="tinyfish-browser-profile" class="webmcp-select">
+                <option value="lite">Lite (Fast)</option>
+                <option value="stealth">Stealth (Anti-Bot)</option>
+              </select>
+            </div>
+            <button type="button" id="btn-save-tinyfish-key" class="btn-secondary tinyfish-save-btn" title="Save TinyFish API key locally" aria-label="Save TinyFish API key locally">
+              <span>💾 Save</span>
+            </button>
+          </div>
+
+          <!-- Live Run Form -->
+          <div class="tinyfish-run-fields">
+            <div class="cred-field">
+              <div class="webmcp-args-header">
+                <label for="tinyfish-target-url" class="webmcp-args-label">Target URL</label>
+                <button type="button" id="btn-tinyfish-use-tab" class="btn-text tinyfish-use-tab-btn" title="Fill with active tab URL">Use Active Tab</button>
+              </div>
+              <input type="url" id="tinyfish-target-url" placeholder="https://steadfast.com.bd/..." autocomplete="off" />
+            </div>
+
+            <div class="cred-field">
+              <label for="tinyfish-goal-input" class="webmcp-args-label">Natural-Language Goal</label>
+              <textarea id="tinyfish-goal-input" rows="2" class="webmcp-code-editor" placeholder="Navigate to tracking, extract parcel status, rider phone, and return JSON."></textarea>
+            </div>
+
+            <div class="cred-field">
+              <div class="webmcp-args-header">
+                <label for="tinyfish-schema-input" class="webmcp-args-label">Output JSON Schema (Optional)</label>
+                <span class="webmcp-json-hint">JSON Object</span>
+              </div>
+              <textarea id="tinyfish-schema-input" rows="2" class="webmcp-code-editor" placeholder='{"type":"object","properties":{"status":{"type":"string"}}}'></textarea>
+            </div>
+          </div>
+
+          <div class="tinyfish-actions-row">
+            <button type="button" id="btn-run-tinyfish" class="btn-primary webmcp-exec-btn">
+              <span>🐟 Run TinyFish Agent</span>
+            </button>
+            <button type="button" id="btn-stop-tinyfish" class="btn-secondary hidden" aria-label="Stop TinyFish run">
+              <span>⏹ Stop</span>
+            </button>
+          </div>
+
+          <!-- Live SSE Stream Preview & Progress -->
+          <div id="tinyfish-stream-meta" class="tinyfish-stream-meta hidden">
+            <span id="tinyfish-run-status" class="webmcp-status-pill">Connecting...</span>
+            <a id="tinyfish-stream-link" href="#" target="_blank" rel="noopener noreferrer" class="tinyfish-stream-link hidden">📺 Watch Live Browser</a>
+          </div>
+          <pre id="tinyfish-progress-log" class="webmcp-output-console tinyfish-log hidden" role="status" aria-live="polite"></pre>
+        </div>
       </div>
     </div>
 
     <!-- Toast Notification (Preserved) -->
-    <div id="popup-toast" class="popup-toast hidden"></div>
+    <div id="popup-toast" class="popup-toast hidden" role="status" aria-live="polite"></div>
   </div>
 
   <script src="xlsx.mini.min.js"></script>
   <script src="parser.js"></script>
-  <script src="deen-assistant.js"></script>
   <script src="webmcp-provider.js"></script>
   <script src="popup.js"></script>
 </body>

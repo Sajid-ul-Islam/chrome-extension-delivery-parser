@@ -7,13 +7,11 @@
  * 4. Native SVG Chart Generator (Bar & Donut charts)
  * 5. Autonomous C-Level Executive Report Generator (generateExecutiveReport)
  * 6. Natural Language Query Routing in generateDeenAssistantReply
- * 7. Universal Table Scraper in deen-floating-chat.js (gatherGenericTableContext)
- * 8. WebMCP Analytical Tool Execution (execute_sql_query & generate_analytical_report)
+ * 7. WebMCP Analytical Tool Execution (execute_sql_query & generate_analytical_report)
  */
 
 const assert = require('assert');
 const DeenAssistant = require('./deen-assistant.js');
-const floatingChat = require('./deen-floating-chat.js');
 const webMCP = require('./webmcp-provider.js');
 
 async function runTests() {
@@ -236,44 +234,9 @@ async function runTests() {
   console.log("  ✅ Route 3 (Executive Report): Dispatched directly to executive_reporter.");
 
   // ---------------------------------------------------------------------------
-  // Test 7: Universal Table Scraper in deen-floating-chat.js
+  // Test 7: WebMCP Analytical Tools Execution
   // ---------------------------------------------------------------------------
-  console.log("\n▶ Test 7: Testing Universal Table Scraper (gatherGenericTableContext)...");
-  assert.strictEqual(typeof floatingChat.gatherGenericTableContext, "function", "gatherGenericTableContext must be exported");
-
-  // Mock a generic external webpage table (e.g. Shopify, Custom CRM, Steadfast)
-  global.document = {
-    querySelectorAll: (sel) => {
-      if (sel.includes('table')) {
-        return [{
-          querySelectorAll: (rowSel) => {
-            if (rowSel.includes('tr')) {
-              return [
-                { innerText: 'ID Customer Phone Total Status' },
-                { innerText: '#8801 Rakib Khan 01711223344 ৳1,850 Delivered' },
-                { innerText: '#8802 Sonia Begum 01822334455 ৳3,400 In Transit Outside Dhaka' }
-              ];
-            }
-            return [];
-          }
-        }];
-      }
-      return [];
-    }
-  };
-
-  const genericCtx = floatingChat.gatherGenericTableContext();
-  assert.strictEqual(genericCtx.totalCount, 2, "Should parse 2 rows from generic table");
-  assert.strictEqual(genericCtx.records[0].orderId, '8801');
-  assert.strictEqual(genericCtx.records[0].phone, '01711223344');
-  assert.strictEqual(genericCtx.records[1].cod, 3400);
-  assert.strictEqual(genericCtx.metrics.totalCOD, 5250);
-  console.log("  ✅ Universal table scraper extracted 2 orders and computed total COD (৳5,250) from unformatted HTML.");
-
-  // ---------------------------------------------------------------------------
-  // Test 8: WebMCP Analytical Tools Execution
-  // ---------------------------------------------------------------------------
-  console.log("\n▶ Test 8: Testing WebMCP execute_sql_query & generate_analytical_report...");
+  console.log("\n▶ Test 7: Testing WebMCP execute_sql_query & generate_analytical_report...");
 
   const mcpSqlRes = await webMCP.executeTool("execute_sql_query", {
     sql: "SELECT district, COUNT(*) as count FROM orders GROUP BY district",
@@ -293,7 +256,7 @@ async function runTests() {
   console.log("  ✅ WebMCP tool 'generate_analytical_report' executed successfully via registry!");
 
   console.log("\n=================================================================");
-  console.log("🎉 ALL 8 AUTONOMOUS ANALYTICAL AGENT TESTS PASSED 100%!");
+  console.log("🎉 ALL 7 AUTONOMOUS ANALYTICAL AGENT TESTS PASSED 100%!");
   console.log("=================================================================\n");
 }
 

@@ -292,6 +292,282 @@ Core Principles:
   }
 
   /**
+   * Comprehensive WhatsApp & CRM Customer Conversation Intelligence Engine
+   * Extracts messages, timeline, phone numbers, entities (Order ID, CID, bKash, items, addresses),
+   * identifies customer intent across 9 critical CRM domains,
+   * formulates actionable operational instructions for the CRM executive,
+   * and crafts tailored, high-converting WhatsApp quick replies ready for 1-click injection.
+   */
+  function analyzeWhatsAppConversation(conversationData, options = {}) {
+    let messages = [];
+    let phone = '';
+    let customerName = '';
+    let rawText = '';
+
+    if (Array.isArray(conversationData)) {
+      messages = conversationData;
+    } else if (conversationData && typeof conversationData === 'object') {
+      messages = Array.isArray(conversationData.messages) ? conversationData.messages : [];
+      phone = conversationData.phone || '';
+      customerName = conversationData.customerName || '';
+      rawText = conversationData.recentText || conversationData.rawText || '';
+    } else if (typeof conversationData === 'string') {
+      rawText = conversationData.trim();
+    }
+
+    // If no structured messages provided but rawText exists, synthesize message objects
+    if (messages.length === 0 && rawText) {
+      const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      messages = lines.map(line => ({
+        direction: /^(?:you|agent|deen|we):/i.test(line) ? 'out' : 'in',
+        text: line.replace(/^(?:you|agent|deen|we|customer):/i, '').trim(),
+        sender: /^(?:you|agent|deen|we):/i.test(line) ? 'Agent' : 'Customer',
+        timestamp: ''
+      }));
+    }
+
+    // Aggregate text
+    const fullText = messages.map(m => m.text).join(' \n ') || rawText;
+    const lowerFull = fullText.toLowerCase();
+
+    // Identify latest customer message
+    const incomingMessages = messages.filter(m => m.direction === 'in');
+    const outgoingMessages = messages.filter(m => m.direction === 'out');
+    const latestIncoming = incomingMessages.length > 0 ? incomingMessages[incomingMessages.length - 1] : null;
+    const latestOutgoing = outgoingMessages.length > 0 ? outgoingMessages[outgoingMessages.length - 1] : null;
+    const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+
+    const latestCustomerText = (latestIncoming && latestIncoming.text) ? latestIncoming.text.trim() : (rawText || '');
+    const lowerLatest = latestCustomerText.toLowerCase();
+
+    const isCustomerWaiting = Boolean(latestMessage && latestMessage.direction === 'in');
+
+    // 1. Entity Extraction
+    const entities = {
+      phone: null,
+      orderId: null,
+      consignmentId: null,
+      district: null,
+      address: null,
+      trxId: null,
+      amount: null,
+      size: null,
+      product: null
+    };
+
+    // Phone detection
+    if (phone) {
+      entities.phone = phone;
+    } else {
+      const pm = fullText.match(/(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/);
+      if (pm) entities.phone = '0' + pm[1];
+    }
+
+    // Order ID detection (#19046, Order 18264, etc.)
+    const ordMatch = fullText.match(/(?:order|ord|অর্ডার|id)[\s#:]*([0-9]{4,7})\b/i) || fullText.match(/\b#([0-9]{4,7})\b/);
+    if (ordMatch) entities.orderId = ordMatch[1];
+
+    // Consignment ID detection (Pathao CID like DH123456...)
+    const cidMatch = fullText.match(/\b([A-Z]{2}\d{6}[A-Z0-9]+)\b/i);
+    if (cidMatch) entities.consignmentId = cidMatch[1];
+
+    // bKash / Nagad Transaction ID
+    const trxMatch = fullText.match(/(?:trx|trxid|trnx|ট্রানজেকশন)[\s:#]*([A-Za-z0-9]{8,12})\b/i) ||
+                     fullText.match(/\b([A-Z0-9]{8,10})\b/);
+    if (trxMatch) entities.trxId = trxMatch[1];
+
+    // Price / Amount
+    const amtMatch = fullText.match(/(?:৳|BDT|TK|টাকা|taka)[\s:]*(\d[\d,]*(?:\.\d+)?)/i) || 
+                     fullText.match(/\b(\d[\d,]*(?:\.\d+)?)\s*(?:৳|BDT|TK|টাকা|tk|taka)\b/i);
+    if (amtMatch) entities.amount = parseFloat(amtMatch[1].replace(/,/g, '')) || null;
+
+    // Size detection (e.g. Size 34, 32, XL, L, XXL)
+    const sizeMatch = fullText.match(/\b(?:size|সাইজ)[\s:]*([0-9]{2}|[SMLX]{1,3}|XXL|XXXL)\b/i) ||
+                      fullText.match(/\b([0-9]{2})\s*(?:size|সাইজ)\b/i) ||
+                      fullText.match(/\b(28|30|32|34|36|38|40)\b/);
+    if (sizeMatch) entities.size = sizeMatch[1];
+
+    // Product detection
+    const prodMatch = fullText.match(/\b(jeans|pant|shirt|t-shirt|polo|denim|জিন্স|প্যান্ট|শার্ট|পোলো|টি-শার্ট)\b/i);
+    if (prodMatch) entities.product = prodMatch[1];
+
+    // Address & District detection
+    const distMatch = fullText.match(/\b(dhaka|chittagong|chattogram|sylhet|rajshahi|khulna|barishal|rangpur|mymensingh|cumilla|comilla|gazipur|narayanganj|jashore|jessore|bhaluka|savar|mirpur|uttara|dhanmondi)\b/i);
+    if (distMatch) entities.district = distMatch[1];
+
+    // 2. Intent Classification
+    let intentCode = 'GENERAL_GREETING';
+    let intentLabel = '💬 General Inquiry & Assistance';
+    let urgency = 'NORMAL';
+    let crmSummary = 'Customer reached out with a general message.';
+    let recommendedActions = [];
+    let suggestedReply = '';
+    let alternativeReply = '';
+
+    const displayName = customerName ? customerName.replace(/^[~+\d\s-]+/, '').trim() : '';
+    const salutation = displayName ? ` ${displayName} ভাইয়া/আপু` : '';
+
+    // Check Intent Patterns
+    // A. NDR / Reschedule / Missed Rider Call
+    if (/(?:call\s*(?:dei|pay|dhori)\s*nai|phone\s*off\s*chilo|shite\s*chilo\s*na|miscall|abar\s*pathan|reschedule|ফেরত\s*গেছে|রিসিভ\s*করতে\s*পারি\s*নি|আবার\s*পাঠান|রাইডার\s*কল\s*দেয়নি)/i.test(lowerLatest) ||
+        /(?:call\s*(?:dei|pay|dhori)\s*nai|miscall|reschedule)/i.test(lowerFull)) {
+      intentCode = 'NDR_RESCUE';
+      intentLabel = '🚨 Delivery Failed / NDR Rescue';
+      urgency = 'HIGH';
+      crmSummary = 'Customer missed the delivery rider\'s call or reported an unreachable delivery attempt.';
+      recommendedActions = [
+        'Confirm customer\'s available time window for next-day re-delivery.',
+        'Obtain an alternative reachable phone number.',
+        'Request immediate re-dispatch in Pathao Courier portal to prevent return charges.'
+      ];
+      suggestedReply = `আসসালামু আলাইকুম${salutation}! DEEN Commerce থেকে যোগাযোগ করছি। ডেলিভারি রাইডারের সাথে যোগাযোগের সমস্যার জন্য আমরা আন্তরিকভাবে দুঃখিত। আমরা আপনার পার্সেলটি কাল পুনরায় ডেলিভারির জন্য ব্যবস্থা করে দিচ্ছি। দয়া করে আপনার একটি বিকল্প সচল মোবাইল নম্বর এবং সুবিধাজনক সময়টি নিশ্চিত করবেন কি?`;
+      alternativeReply = `আসসালামু আলাইকুম! কাল ইনশাআল্লাহ পার্সেলটি আবার পাঠানো হবে। রাইডারের কল রিসিভ করতে পারবেন এমন একটি বিকল্প নম্বর থাকলে আমাদের জানান।`;
+    }
+    // B. Size Exchange / Inspection / Bracketing Risk ("dekhe nibo", "size na mille")
+    else if ((/(?:size\s*na\s*mille|size\s*change|product\s*change|change\s*hobe|exchange|ferot|dheke\s*nibo|dekhe\s*nibo|দেখে\s*নিব|নাহলে\s*ফেরত|সাইজ\s*না\s*মিললে|এক্সচেঞ্জ|ফিটিং\s*(?:সমস্যা|problem|issue)|বড়\s*হয়েছে|ছোট\s*হয়েছে)/i.test(lowerLatest) ||
+             /(?:size\s*na\s*mille|size\s*change|change\s*hobe|dekhe\s*nibo|dheke\s*nibo)/i.test(lowerFull)) &&
+             !/(?:address\s*change|thikana\s*change|ঠিকানা\s*পরিবর্তন|notun\s*address|notun\s*thikana)/i.test(lowerLatest)) {
+      intentCode = 'SIZE_EXCHANGE_RETURN';
+      intentLabel = '🔄 Size Exchange & Inspection Risk';
+      urgency = 'HIGH';
+      crmSummary = 'Customer is concerned about product sizing, fitting, inspection at delivery, or exchange policy.';
+      recommendedActions = [
+        `Verify customer's exact waist/chest measurements${entities.size ? ` (requested size: ${entities.size})` : ''} before packing.`,
+        'Reassure customer regarding DEEN Commerce 7-day hassle-free size exchange policy.',
+        'Instruct delivery rider that customer is permitted to inspect the package upon arrival.'
+      ];
+      suggestedReply = `আসসালামু আলাইকুম${salutation}! DEEN Commerce থেকে যোগাযোগ করছি। সাইজ নিয়ে একদম চিন্তা করবেন না—পণ্য হাতে পেয়ে সাইজে সমস্যা হলে আপনি ৩ থেকে ৭ দিনের মধ্যে খুব সহজেই এক্সচেঞ্জ করে নিতে পারবেন${entities.size ? ` (আপনার সাইজ ${entities.size} নোট করে নিয়েছি)` : ''}। ডেলিভারির সময় রাইডারের সামনে দেখে নেওয়ার সুযোগ রয়েছে। আপনার সুবিধার জন্য আর কোনো তথ্য যাচাই করতে চান?`;
+      alternativeReply = `আসসালামু আলাইকুম! আমাদের ৩-৭ দিনের সহজ এক্সচেঞ্জ পলিসি রয়েছে। ডেলিভারির সময় দেখে নিতে পারবেন, সাইজে কোনো সমস্যা হলে আমরা দ্রুত সাইজ পরিবর্তন করে দেব।`;
+    }
+    // C. Delivery Tracking / Delay Inquiry
+    else if (/(?:kobe\s*pabo|delivery\s*kobe|parcel\s*kothay|track|late\s*keno|koto\s*din\s*lagbe|কখন\s*পাব|ডেলিভারি\s*দেননি|রিসিভ\s*করিনি|কুরিয়ার|কবে\s*আসবে|পার্সেল\s*কোথায়|পাচ্ছি\s*না|status)/i.test(lowerLatest) ||
+             /(?:kobe\s*pabo|delivery\s*kobe|parcel\s*kothay)/i.test(lowerFull)) {
+      intentCode = 'TRACKING_DELAY';
+      intentLabel = '🚚 Delivery Tracking & Delay Inquiry';
+      urgency = 'HIGH';
+      crmSummary = 'Customer is asking about shipment delivery status, delay, or expected arrival time.';
+      recommendedActions = [
+        `Check Pathao consignment status${entities.consignmentId ? ` for CID ${entities.consignmentId}` : ''}${entities.orderId ? ` (Order #${entities.orderId})` : ''}.`,
+        'Confirm if delivery is Inside Dhaka (24-48 hrs) or Outside Dhaka (48-72 hrs).',
+        'Contact sorting hub or assigned delivery rider to escalate priority dispatch.'
+      ];
+      suggestedReply = `আসসালামু আলাইকুম${salutation}! DEEN Commerce থেকে যোগাযোগ করছি। আপনার পার্সেলটি${entities.orderId ? ` (অর্ডার #${entities.orderId})` : ''} কুরিয়ারে ডিসপ্যাচ করা হয়েছে এবং বর্তমানে ট্রানজিটে রয়েছে। ঢাকা সিটিতে সাধারণত ২৪-৪৮ ঘণ্টা এবং ঢাকার বাইরে ৪৮-৭২ ঘণ্টার মধ্যে ডেলিভারি সম্পন্ন হয়। রাইডার পৌঁছানোর পূর্বে আপনার নম্বরে কল দিয়ে জানিয়ে দেবে।`;
+      alternativeReply = `আসসালামু আলাইকুম! আপনার পার্সেলটি দ্রুত ডেলিভারির জন্য কুরিয়ার হাবে তাগিদ দেওয়া হয়েছে। খুব শীঘ্রই রাইডার আপনার সাথে যোগাযোগ করবেন।`;
+    }
+    // D. Payment / bKash / Advance Fee Confirmation
+    else if (/(?:taka\s*pathaici|bkash\s*korsi|nagad\s*korsi|trxid|advance\s*disi|টাকা\s*পাঠিয়েছি|বিকাশ\s*করেছি|লাস্ট\s*৪\s*ডিজিট|পেমেন্ট|payment|advance|paid)/i.test(lowerLatest) ||
+             /(?:taka\s*pathaici|bkash\s*korsi|trxid)/i.test(lowerFull)) {
+      intentCode = 'PAYMENT_ADVANCE';
+      intentLabel = '💰 Payment & Advance Fee Confirmation';
+      urgency = 'MEDIUM';
+      crmSummary = 'Customer has sent advance delivery payment or bKash/Nagad transaction confirmation.';
+      recommendedActions = [
+        `Verify bKash/Nagad statement${entities.trxId ? ` for TrxID ${entities.trxId}` : ''}${entities.phone ? ` from phone ${entities.phone}` : ''}.`,
+        'Deduct advance amount (৳90) from COD in WooCommerce and Pathao parcel consignment.',
+        'Mark order status as "Processing / Advance Paid" and send packing queue confirmation.'
+      ];
+      suggestedReply = `আসসালামু আলাইকুম${salutation}! আপনার পেমেন্টটি${entities.trxId ? ` (TrxID: ${entities.trxId})` : ''} সফলভাবে পাওয়া গেছে, অনেক ধন্যবাদ! আপনার অগ্রিম ডেলিভারি চার্জ সমন্বয় করে অবশিষ্ট টাকা ক্যাশ অন ডেলিভারিতে নির্ধারণ করা হয়েছে। পার্সেলটি দ্রুততম সময়ে আপনার ঠিকানায় পাঠানো হচ্ছে।`;
+      alternativeReply = `আসসালামু আলাইকুম! পেমেন্ট কনফার্ম হয়েছে। অবশিষ্ট টাকা ডেলিভারির সময় রাইডারকে ক্যাশ অন ডেলিভারিতে পরিশোধ করলেই হবে। ধন্যবাদ!`;
+    }
+    // E. Address & Phone Number Change
+    else if (/(?:thikana\s*change|address\s*change|notun\s*number|phone\s*number\s*change|location|ঠিকানা\s*পরিবর্তন|নতুন\s*নম্বর|বাসা\s*পরিবর্তন|ডেলিভারি\s*ঠিকানা|address|thikana)/i.test(lowerLatest) &&
+             /(?:change|update|পরিবর্তন|নতুন|ei\s*thikana|pathaben)/i.test(lowerLatest)) {
+      intentCode = 'ADDRESS_CHANGE';
+      intentLabel = '📍 Address or Phone Number Update';
+      urgency = 'HIGH';
+      crmSummary = 'Customer requested to update their delivery address or contact phone number.';
+      recommendedActions = [
+        'Normalize new address using DEEN BD address parser to prevent misrouting.',
+        'Update shipping address in WooCommerce order and Pathao consignment.',
+        'Confirm updated destination district and delivery timeline with customer.'
+      ];
+      suggestedReply = `আসসালামু আলাইকুম${salutation}! আপনার পরিবর্তিত ঠিকানা ও ফোন নম্বরটি আমরা সিস্টেমে আপডেট করে নিয়েছি। সংশোধিত ঠিকানাতেই পণ্যটি নিরাপদে পৌঁছে দেওয়া হবে। DEEN Commerce এর সাথে থাকার জন্য ধন্যবাদ!`;
+      alternativeReply = `আসসালামু আলাইকুম! আপনার নতুন ঠিকানা আপডেট সম্পন্ন হয়েছে। কোনো চিন্তা করবেন না, সংশোধিত ঠিকানাতেই পার্সেল পৌঁছে যাবে।`;
+    }
+    // F. Order Cancellation Request
+    else if (/(?:cancel|order\s*lagbe\s*na|bad\s*den|dorkar\s*nai|বাতিল|নিব\s*না|ক্যানসেল|লাগবে\s*না)/i.test(lowerLatest)) {
+      intentCode = 'CANCEL_ORDER';
+      intentLabel = '⚠️ Order Cancellation Request';
+      urgency = 'HIGH';
+      crmSummary = 'Customer is requesting to cancel their order.';
+      recommendedActions = [
+        'Check if parcel is already handed over to Pathao courier.',
+        'If not dispatched, immediately cancel order in WooCommerce to prevent return delivery fees.',
+        'If already dispatched, politely inquire about customer reason or offer alternative solution/schedule.'
+      ];
+      suggestedReply = `আসসালামু আলাইকুম${salutation}! আপনার অর্ডার বাতিলের বিষয়টি পেয়েছি। অর্ডারটি এখনো কুরিয়ারে না গিয়ে থাকলে আমরা তা বাতিল করে দিচ্ছি। পণ্য বা ডেলিভারি নিয়ে আপনার কোনো বিশেষ সমস্যা থাকলে আমাদের জানাতে পারেন, আমরা সর্বোচ্চ সহযোগিতার চেষ্টা করব।`;
+      alternativeReply = `আসসালামু আলাইকুম! আপনার অনুরোধ অনুযায়ী অর্ডারটি বাতিল প্রসেস করা হলো। ভবিষ্যতে আপনার সেবায় পাশে থাকার সুযোগ দিলে আনন্দিত হব।`;
+    }
+    // G. Order Confirmation & Placement
+    else if (/(?:confirm|order\s*korbo|order\s*confirm|অর্ডার\s*কনফার্ম|অর্ডার\s*প্লেস|নিতে\s*চাই|order\s*dite\s*chai|বুকিং|booking|অর্ডার\s*করব)/i.test(lowerLatest) ||
+             /(?:order\s*confirm|অর্ডার\s*কনফার্ম)/i.test(lowerFull)) {
+      intentCode = 'ORDER_CONFIRM';
+      intentLabel = '✅ Order Confirmation & Processing';
+      urgency = 'MEDIUM';
+      crmSummary = 'Customer wants to confirm or finalize their order placement.';
+      recommendedActions = [
+        `Check courier delivery success rate for customer${entities.phone ? ` (${entities.phone})` : ''}.`,
+        'Verify delivery location: Inside Dhaka (৳50) vs Outside Dhaka (৳90).',
+        'If outside Dhaka or customer delivery success rate < 75%, request ৳90 advance delivery fee before dispatch.'
+      ];
+      suggestedReply = `আসসালামু আলাইকুম${salutation}! DEEN Commerce এ আপনার অর্ডারের জন্য আন্তরিক ধন্যবাদ। আপনার অর্ডারটি নিশ্চিত করতে দয়া করে আপনার নাম, ডেলিভারি ঠিকানা এবং সচল মোবাইল নম্বরটি পাঠিয়ে দিন। ঢাকার মধ্যে ডেলিভারি চার্জ ৫০ টাকা এবং ঢাকার বাইরে ৯০ টাকা। আপনার পছন্দের প্রোডাক্ট সাইজটিও কনফার্ম করবেন কি?`;
+      alternativeReply = `আসসালামু আলাইকুম! আপনার অর্ডারটি নিশ্চিত করা হয়েছে। খুব শীঘ্রই আমাদের কুরিয়ার পার্টনারের মাধ্যমে প্রোডাক্ট আপনার ঠিকানায় পৌঁছে দেওয়া হবে।`;
+    }
+    // H. Product Price / Stock / Sizing Inquiry
+    else if (/(?:dam\s*koto|price|koto\s*taka|size\s*hobe|available|stock\s*ache|দাম\s*কত|ফেব্রিক\s*কি|কালার|স্টক\s*আছে|কত\s*টাকা|সাইজ\s*আছে)/i.test(lowerLatest)) {
+      intentCode = 'PRODUCT_INQUIRY';
+      intentLabel = '🛍️ Product Details & Pricing Inquiry';
+      urgency = 'NORMAL';
+      crmSummary = 'Customer is inquiring about product price, fabric quality, stock availability, or sizing options.';
+      recommendedActions = [
+        'Provide accurate product pricing and current stock availability.',
+        'Share DEEN Commerce size chart for jeans/polos.',
+        'Prompt customer with easy 1-click ordering instructions.'
+      ];
+      suggestedReply = `আসসালামু আলাইকুম${salutation}! DEEN Commerce এর প্রিমিয়াম কালেকশনে আপনার আগ্রহের জন্য ধন্যবাদ। প্রোডাক্টটির বর্তমান দাম ও কালার ভ্যারিয়েন্ট স্টকভেদে অ্যাভেইলেবল রয়েছে। আপনার উচ্চতা বা পছন্দের সাইজটি জানালে আমরা সঠিক ফিটিং সিলেক্ট করে দিতে পারব।`;
+      alternativeReply = `আসসালামু আলাইকুম! প্রোডাক্টটি স্টকে রয়েছে। অর্ডার করতে চাইলে আপনার ডেলিভারি ঠিকানা ও ফোন নম্বর শেয়ার করুন।`;
+    }
+    // I. General Greeting
+    else {
+      intentCode = 'GENERAL_GREETING';
+      intentLabel = '💬 General Greeting & Support';
+      urgency = 'NORMAL';
+      crmSummary = 'Customer has sent a greeting or general initial message.';
+      recommendedActions = [
+        'Respond with warm, professional DEEN Commerce greeting.',
+        'Ask how DEEN Commerce support can assist them today.'
+      ];
+      suggestedReply = `আসসালামু আলাইকুম${salutation}! DEEN Commerce এর কাস্টমার সাপোর্টে আপনাকে স্বাগতম। আপনাকে কীভাবে সহযোগিতা করতে পারি?`;
+      alternativeReply = `আসসালামু আলাইকুম! DEEN Commerce এ স্বাগতম। আপনার অর্ডার বা কোনো প্রোডাক্ট সম্পর্কে তথ্য জানতে আমাদের বলুন।`;
+    }
+
+    return {
+      phone: entities.phone,
+      customerName,
+      messagesCount: messages.length,
+      latestCustomerText,
+      latestIncoming,
+      latestOutgoing,
+      isCustomerWaiting,
+      entities,
+      intent: {
+        code: intentCode,
+        label: intentLabel,
+        urgency,
+        confidence: 0.95
+      },
+      crmGuidance: {
+        summary: crmSummary,
+        recommendedActions,
+        warehouseAction: recommendedActions[0] || 'Standard processing'
+      },
+      suggestedReply,
+      alternativeReply,
+      rawText: fullText
+    };
+  }
+
+  /**
    * Interprets customer notes or incoming WhatsApp messages:
    * Identifies delivery urgency, bracketing/size risk, office timing, and phone numbers.
    */
@@ -300,20 +576,26 @@ Core Principles:
     const clean = text.trim();
     const lower = clean.toLowerCase();
 
+    // Call full conversation analyzer
+    const conv = analyzeWhatsAppConversation(clean);
+
     const analysis = {
       rawText: clean,
       category: 'GENERAL_NOTE',
-      priority: 'MEDIUM',
+      priority: conv.intent.urgency === 'HIGH' ? 'HIGH' : (conv.intent.urgency === 'MEDIUM' ? 'MEDIUM' : 'LOW'),
       tags: [],
-      extractedPhone: null,
-      actionItem: 'Proceed with standard fulfillment'
+      extractedPhone: conv.phone,
+      actionItem: conv.crmGuidance.recommendedActions[0] || 'Proceed with standard fulfillment',
+      // Enriched CRM intelligence
+      intent: conv.intent,
+      crmGuidance: conv.crmGuidance,
+      suggestedReply: conv.suggestedReply,
+      alternativeReply: conv.alternativeReply,
+      entities: conv.entities
     };
 
-    // Extract phone if present
-    const phoneMatch = clean.match(/(?:(?:\+?880)|880|0)?(1[3-9]\d{8})\b/);
-    if (phoneMatch) {
-      analysis.extractedPhone = '0' + phoneMatch[1];
-      analysis.tags.push('📱 Phone Identified: ' + analysis.extractedPhone);
+    if (conv.phone) {
+      analysis.tags.push('📱 Phone Identified: ' + conv.phone);
     }
 
     // Office timing note
@@ -345,7 +627,6 @@ Core Principles:
       analysis.actionItem = 'Call customer or send WhatsApp confirmation to verify sizing before shipping.';
     }
 
-
     analysis.phone = analysis.extractedPhone;
     analysis.flags = analysis.tags;
     analysis.hasRiskConditions = Boolean(analysis.category === 'SIZE_VERIFICATION' || analysis.tags.some(t => t.includes('Risk')));
@@ -353,6 +634,8 @@ Core Principles:
     analysis.isOfficeTiming = Boolean(analysis.category === 'OFFICE_TIMING' || analysis.tags.some(t => t.includes('Timing')));
     return analysis;
   }
+
+
 
   /**
    * Synthesize data context for AI prompt
@@ -1035,13 +1318,16 @@ Core Principles:
    * 3. If no key is set, generates an intelligent offline response with store guidance.
    */
   async function generateDeenAssistantReply(params) {
-    const { query, records = [], metrics = {}, extraContext = {}, history = [] } = params;
+    if (typeof params === 'string') {
+      params = { query: params };
+    }
+    const { query, records = [], metrics = {}, extraContext = {}, history = [], ...rest } = params || {};
     const cleanQuery = (query || '').trim();
     if (!cleanQuery) {
       return { answer: 'Please enter a question or request.', source: 'empty' };
     }
 
-    const context = { records, metrics, ...extraContext };
+    const context = { records, metrics, ...extraContext, ...rest };
 
     // 1. Direct In-Browser SQL Execution
     if (/^\s*SELECT\s+[\s\S]+\s+FROM\s+/i.test(cleanQuery) || /^\s*(?:run\s+sql|execute\s+sql|sql:)\s*(SELECT\s+[\s\S]+)/i.test(cleanQuery)) {
@@ -1136,16 +1422,43 @@ Core Principles:
       return deterministic;
     }
 
-    // 2. Check if this is a customer message or note interpretation request
-    if (/interpret|analyze|check note|check message|understand message|note meaning/i.test(cleanQuery) ||
-        cleanQuery.length > 60 && !cleanQuery.includes('?')) {
-      const noteAnalysis = analyzeCustomerMessageOrNote(cleanQuery);
-      if (noteAnalysis && noteAnalysis.tags.length > 0) {
-        return {
-          answer: `### 📝 Customer Message Interpretation\n- **Detected Category**: **${noteAnalysis.category.replace(/_/g, ' ')}**\n- **Fulfillment Priority**: **${noteAnalysis.priority}**\n- **Extracted Tags**:\n${noteAnalysis.tags.map(t => '  - ' + t).join('\n')}\n\n🎯 **Recommended Warehouse Action**:\n> ${noteAnalysis.actionItem}\n\n*Analyzed with DEEN Bilingual Note Interpreter.*`,
-          source: 'note_interpreter'
-        };
-      }
+    // 2. Check if this is a customer message or WhatsApp conversation analysis request
+    if (/interpret|analyze|check note|check message|understand message|conversation|what does customer want|suggest reply|assist crm|গ্রাহকের মেসেজ|কি উত্তর|কনভারসেশন/i.test(cleanQuery) ||
+        (context.conversation || context.messages || (cleanQuery.length > 60 && !cleanQuery.includes('?')))) {
+      const convData = context.conversation || context.messages || context.note || cleanQuery;
+      const convAnalysis = analyzeWhatsAppConversation(typeof convData === 'object' && !Array.isArray(convData) && convData.messages ? convData : {
+        messages: Array.isArray(convData) ? convData : (context.messages || context.conversation || []),
+        recentText: typeof convData === 'string' && convData !== cleanQuery ? convData : (context.note || (typeof convData === 'string' ? convData : '')),
+        phone: context.phone || '',
+        customerName: context.customerName || ''
+      });
+      
+      const phoneDisplay = convAnalysis.phone ? `\`${convAnalysis.phone}\`` : 'Not detected';
+      const orderDisplay = convAnalysis.entities.orderId ? `Order #${convAnalysis.entities.orderId}` : 'N/A';
+      const sizeDisplay = convAnalysis.entities.size ? `Size: ${convAnalysis.entities.size}` : '';
+
+      const actionsList = convAnalysis.crmGuidance.recommendedActions.map((act, i) => `${i + 1}. **${act}**`).join('\n');
+
+      const markdown = `### 🎯 CRM Executive Copilot: Active Conversation Briefing
+- **Customer Phone**: **${phoneDisplay}** ${convAnalysis.customerName ? `(${convAnalysis.customerName})` : ''}
+- **Detected Intent**: **${convAnalysis.intent.label}** (${convAnalysis.intent.urgency} Urgency)
+- **Customer Message**: *"${convAnalysis.latestCustomerText || 'No recent customer message'}"*
+${convAnalysis.entities.orderId || convAnalysis.entities.size || convAnalysis.entities.trxId ? `- **Entities Detected**: ${[orderDisplay, sizeDisplay, convAnalysis.entities.trxId ? `TrxID: ${convAnalysis.entities.trxId}` : ''].filter(Boolean).join(' | ')}` : ''}
+
+#### 📋 Recommended CRM Executive Actions:
+${actionsList}
+
+#### ✉️ Suggested WhatsApp Quick Reply:
+> ${convAnalysis.suggestedReply}
+
+💡 *Click **"✉️ Insert in WhatsApp"** below to insert this reply directly into the WhatsApp message box!*`;
+
+      return {
+        answer: markdown,
+        source: 'crm_copilot_assistant',
+        analysis: convAnalysis,
+        toString() { return this.answer; }
+      };
     }
 
     // 3. Load BYOK configuration
@@ -1251,6 +1564,123 @@ Based on the current **${records.length} extracted parcels**:
     };
   }
 
+  /**
+   * Courier Remittance & Payout Invoice Reconciliation Auditor
+   * Cross-references courier payout statements (Pathao/Steadfast) against store orders to detect:
+   * 1. COD Shortages: Collected COD < Expected Order COD
+   * 2. Overcharged Delivery Fees: Courier charged > standard rate (৳50 inside, ৳90 outside)
+   * 3. Unremitted / Missing Orders: Delivered orders never paid out
+   */
+  function reconcileCourierInvoices(invoiceRecords, storeOrders = []) {
+    if (!Array.isArray(invoiceRecords)) invoiceRecords = [];
+    if (!Array.isArray(storeOrders)) storeOrders = [];
+
+    const orderMap = new Map();
+    for (const o of storeOrders) {
+      const idKey = String(o.orderId || o.id || o.invoice || "").replace(/^#/, "").trim();
+      if (idKey) orderMap.set(idKey, o);
+      if (o.phone) {
+        const pKey = String(o.phone).replace(/\D/g, "").slice(-11);
+        if (pKey) orderMap.set(`p_${pKey}`, o);
+      }
+    }
+
+    let totalInvoicedCOD = 0;
+    let totalRemittedPayout = 0;
+    let totalCourierCharges = 0;
+    let totalExpectedCOD = 0;
+
+    const discrepancies = [];
+    const matchedOrders = [];
+    const unmatchedInvoiceItems = [];
+
+    for (const inv of invoiceRecords) {
+      const invId = String(inv.orderId || inv.invoice || inv.merchant_order_id || inv.order_id || "").replace(/^#/, "").trim();
+      const collectedCOD = Number(inv.collected_amount || inv.cod_amount || inv.cod || inv.collected || 0);
+      const deliveryCharge = Number(inv.delivery_charge || inv.charge || inv.fee || 0);
+      const netPayout = Number(inv.net_payable || inv.net_amount || inv.payout || (collectedCOD - deliveryCharge));
+
+      totalInvoicedCOD += collectedCOD;
+      totalRemittedPayout += netPayout;
+      totalCourierCharges += deliveryCharge;
+
+      // Find matching store order
+      let matchedOrder = invId ? orderMap.get(invId) : null;
+      if (!matchedOrder && inv.phone) {
+        const pKey = String(inv.phone).replace(/\D/g, "").slice(-11);
+        matchedOrder = orderMap.get(`p_${pKey}`);
+      }
+
+      if (matchedOrder) {
+        const expectedCOD = Number(matchedOrder.cod || matchedOrder.total || 0);
+        totalExpectedCOD += expectedCOD;
+
+        let hasDiscrepancy = false;
+        // 1. Check COD Shortage
+        if (expectedCOD > 0 && collectedCOD < expectedCOD) {
+          const diff = expectedCOD - collectedCOD;
+          discrepancies.push({
+            type: "COD_SHORTAGE",
+            orderId: invId || matchedOrder.orderId,
+            expectedCOD,
+            actualCOD: collectedCOD,
+            loss: diff,
+            severity: "HIGH",
+            message: `Courier collected ৳${collectedCOD} but order was ৳${expectedCOD} (Shortage: -৳${diff})`
+          });
+          hasDiscrepancy = true;
+        }
+
+        // 2. Check Overcharged Delivery Fee
+        const isOutside = Boolean(matchedOrder.isOutsideDhaka);
+        const standardMaxFee = isOutside ? 100 : 60; // Reasonable courier ceiling including 1% COD fee
+        if (deliveryCharge > standardMaxFee) {
+          const excess = deliveryCharge - (isOutside ? 90 : 50);
+          discrepancies.push({
+            type: "FEE_OVERCHARGE",
+            orderId: invId || matchedOrder.orderId,
+            chargedFee: deliveryCharge,
+            standardFee: isOutside ? 90 : 50,
+            loss: excess,
+            severity: "MEDIUM",
+            message: `Charged ৳${deliveryCharge} delivery fee on ${isOutside ? 'outside' : 'inside'} Dhaka parcel (Excess: +৳${excess})`
+          });
+          hasDiscrepancy = true;
+        }
+
+        matchedOrders.push({
+          orderId: invId,
+          collectedCOD,
+          deliveryCharge,
+          netPayout,
+          hasDiscrepancy
+        });
+      } else {
+        unmatchedInvoiceItems.push(inv);
+      }
+    }
+
+    const totalLoss = discrepancies.reduce((sum, d) => sum + (d.loss || 0), 0);
+
+    return {
+      totalInvoicedRecords: invoiceRecords.length,
+      matchedRecordsCount: matchedOrders.length,
+      unmatchedCount: unmatchedInvoiceItems.length,
+      cleanOrdersCount: matchedOrders.filter(m => !m.hasDiscrepancy).length,
+      discrepancyCount: discrepancies.length,
+      totalInvoicedCOD,
+      totalRemittedPayout,
+      totalCourierCharges,
+      totalExpectedCOD,
+      totalLossAmount: totalLoss,
+      leakageRate: totalExpectedCOD > 0 ? Number(((totalLoss / totalExpectedCOD) * 100).toFixed(2)) : 0,
+      discrepancies,
+      summary: discrepancies.length === 0
+        ? `✅ Perfect Payout Reconciliation: All ${matchedOrders.length} reconciled orders matched without billing leakages.`
+        : `⚠️ Detected ${discrepancies.length} payout discrepancies totaling ৳${totalLoss.toLocaleString()} in courier leakage.`
+    };
+  }
+
   // Chat History Management
   async function loadChatHistory() {
     const list = await getStorageItem(STORAGE_KEY_HISTORY);
@@ -1279,6 +1709,7 @@ Based on the current **${records.length} extracted parcels**:
     saveBYOKConfig,
     testBYOKConnection,
     evaluateDeterministicQuery,
+    analyzeWhatsAppConversation,
     analyzeCustomerMessageOrNote,
     synthesizeContext,
     generateDeenAssistantReply,
@@ -1290,6 +1721,7 @@ Based on the current **${records.length} extracted parcels**:
     formatSQLResultToMarkdown,
     executeDataFrameAnalysis,
     renderVisualChartSVG,
-    generateExecutiveReport
+    generateExecutiveReport,
+    reconcileCourierInvoices
   };
 });

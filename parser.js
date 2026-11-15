@@ -1035,6 +1035,107 @@ function getISOCodeFromDistrict(name) {
 }
 
 /**
+ * Comprehensive Bangladesh Postal Code to District Lookup Table (Covering all 64 districts)
+ */
+const BD_POSTCODE_RANGES = [
+  // Dhaka Division
+  { min: 1000, max: 1236, district: "Dhaka" },
+  { min: 1310, max: 1362, district: "Dhaka" },
+  { min: 1400, max: 1432, district: "Narayanganj" },
+  { min: 1500, max: 1542, district: "Munshiganj" },
+  { min: 1600, max: 1652, district: "Narsingdi" },
+  { min: 1700, max: 1751, district: "Gazipur" },
+  { min: 1800, max: 1852, district: "Manikganj" },
+  { min: 1900, max: 1992, district: "Tangail" },
+  { min: 2000, max: 2092, district: "Jamalpur" },
+  { min: 2100, max: 2152, district: "Sherpur" },
+  { min: 2200, max: 2294, district: "Mymensingh" },
+  { min: 2300, max: 2361, district: "Kishoreganj" },
+  { min: 2400, max: 2442, district: "Netrokona" },
+  { min: 7700, max: 7742, district: "Rajbari" },
+  { min: 7800, max: 7872, district: "Faridpur" },
+  { min: 7900, max: 7952, district: "Madaripur" },
+  { min: 8000, max: 8042, district: "Shariatpur" },
+  { min: 8100, max: 8152, district: "Gopalganj" },
+
+  // Chattogram Division
+  { min: 3400, max: 3454, district: "Brahmanbaria" },
+  { min: 3500, max: 3584, district: "Cumilla" },
+  { min: 3600, max: 3662, district: "Chandpur" },
+  { min: 3700, max: 3752, district: "Lakshmipur" },
+  { min: 3800, max: 3893, district: "Noakhali" },
+  { min: 3900, max: 3943, district: "Feni" },
+  { min: 4000, max: 4499, district: "Chattogram" },
+  { min: 4500, max: 4599, district: "Bandarban" },
+  { min: 4600, max: 4699, district: "Khagrachhari" },
+  { min: 4700, max: 4784, district: "Cox's Bazar" },
+  { min: 4800, max: 4899, district: "Rangamati" },
+
+  // Sylhet Division
+  { min: 3000, max: 3092, district: "Sunamganj" },
+  { min: 3100, max: 3195, district: "Sylhet" },
+  { min: 3200, max: 3252, district: "Moulvibazar" },
+  { min: 3300, max: 3372, district: "Habiganj" },
+
+  // Rajshahi Division
+  { min: 5800, max: 5892, district: "Bogura" },
+  { min: 5900, max: 5952, district: "Joypurhat" },
+  { min: 6000, max: 6292, district: "Rajshahi" },
+  { min: 6300, max: 6362, district: "Chapainawabganj" },
+  { min: 6400, max: 6452, district: "Natore" },
+  { min: 6500, max: 6552, district: "Naogaon" },
+  { min: 6600, max: 6682, district: "Pabna" },
+  { min: 6700, max: 6772, district: "Sirajganj" },
+
+  // Rangpur Division
+  { min: 5000, max: 5052, district: "Panchagarh" },
+  { min: 5100, max: 5152, district: "Thakurgaon" },
+  { min: 5200, max: 5292, district: "Dinajpur" },
+  { min: 5300, max: 5352, district: "Nilphamari" },
+  { min: 5400, max: 5462, district: "Rangpur" },
+  { min: 5500, max: 5542, district: "Lalmonirhat" },
+  { min: 5600, max: 5662, district: "Kurigram" },
+  { min: 5700, max: 5752, district: "Gaibandha" },
+
+  // Khulna Division
+  { min: 7000, max: 7052, district: "Kushtia" },
+  { min: 7100, max: 7152, district: "Meherpur" },
+  { min: 7200, max: 7242, district: "Chuadanga" },
+  { min: 7300, max: 7352, district: "Jhenaidah" },
+  { min: 7400, max: 7472, district: "Jashore" },
+  { min: 7500, max: 7542, district: "Narail" },
+  { min: 7600, max: 7632, district: "Magura" },
+  { min: 9000, max: 9292, district: "Khulna" },
+  { min: 9300, max: 9382, district: "Bagerhat" },
+  { min: 9400, max: 9462, district: "Satkhira" },
+
+  // Barishal Division
+  { min: 8200, max: 8282, district: "Barishal" },
+  { min: 8300, max: 8352, district: "Bhola" },
+  { min: 8400, max: 8442, district: "Jhalokathi" },
+  { min: 8500, max: 8562, district: "Pirojpur" },
+  { min: 8600, max: 8662, district: "Patuakhali" },
+  { min: 8700, max: 8742, district: "Barguna" }
+];
+
+/**
+ * Resolve authentic Bangladesh district from 4-digit postal code
+ */
+function getDistrictFromPostcode(postcode) {
+  if (!postcode) return "";
+  const pcStr = bengaliToAsciiDigits(String(postcode)).replace(/\D/g, "");
+  if (pcStr.length !== 4) return "";
+  const num = parseInt(pcStr, 10);
+  if (isNaN(num)) return "";
+  for (const r of BD_POSTCODE_RANGES) {
+    if (num >= r.min && num <= r.max) {
+      return r.district;
+    }
+  }
+  return "";
+}
+
+/**
  * Common Thanas / Zones in Dhaka City
  */
 /**
@@ -1515,7 +1616,14 @@ const OTHER_CITY_ZONES = {
     { name: "Bajitpur", aliases: ["bajitpur", "বাজিতপুর"] },
     { name: "Kuliarchar", aliases: ["kuliarchar", "কুলিয়ারচর", "কুলিয়ারচর"] },
     { name: "Pakundia", aliases: ["pakundia", "পাকুন্দিয়া", "পাকুন্দিয়া"] },
-    { name: "Katiadi", aliases: ["katiadi", "কটিয়াদী", "কটিয়াদি"] }
+    { name: "Katiadi", aliases: ["katiadi", "কটিয়াদী", "কটিয়াদি"] },
+    { name: "Mithamain", aliases: ["mithamain", "mithamian", "mithamoin", "মিঠামইন", "মিঠামাইন"] },
+    { name: "Austagram", aliases: ["austagram", "ashtagram", "অষ্টগ্রাম"] },
+    { name: "Itna", aliases: ["itna", "ইটনা"] },
+    { name: "Karimganj", aliases: ["karimganj", "করিমগঞ্জ"] },
+    { name: "Hossainpur", aliases: ["hossainpur", "হোসেনপুর"] },
+    { name: "Tarail", aliases: ["tarail", "তাড়াইল", "তাড়াইল"] },
+    { name: "Nikli", aliases: ["nikli", "নিকলী", "নিকলি"] }
   ],
   "Jamalpur": [
     { name: "Jamalpur Sadar", aliases: ["jamalpur sadar", "জামালপুর সদর"] },
@@ -1737,6 +1845,91 @@ const OTHER_CITY_ZONES = {
   ]
 };
 
+let _cachedPathaoZoneIndex = null;
+
+/**
+ * Load lean Pathao Zone Index (~300KB) into memory.
+ * Supports Node.js environment and browser runtime.
+ */
+function loadPathaoZoneIndex() {
+  if (_cachedPathaoZoneIndex) return _cachedPathaoZoneIndex;
+  if (typeof window !== "undefined" && window._pathaoZoneIndex) {
+    _cachedPathaoZoneIndex = window._pathaoZoneIndex;
+    return _cachedPathaoZoneIndex;
+  }
+  if (typeof globalThis !== "undefined" && globalThis._pathaoZoneIndex) {
+    _cachedPathaoZoneIndex = globalThis._pathaoZoneIndex;
+    return _cachedPathaoZoneIndex;
+  }
+  if (typeof require !== "undefined") {
+    try {
+      const p = require("path");
+      const f = require("fs");
+      const idxPath = p.join(__dirname, "pathao_zone_index.json");
+      if (f.existsSync(idxPath)) {
+        _cachedPathaoZoneIndex = JSON.parse(f.readFileSync(idxPath, "utf8"));
+        return _cachedPathaoZoneIndex;
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+function cleanLookupKey(str) {
+  if (!str) return "";
+  return str.toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * Lookup Pathao official City ID and name
+ */
+function lookupPathaoCity(cityName) {
+  const index = loadPathaoZoneIndex();
+  if (!index || !index.cities || !cityName) return null;
+  const key = cleanLookupKey(cityName);
+  return index.cities[key] || null;
+}
+
+/**
+ * Real-time Pathao Zone Lookup Engine
+ * Resolves thanas/upazilas/aliases to official Pathao city_id, city_name, zone_id, zone_name
+ */
+function lookupPathaoZone(queryText, preferredCity = null) {
+  const index = loadPathaoZoneIndex();
+  if (!index || !index.zones || !queryText || typeof queryText !== "string") return null;
+
+  const key = cleanLookupKey(queryText);
+  if (preferredCity) {
+    const prefKey = `${cleanLookupKey(preferredCity)} ${key}`;
+    if (index.zones[prefKey]) return index.zones[prefKey];
+  }
+  if (index.zones[key]) return index.zones[key];
+
+  // Token / Substring matching for multi-word addresses (e.g. "Mithamain Sadar Heliped")
+  const tokens = key.split(/\s+/).filter(t => t.length > 2);
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const pair = `${tokens[i]} ${tokens[i + 1]}`;
+    if (preferredCity) {
+      const prefPair = `${cleanLookupKey(preferredCity)} ${pair}`;
+      if (index.zones[prefPair]) return index.zones[prefPair];
+    }
+    if (index.zones[pair]) return index.zones[pair];
+  }
+  for (const t of tokens) {
+    if (preferredCity) {
+      const prefToken = `${cleanLookupKey(preferredCity)} ${t}`;
+      if (index.zones[prefToken]) return index.zones[prefToken];
+    }
+    if (index.zones[t]) return index.zones[t];
+  }
+
+  return null;
+}
+
 /**
  * Smart Bangladesh Address Parser
  * Decomposes unstructured BD addresses into District, Zone, Area, Postcode, and Clean Street.
@@ -1912,20 +2105,17 @@ function parseBDAddress(rawAddress) {
     }
   }
 
-  // 2F. Check non-Dhaka postcode ranges
+  // 2F. Check non-Dhaka postcode ranges across all 64 districts
   if (!matchedDistrict && postcode) {
-    const pcNum = parseInt(postcode, 10);
-    if (pcNum >= 1700 && pcNum <= 1751) {
-      matchedDistrict = "Gazipur";
-    } else if (pcNum >= 1400 && pcNum <= 1432) {
-      matchedDistrict = "Narayanganj";
-    } else if (pcNum >= 1340 && pcNum <= 1349) {
-      matchedDistrict = "Dhaka";
-      matchedZone = "Savar";
-    } else if (pcNum >= 9300 && pcNum <= 9399) {
-      matchedDistrict = "Bagerhat";
-    } else if (pcNum >= 7800 && pcNum <= 7899) {
-      matchedDistrict = "Faridpur";
+    const pcDist = getDistrictFromPostcode(postcode);
+    if (pcDist && pcDist !== "Dhaka") {
+      matchedDistrict = pcDist;
+    } else if (postcode) {
+      const pcNum = parseInt(postcode, 10);
+      if (pcNum >= 1340 && pcNum <= 1349) {
+        matchedDistrict = "Dhaka";
+        matchedZone = "Savar";
+      }
     }
   }
 
@@ -1953,9 +2143,10 @@ function parseBDAddress(rawAddress) {
     }
   }
 
-  // 2H. Check Dhaka city or Dhaka postcode (1000-1236)
+  // 2H. Check Dhaka city or Dhaka postcode (1000-1236, 1310-1362)
   if (!matchedDistrict) {
-    const isDhakaPc = postcode && parseInt(postcode, 10) >= 1000 && parseInt(postcode, 10) <= 1236;
+    const pcDist = getDistrictFromPostcode(postcode);
+    const isDhakaPc = pcDist === "Dhaka" || (postcode && parseInt(postcode, 10) >= 1000 && parseInt(postcode, 10) <= 1236);
     const dhakaObj = BD_DISTRICTS.find(d => d.name === "Dhaka");
     const hasDhakaWord = dhakaObj && dhakaObj.aliases.some(a => {
       if (matchWord(clean, a)) {
@@ -2010,6 +2201,20 @@ function parseBDAddress(rawAddress) {
         }
         if (!matchedZone) matchedZone = prev;
       }
+    }
+  }
+
+  // 2H. Real-Time Pathao Coverage Lookup (Zero-Network Zone Engine)
+  const pathaoMatch = lookupPathaoZone(clean, matchedDistrict);
+  if (pathaoMatch) {
+    if (!matchedDistrict) {
+      matchedDistrict = pathaoMatch.c_name;
+      matchedZone = pathaoMatch.z_name;
+    } else if (matchedDistrict === "Dhaka" && !/\b(?:dhaka|dacca|ঢাকা)\b/i.test(clean) && pathaoMatch.c_name !== "Dhaka") {
+      matchedDistrict = pathaoMatch.c_name;
+      matchedZone = pathaoMatch.z_name;
+    } else if (!matchedZone) {
+      matchedZone = pathaoMatch.z_name;
     }
   }
 
@@ -2101,7 +2306,11 @@ function parseBDAddress(rawAddress) {
     streetAddress: streetAddress,
     cityType: cityType,
     isDefaulted: isDefaulted,
-    hasFalseDhaka: hasFalseDhaka
+    hasFalseDhaka: hasFalseDhaka,
+    pathaoCityId: pathaoMatch ? pathaoMatch.c_id : null,
+    pathaoZoneId: pathaoMatch ? pathaoMatch.z_id : null,
+    pathaoCityName: pathaoMatch ? pathaoMatch.c_name : null,
+    pathaoZoneName: pathaoMatch ? pathaoMatch.z_name : null
   };
 }
 
@@ -2684,6 +2893,213 @@ function isInvalidCustomerName(name) {
          /^(?:email|guest|customer|বিলিং|নাম|গ্রাহক|শিপিং)$/i.test(trimmed);
 }
 
+/**
+ * Normalizes customer recipient names for courier booking, receipts, and Pathao popup modals.
+ * Standardizes Title Casing, cleans honorifics (Md., Mst., Dr., Engr., Adv., Prof.),
+ * strips garbage prefixes, order IDs, embedded phone numbers, emails, emojis, and trailing location noise.
+ * Strictly preserves Bengali names byte-for-byte (Invariant 5).
+ */
+function normalizeCustomerName(rawName) {
+  if (!rawName || typeof rawName !== "string") return "";
+  let name = rawName.trim();
+  if (!name) return "";
+
+  // 1. If pure digits, phone number, email, or invalid placeholder, return empty
+  if (isInvalidCustomerName(name)) return "";
+
+  // 2. Strip leading labels & prefixes
+  name = name.replace(/^(?:Customer|Name|Recipient|Billing Name|Shipping Name|বিলিং নাম|গ্রাহক|নাম|প্রাপক|প্রাপকের নাম)[:\s#\-]*/gi, "").trim();
+
+  // 3. Strip Order ID references (e.g. "Order #19045 - ", "[Order #19045]", "[Order #120]", "#19045")
+  name = name.replace(/\[?(?:Order|Ord|অর্ডার)[\s#:]*([0-9]{1,10})\]?/gi, "").trim();
+  name = name.replace(/^#[0-9]{4,7}\s*[-:]*\s*/, "").replace(/\s*[-:]*\s*#[0-9]{4,7}$/, "").trim();
+
+  // 4. Strip embedded phone numbers & email addresses
+  name = name.replace(/(?:(?:\+?880)|880|0)?1[3-9]\d{8}\b/g, "").trim();
+  name = name.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "").trim();
+
+  // 5. Strip empty parentheses/brackets left behind like "()" or "[]"
+  name = name.replace(/\(\s*\)|\[\s*\]|\{\s*\}/g, "").trim();
+
+  // 5b. Strip parenthesized instruction, urgent notes, or size markers inside name
+  name = name.replace(/\([^)]*(?:call|urgent|delivery|size|সাইজ|কালার|color|দয়া|কল|তাড়াতাড়ি|জরুরি)[^)]*\)/gi, "").trim();
+
+  // 5c. Handle parenthesized / bracketed redundant names or aliases (e.g. "Tanvir (তানভীর)", "তানভীর (Tanvir)", "Tanvir (Tanvir)")
+  if (/\(([^)]+)\)|\[([^\]]+)\]/.test(name)) {
+    const trimmed = name.trim();
+    const isEntirelyWrapped = (trimmed.startsWith("(") && trimmed.endsWith(")")) || (trimmed.startsWith("[") && trimmed.endsWith("]"));
+    if (!isEntirelyWrapped) {
+      name = name.replace(/\(([^)]+)\)|\[([^\]]+)\]/g, (match, p1, p2) => {
+        const inside = (p1 || p2 || "").trim();
+        return " " + inside + " ";
+      });
+    }
+  }
+
+  // 6. Strip emojis and unwanted wrapping symbols: quotes, asterisks, brackets, tildes, parenthesized noise
+  name = name.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F1E0}-\u{1F1FF}]/gu, "");
+  const edgePunct = /^[\s"'\u0060~*()[\]{}<>:;,\-_/|\\]+|[\s"'\u0060~*()[\]{}<>:;,\-_/|\\]+$/g;
+  name = name.replace(edgePunct, "").trim();
+
+  // 7. Strip trailing district/division or common thana location suffix (e.g. " - Mirpur, Dhaka", " - Dhaka", ", Chittagong")
+  const locationSuffixRegex = /[\s,/-]+(?:dhaka|dacca|chittagong|chattogram|sylhet|rajshahi|khulna|barishal|rangpur|mymensingh|cumilla|comilla|gazipur|narayanganj|jashore|jessore|bogura|bogra|faridpur|cox'?s\s*bazar|tangail|savar|mirpur|uttara|dhanmondi|gulshan|banani|mohammadpur|bhaluka|ঢাকা|চট্টগ্রাম|সিলেট|রাজশাহী|খুলনা|বরিশাল|রংপুর|ময়মনসিংহ|কুমিল্লা|গাজীপুর|নারায়ণগঞ্জ|যশোর|মিরপুর|উত্তরা)[\s,.-]*$/i;
+  let prevName = "";
+  while (prevName !== name && locationSuffixRegex.test(name)) {
+    prevName = name;
+    name = name.replace(locationSuffixRegex, "").trim();
+  }
+
+  // 8. Clean excessive punctuation and spaces
+  name = name.replace(/\s+/g, " ");
+  name = name.replace(edgePunct, "").trim();
+
+  if (!name || isInvalidCustomerName(name)) return "";
+
+  // 8b. Normalize separator delimiters (e.g. "Tanvir / তানভীর" -> "Tanvir তানভীর", "Md. Tanvir - মোঃ তানভীর" -> "Md. Tanvir মোঃ তানভীর")
+  name = name.replace(/\s*[/|&+]+\s*|\s+[-–—]\s+/g, " ").trim();
+
+  // 8c. Cross-Language (Bangla + English) Redundant Name Deduplication
+  const hasEng = /[A-Za-z]/.test(name);
+  const hasBng = /[\u0980-\u09FF]/.test(name);
+
+  if (hasEng && hasBng) {
+    const rawTokens = name.split(/\s+/).filter(Boolean);
+    const engTokens = [];
+    const bngTokens = [];
+
+    const engHonorifics = new Set(["md", "md.", "mst", "mst.", "mr", "mr.", "mrs", "mrs.", "ms", "ms.", "dr", "dr.", "engr", "engr.", "adv", "adv.", "prof", "prof.", "haji", "alhaj", "al-haj"]);
+    const bngHonorifics = new Set(["মোঃ", "মোসাঃ", "মোছাঃ", "ডঃ", "ডাঃ", "ইঞ্জিঃ", "এডঃ", "আলহাজ্ব", "হাজি"]);
+
+    rawTokens.forEach(t => {
+      if (/[A-Za-z]/.test(t)) engTokens.push(t);
+      else if (/[\u0980-\u09FF]/.test(t)) bngTokens.push(t);
+    });
+
+    const engHasGiven = engTokens.some(t => !engHonorifics.has(t.toLowerCase().replace(/^[^\w]+|[^\w.]+$/g, "")));
+    const bngHasGiven = bngTokens.some(t => !bngHonorifics.has(t.replace(/[:ঃ]$/, "")));
+
+    if (engHasGiven && bngHasGiven) {
+      // Both English and Bengali parts contain a given name -> redundant dual-language name!
+      // Drop redundant Bengali name and keep English for courier/shipping accuracy.
+      name = engTokens.join(" ");
+    } else if (!engHasGiven && bngHasGiven) {
+      // English is only an honorific (e.g. "Md. তানভীর") -> normalize into Bengali
+      name = bngTokens.join(" ");
+      if (engTokens.some(t => /^md\.?$/i.test(t)) && !bngTokens.some(t => /^মো[ঃ:]?$/.test(t))) {
+        name = "মোঃ " + name;
+      }
+    } else if (engHasGiven && !bngHasGiven) {
+      // Bengali is only an honorific (e.g. "মোঃ Tanvir") -> normalize into English
+      name = engTokens.join(" ");
+      if (bngTokens.some(t => /^মো[ঃ:]?$/.test(t)) && !engTokens.some(t => /^md\.?$/i.test(t))) {
+        name = "Md. " + name;
+      }
+    }
+  }
+
+  // 8d. Drop Repeated / Redundant Words & Phrases (e.g. "Sajid Sajid", "Md. Tanvir Md. Tanvir", "সাজিদ সাজিদ")
+  let tokens = name.split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    // 1. Check whole-phrase duplication (e.g. "Md. Tanvir Md. Tanvir" -> "Md. Tanvir", "সাজিদ সাজিদ" -> "সাজিদ")
+    if (tokens.length % 2 === 0) {
+      const half = tokens.length / 2;
+      const firstHalf = tokens.slice(0, half).join(" ").toLowerCase().replace(/[:ঃ.]/g, "");
+      const secondHalf = tokens.slice(half).join(" ").toLowerCase().replace(/[:ঃ.]/g, "");
+      if (firstHalf === secondHalf) {
+        tokens = tokens.slice(0, half);
+      }
+    }
+
+    // 2. Remove duplicate tokens while preserving order (e.g. "Tanvir Tanvir Hossain" -> "Tanvir Hossain", "Tanvir Hossain Tanvir" -> "Tanvir Hossain")
+    const seen = new Set();
+    const uniqueTokens = [];
+    for (const t of tokens) {
+      const key = t.toLowerCase().replace(/^[^\w\u0980-\u09FF]+|[^\w\u0980-\u09FF]+$/g, "").replace(/[:ঃ.]/g, "");
+      if (!key) continue;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueTokens.push(t);
+      }
+    }
+    tokens = uniqueTokens;
+    name = tokens.join(" ");
+  }
+
+  // 9. Bengali Name Handling (Invariant 5: Zero Bengali Text Corruption)
+  const hasBengali = /[\u0980-\u09FF]/.test(name);
+  if (hasBengali) {
+    name = name.replace(/(^|\s)মো[:ঃ]([^\s])/g, "$1মোঃ $2");
+    name = name.replace(/(^|\s)মোসা[:ঃ]([^\s])/g, "$1মোসাঃ $2");
+    name = name.replace(/(^|\s)মোছা[:ঃ]([^\s])/g, "$1মোসাঃ $2");
+    name = name.replace(/(^|\s)মো[:ঃ]\s+/g, "$1মোঃ ");
+    name = name.replace(/(^|\s)মোসা[:ঃ]\s+/g, "$1মোসাঃ ");
+    name = name.replace(/(^|\s)ডা[:ঃ]([^\s])/g, "$1ডাঃ $2");
+    name = name.replace(/(^|\s)ড[:ঃ]([^\s])/g, "$1ডঃ $2");
+    name = name.replace(/(^|\s)ইঞ্জি[:ঃ]([^\s])/g, "$1ইঞ্জিঃ $2");
+    name = name.replace(/(^|\s)আল[\s-]?(?:হাজ্ব|হাজ্জ|হাজ)[ঃ:]?\s*/g, "$1আলহাজ্ব ");
+    return name.trim();
+  }
+
+  // 10. English Name Standardization & Title Casing
+  const honorificMap = {
+    "md": "Md.",
+    "md.": "Md.",
+    "mst": "Mst.",
+    "mst.": "Mst.",
+    "mohd": "Mohd.",
+    "mohd.": "Mohd.",
+    "mr": "Mr.",
+    "mr.": "Mr.",
+    "mrs": "Mrs.",
+    "mrs.": "Mrs.",
+    "ms": "Ms.",
+    "ms.": "Ms.",
+    "miss": "Miss",
+    "dr": "Dr.",
+    "dr.": "Dr.",
+    "doctor": "Dr.",
+    "engr": "Engr.",
+    "engr.": "Engr.",
+    "engineer": "Engr.",
+    "adv": "Adv.",
+    "adv.": "Adv.",
+    "advocate": "Adv.",
+    "prof": "Prof.",
+    "prof.": "Prof.",
+    "professor": "Prof.",
+    "barrister": "Barrister",
+    "capt": "Capt.",
+    "capt.": "Capt.",
+    "major": "Major",
+    "haji": "Haji",
+    "alhaj": "Al-Haj",
+    "al-haj": "Al-Haj"
+  };
+
+  const words = name.split(/\s+/).filter(Boolean);
+  const normalizedWords = [];
+  for (let idx = 0; idx < words.length; idx++) {
+    const w = words[idx];
+    const lowerW = w.toLowerCase().replace(/^[^\w]+|[^\w.]+$/g, "");
+    if (!lowerW) continue;
+    if (honorificMap[lowerW]) {
+      normalizedWords.push(honorificMap[lowerW]);
+      continue;
+    }
+    if (idx > 0 && /^(?:ul|al|bin|ibn)$/i.test(w)) {
+      normalizedWords.push(w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+      continue;
+    }
+    const cleanWord = w.replace(/^[^\w]+|[^\w.]+$/g, "");
+    normalizedWords.push(cleanWord.charAt(0).toUpperCase() + cleanWord.slice(1).toLowerCase());
+  }
+
+  name = normalizedWords.join(" ");
+  name = name.replace(/\.{2,}/g, ".");
+
+  return name.trim();
+}
+
 function parseWooCommerceAddressBlock(source) {
   if (!source) return { name: "", phone: "", address: "", paymentMethod: "" };
 
@@ -2764,7 +3180,7 @@ function parseWooCommerceAddressBlock(source) {
   const displayAddress = normalizeDisplayAddress(cleanTokens.join(", "), name);
 
   return {
-    name: name,
+    name: normalizeCustomerName(name),
     phone: phone,
     address: displayAddress,
     paymentMethod: paymentMethod
@@ -3021,6 +3437,87 @@ function extractItemNameWithSize(nameEl, context) {
 }
 
 /**
+ * Universal Advance Delivery Payment & Transaction Extractor
+ * Detects advance delivery charge payments (৳50, ৳90, ৳100, ৳150, ৳180, etc.),
+ * payment channels (bKash, Nagad, Rocket, Upay), and TrxID from order notes, comments, or customer messages.
+ */
+function extractAdvancePayment(text, explicitAdvance) {
+  let explicitAmount = 0;
+  if (explicitAdvance !== undefined && explicitAdvance !== null && explicitAdvance !== "") {
+    const num = parseInt(bengaliToAsciiDigits(String(explicitAdvance)).replace(/\D/g, ""), 10);
+    if (!isNaN(num) && num > 0) explicitAmount = num;
+  }
+
+  if (!text || typeof text !== "string") {
+    if (explicitAmount > 0) {
+      return { hasAdvance: true, amount: explicitAmount, method: "Advance", trxId: "" };
+    }
+    return { hasAdvance: false, amount: 0, method: "", trxId: "" };
+  }
+
+  const clean = text.trim();
+  let amount = explicitAmount;
+  let method = "";
+  let trxId = "";
+
+  // 1. Transaction ID (TrxID)
+  const trxMatch = clean.match(/(?:TrxID|Trx\s*Id|Transaction\s*ID|ট্রানজেকশন\s*আইডি|Trx|ট্রানজেকশন)[:\s#ঃ=]*([a-zA-Z0-9]{6,16})/i);
+  if (trxMatch) {
+    trxId = trxMatch[1].trim();
+  }
+
+  // 2. Payment Channel
+  const methodMatch = clean.match(/(?:^|[\s,;।–\-])(bkash|nagad|rocket|upay|বিকাশ|নগদ|রকেট|উপায়)(?:$|[\s,;।–\-])/i);
+  if (methodMatch) {
+    const rawM = methodMatch[1].toLowerCase();
+    if (rawM.includes("bkash") || rawM.includes("বিকাশ")) method = "bKash";
+    else if (rawM.includes("nagad") || rawM.includes("নগদ")) method = "Nagad";
+    else if (rawM.includes("rocket") || rawM.includes("রকেট")) method = "Rocket";
+    else if (rawM.includes("upay") || rawM.includes("উপায়")) method = "Upay";
+    else method = "bKash";
+  } else {
+    method = "Advance";
+  }
+
+  // 3. Amount extraction if not explicitly provided
+  if (amount === 0) {
+    const advPatterns = [
+      /(?:advance|paid\s*advance|adv|অগ্রিম|পেইড|পরিশোধিত)[\s:ঃ#\-]+(?:tk|৳|bdt)?\s*([০-৯0-9]+)/i,
+      /(?:tk|৳|bdt)?\s*([০-৯0-9]+)\s*(?:tk|৳|টাকা)?\s*(?:advance|adv|paid|অগ্রিম|পরিশোধিত)/i,
+      /(?:bkash|nagad|rocket|বিকাশ|নগদ)\s*[:ঃ#\-]?\s*(?:tk|৳)?\s*([০-৯0-9]+)\s*(?:advance|adv|অগ্রিম)?/i
+    ];
+
+    for (const p of advPatterns) {
+      const m = clean.match(p);
+      if (m && m[1]) {
+        const asciiNum = bengaliToAsciiDigits(m[1]).replace(/\D/g, "");
+        const val = parseInt(asciiNum, 10);
+        if (val >= 30 && val <= 10000) {
+          amount = val;
+          break;
+        }
+      }
+    }
+  }
+
+  if (amount > 0) {
+    return {
+      hasAdvance: true,
+      amount: amount,
+      method: method || "Advance",
+      trxId: trxId
+    };
+  }
+
+  return {
+    hasAdvance: false,
+    amount: 0,
+    method: "",
+    trxId: trxId
+  };
+}
+
+/**
  * Normalize and clean customer, delivery, and ordered product details
  */
 function normalizeCustomerAndOrderData(rawDetails) {
@@ -3040,17 +3537,11 @@ function normalizeCustomerAndOrderData(rawDetails) {
   }
 
   // 2. Customer Name (proper casing and clean)
-  let name = (d.name || "").trim().replace(/\s+/g, " ");
-  if (isInvalidCustomerName(name) && parsedBlock && parsedBlock.name) {
-    name = parsedBlock.name;
+  let rawCandidateName = (d.name || "").trim();
+  if (isInvalidCustomerName(rawCandidateName) && parsedBlock && parsedBlock.name) {
+    rawCandidateName = parsedBlock.name;
   }
-  name = name.replace(/^(?:Customer|Name|বিলিং|গ্রাহক|নাম)[:\s-]*/i, "").trim();
-  name = name.replace(/(?:\+?880|0)?1[3-9]\d{8}/g, "").replace(/\S+@\S+\.\S+/g, "").trim();
-  if (name) {
-    if (name === name.toUpperCase() || name === name.toLowerCase()) {
-      name = name.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-    }
-  }
+  let name = normalizeCustomerName(rawCandidateName);
 
   // 3. Address
   let address = parsedBlock && parsedBlock.address ? parsedBlock.address : rawAddr;
@@ -3174,9 +3665,10 @@ function normalizeCustomerAndOrderData(rawDetails) {
                     (parsed.cityType && parsed.cityType !== "Inside Dhaka") ||
                     (address && !address.toLowerCase().includes("dhaka"));
 
-  const insideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 50;
-  const outsideFee = Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 90;
-  const freeThreshold = Number(DEFAULT_QUICK_REPLY_CONFIG.freeShippingThreshold) || 2500;
+  const customCfg = d.config || d.pricingConfig || null;
+  const insideFee = (customCfg && Number(customCfg.insideDhakaFee)) || Number(DEFAULT_QUICK_REPLY_CONFIG.insideDhakaFee) || 50;
+  const outsideFee = (customCfg && Number(customCfg.outsideDhakaFee)) || Number(DEFAULT_QUICK_REPLY_CONFIG.outsideDhakaFee) || 90;
+  const freeThreshold = (customCfg && Number(customCfg.freeShippingThreshold)) || Number(DEFAULT_QUICK_REPLY_CONFIG.freeShippingThreshold) || 2500;
 
   const notesText = (d.notes || d.customerNote || d.customer_note || d.instruction || "").trim();
 
@@ -3262,6 +3754,21 @@ function normalizeCustomerAndOrderData(rawDetails) {
     finalCod = finalSubtotal !== "0" ? (Number(finalSubtotal) + realDeliveryFee).toString() : "0";
   }
 
+  // Extract and reconcile advance payment (e.g. customer paid ৳90 advance via bKash/Nagad)
+  const advInfo = extractAdvancePayment(
+    [rawNote, d.orderNotes, d.payment_note, d.notesText].filter(Boolean).join(" "),
+    d.advancePaid || d.advance || d.advance_amount
+  );
+  const advancePaid = advInfo.hasAdvance ? advInfo.amount : 0;
+  const advanceMethod = advInfo.method || "";
+  const advanceTrxId = advInfo.trxId || "";
+
+  if (advancePaid > 0 && finalCod && Number(finalCod) > 0) {
+    const codNum = Number(finalCod);
+    const reconciledCod = Math.max(0, codNum - advancePaid);
+    finalCod = reconciledCod.toString();
+  }
+
   return Object.assign({}, d, {
     orderId: (d.orderId || "").toString().trim().replace(/^#/, ""),
     name: name || (d.name ? d.name.trim() : "Customer"),
@@ -3276,6 +3783,9 @@ function normalizeCustomerAndOrderData(rawDetails) {
     subtotal: finalSubtotal,
     deliveryFee: realDeliveryFee,
     cod: finalCod,
+    advancePaid: advancePaid,
+    advanceMethod: advanceMethod,
+    advanceTrxId: advanceTrxId,
     isOutsideDhaka: isOutside,
     wasFalselyInsideDhaka: wasFalselyInside,
     isFreeShipping: isFreeShipping
@@ -3410,9 +3920,12 @@ function generateQuickReply(templateKey, params, customConfig) {
       }
       const addrText = p.address ? `\n📍 ডেলিভারি ঠিকানা: ${p.address}` : "";
       const phoneText = p.phone ? `\n📞 ফোন নম্বর: ${p.phone}` : "";
-      const codText = codVal ? `\n💰 মোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
+      let codText = codVal ? `\n💰 মোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
+      if (p.advancePaid && Number(p.advancePaid) > 0) {
+        codText = `\n💰 অগ্রিম পরিশোধিত: ৳${p.advancePaid} (${p.advanceMethod || "বিকাশ/নগদ"})\n💵 ডেলিভারির সময় অবশিষ্ট প্রদেয় (COD): ৳${codVal}`;
+      }
       let advText = "";
-      if (fee > 0 && (p.requestAdvance || p.isOutsideDhaka)) {
+      if (fee > 0 && !p.advancePaid && (p.requestAdvance || p.isOutsideDhaka)) {
         advText = `\n\nকুরিয়ার সার্ভিস শর্ত অনুযায়ী ডেলিভারি চার্জ ৳${fee} অগ্রিম প্রযোজ্য। বিকাশ (${cfg.bkashType || "Personal"}): ${cfg.bkashNumber || ""}`;
       }
 
@@ -3424,7 +3937,12 @@ ${store} থেকে আপনার অর্ডারটি${orderRef} কন
     }
 
     case "confirm_order": {
-      const codLine = codVal ? `\nমোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
+      let codLine = codVal ? `\nমোট প্রদেয় ক্যাশ-অন-ডেলিভারি (COD): ৳${codVal}` : "";
+      if (p.advancePaid && Number(p.advancePaid) > 0) {
+        const advMethodStr = p.advanceMethod || "বিকাশ/নগদ";
+        const trxStr = p.advanceTrxId ? ` (TrxID: ${p.advanceTrxId})` : "";
+        codLine = `\nঅগ্রিম পরিশোধিত: ৳${p.advancePaid} (${advMethodStr}${trxStr})\nডেলিভারির সময় অবশিষ্ট প্রদেয় (COD): ৳${codVal}`;
+      }
       return `আসসালামু আলাইকুম${nameGreeting}!
 ${store} থেকে আপনার অর্ডারটি${orderRef} সফলভাবে কনফার্ম করা হয়েছে।${codLine}
 
@@ -3449,6 +3967,18 @@ ${store} থেকে আপনার পার্সেলটি কুরি�
 ${tracking ? `ট্র্যাকিং আইডি: ${tracking}` : ""}${codLine}
 
 কুরিয়ার রাইডারের কল রিসিভ করে পার্সেলটি গ্রহণ করার জন্য অনুরোধ করা হলো। ধন্যবাদ!`;
+    }
+
+    case "ndr_rescue": {
+      const reasonStr = p.reason || p.issueLabel || "ডেলিভারি চেষ্টা ব্যর্থ হয়েছে";
+      const tracking = p.trackingId || orderNum || "";
+      return `আসসালামু আলাইকুম${nameGreeting}!
+${store} থেকে পাঠানো আপনার পার্সেলটি${orderRef} নিয়ে কুরিয়ার রাইডার ডেলিভারির চেষ্টা করেছিলেন, কিন্তু কোনো কারণে ডেলিভারি সম্পন্ন হয়নি (${reasonStr})।
+
+আপনি কি অনুগ্রহ করে জানাবেন আগামীকাল কখন আপনার লোকেশনে ডেলিভারি রি-অ্যাটেম্পট (পুনরায় চেষ্টা) করলে আপনার জন্য সুবিধা হবে? অথবা আপনার বিকল্প কোনো ফোন নম্বর বা ঠিকানা থাকলে অনুগ্রহ করে জানান।
+
+আমরা কুরিয়ার রাইডারকে আপডেট জানিয়ে দেব যাতে আপনি দ্রুত পার্সেলটি পেয়ে যান। ধন্যবাদ!
+— ${store}`;
     }
 
     case "advance_fee":
@@ -3545,17 +4075,25 @@ function extractStructuredOrderFromText(rawText) {
       if (addressText && addressText.includes(line)) continue;
       if (/(?:cod|tk|টাকা|order|অর্ডার)/i.test(line)) continue;
       if (!isInvalidCustomerName(line) && line.length >= 2 && line.length <= 35) {
-        name = line.replace(/^(?:mr\.?|md\.?|মো\.?|মোঃ)\s*/i, "").trim();
+        name = normalizeCustomerName(line);
         break;
       }
     }
+  }
+
+  // 6. Advance Payment Extraction
+  const advInfo = extractAdvancePayment(clean);
+  let finalCod = cod;
+  if (advInfo.hasAdvance && advInfo.amount > 0 && finalCod && Number(finalCod) > 0) {
+    const remaining = Math.max(0, Number(finalCod) - advInfo.amount);
+    finalCod = remaining.toString();
   }
 
   const isOutside = parsedAddr.cityType === "Outside Dhaka";
   const fee = isOutside ? 90 : 50;
 
   return {
-    name: name || "Customer",
+    name: normalizeCustomerName(name) || "Customer",
     phone: phone,
     address: parsedAddr.streetAddress || addressText,
     district: parsedAddr.district,
@@ -3567,7 +4105,10 @@ function extractStructuredOrderFromText(rawText) {
     isOutsideDhaka: isOutside,
     hasFalseDhaka: parsedAddr.hasFalseDhaka || false,
     deliveryFee: fee,
-    cod: cod || (fee ? String(fee) : "0")
+    advancePaid: advInfo.hasAdvance ? advInfo.amount : 0,
+    advanceMethod: advInfo.method || "",
+    advanceTrxId: advInfo.trxId || "",
+    cod: finalCod || (fee ? String(fee) : "0")
   };
 }
 
@@ -3605,6 +4146,7 @@ const PARSER_EXPORTS = {
   normalizeCustomerAndOrderData,
   parseWooCommerceAddressBlock,
   isInvalidCustomerName,
+  normalizeCustomerName,
   extractItemNameWithSize,
   cleanHtmlEntities,
   isExcludedMetaOrButtonRow,
@@ -3617,7 +4159,13 @@ const PARSER_EXPORTS = {
   isRoadReference,
   buildFullAddress,
   normalizeDisplayAddress,
-  extractStructuredOrderFromText
+  extractStructuredOrderFromText,
+  BD_POSTCODE_RANGES,
+  getDistrictFromPostcode,
+  extractAdvancePayment,
+  loadPathaoZoneIndex,
+  lookupPathaoCity,
+  lookupPathaoZone
 };
 
 if (typeof window !== "undefined") {

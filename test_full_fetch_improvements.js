@@ -286,7 +286,7 @@ function runRemainingTests() {
         addEventListener: () => {}
       };
     }
-    return { style: {}, classList: { add: () => {}, remove: () => {} }, addEventListener: () => {} };
+    return { style: {}, classList: { add: () => {}, remove: () => {} }, appendChild: () => {}, remove: () => {}, addEventListener: () => {} };
   };
   global.document.body = { appendChild: () => {} };
 
@@ -698,7 +698,48 @@ function runRemainingTests() {
 
   console.log("  ✅ Missing phone automatically resolved and cached for Order #19105 with instant rating render!");
 
+  // ---------------------------------------------------------------------------
+  // Test 11: WooCommerce District ISO Code (BD-01..BD-64) Conversion (<select> & AJAX)
+  // ---------------------------------------------------------------------------
+  console.log("\n▶ Test 11: Testing WooCommerce ISO District Code -> District Name Conversion...");
+  const ajaxOrderBD26 = woocommerce.parseWooCommerceAjaxOrderDetails({
+    success: true,
+    data: {
+      id: 20068,
+      total: "1251",
+      shipping: {
+        first_name: "Boro Dealer",
+        last_name: "Sahadat",
+        address_1: "Mithamian Sadar Heliped",
+        city: "Mithamain",
+        state: "BD-26",
+        postcode: "2370",
+        phone: "01613385883"
+      },
+      line_items: [{ name: "DEEN Navy Trousers - M", qty: 1, total: "1251" }]
+    }
+  });
+  assert.ok(ajaxOrderBD26 && ajaxOrderBD26.address.includes("Kishoreganj"), `AJAX shipping.state BD-26 must resolve to Kishoreganj, got '${ajaxOrderBD26 && ajaxOrderBD26.address}'`);
+  assert.ok(!ajaxOrderBD26.address.includes("BD-26"), `Raw BD-26 code must be converted, got '${ajaxOrderBD26.address}'`);
+
+  const selectHtmlBD15 = `
+    <input name="_shipping_first_name" value="Rashed Khan" />
+    <input name="_shipping_address_1" value="Boalmari Bazar" />
+    <input name="_shipping_city" value="Boalmari" />
+    <select id="_shipping_state" name="_shipping_state">
+      <option value="BD-13">Dhaka</option>
+      <option value="BD-15" selected="selected">Faridpur</option>
+    </select>
+    <input name="_shipping_postcode" value="7860" />
+    <input name="_billing_phone" value="01711223344" />
+    <input name="_order_total" value="1590" />
+  `;
+  const parsedSelectOrder = woocommerce.parseOrderEditPageHTML(selectHtmlBD15, "20070");
+  assert.ok(parsedSelectOrder && parsedSelectOrder.address.includes("Faridpur"), `<select name="_shipping_state"> BD-15 must resolve to Faridpur, got '${parsedSelectOrder && parsedSelectOrder.address}'`);
+  assert.strictEqual(parsedSelectOrder.district, "Faridpur", "Detected district must be Faridpur");
+  console.log("  ✅ WooCommerce AJAX & <select> BD-XX ISO codes accurately converted to district names!");
+
   console.log("\n==================================================");
-  console.log("🎉 ALL 10 FULL FETCH, RATING COLUMN & AUTOMATION TESTS PASSED 100%!");
+  console.log("🎉 ALL 11 FULL FETCH, RATING COLUMN & AUTOMATION TESTS PASSED 100%!");
   console.log("==================================================");
 }

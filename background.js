@@ -11,6 +11,23 @@ try {
   }
 } catch (e) { }
 
+/**
+ * Modern network fetch timeout signal generator (AbortSignal.timeout Baseline with AbortController fallback)
+ */
+function createTimeoutSignal(timeoutMs = 6000) {
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    try {
+      return { signal: AbortSignal.timeout(timeoutMs), cleanup: () => {} };
+    } catch (e) {}
+  }
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  return {
+    signal: controller ? controller.signal : undefined,
+    cleanup: () => { if (timeoutId) clearTimeout(timeoutId); }
+  };
+}
+
 if (typeof chrome !== "undefined" && chrome.runtime) {
   function safeCreateContextMenu(options) {
     try {
@@ -170,6 +187,24 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
       } else if (request && request.action === "guess_address_online") {
         handleOnlineAddressGuess(request.query, sendResponse);
         return true; // Keep message channel open for async response
+      } else if (request && request.action === "create_steadfast_order") {
+        handleCreateSteadfastOrder(request.orderData || request.data || request)
+          .then(res => sendResponse(res))
+          .catch(err => sendResponse({ success: false, error: err ? err.message : String(err) }));
+        return true;
+      } else if (request && request.action === "inject_xlsx_script") {
+        const tabId = (sender && sender.tab && sender.tab.id) || request.tabId;
+        if (tabId && chrome.scripting && chrome.scripting.executeScript) {
+          chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ["xlsx.mini.min.js"]
+          }, () => {
+            sendResponse({ success: true, injected: true });
+          });
+          return true;
+        }
+        sendResponse({ success: false, reason: "No tabId or scripting permission" });
+        return false;
       } else if (request && request.action === "evaluate_optimal_courier") {
         const couriersModule = (typeof DeenCouriers !== "undefined" ? DeenCouriers : null) || (typeof require !== "undefined" ? (() => { try { return require("./courier-adapters.js"); } catch (e) { return null; } })() : null);
         if (couriersModule && typeof couriersModule.evaluateOptimalCourier === "function") {
@@ -200,14 +235,20 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
         }
         return true;
       } else if (request && request.action === "get_ndr_alerts") {
-        const storageModule = (typeof DeenStorage !== "undefined" ? DeenStorage : null) || (typeof require !== "undefined" ? (() => { try { return require("./storage-engine.js"); } catch (e) { return null; } })() : null);
-        if (storageModule && typeof storageModule.getNDRAlertsAsync === "function") {
-          storageModule.getNDRAlertsAsync().then(alerts => sendResponse({ success: true, alerts })).catch(() => sendResponse({ success: false, alerts: [] }));
-          return true;
-        } else {
-          sendResponse({ success: true, alerts: [] });
-          return true;
-        }
+        (async () => {
+          try {
+            const storageModule = (typeof DeenStorage !== "undefined" ? DeenStorage : null) || (typeof require !== "undefined" ? (() => { try { return require("./storage-engine.js"); } catch (e) { return null; } })() : null);
+            if (storageModule && typeof storageModule.getNDRAlertsAsync === "function") {
+              const alerts = await storageModule.getNDRAlertsAsync();
+              sendResponse({ success: true, alerts });
+            } else {
+              sendResponse({ success: true, alerts: [] });
+            }
+          } catch (err) {
+            sendResponse({ success: false, alerts: [], error: err ? err.message : String(err) });
+          }
+        })();
+        return true;
       } else if (request && request.action === "notify_ndr_alert") {
         if (typeof chrome !== "undefined" && chrome.notifications && chrome.notifications.create) {
           const alert = request.alert || {};
@@ -230,11 +271,14 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
           return false;
         }
       } else if (request && request.action === "check_for_updates") {
-        checkForExtensionUpdate(Boolean(request.force)).then(info => {
-          sendResponse({ success: true, ...info });
-        }).catch(err => {
-          sendResponse({ success: false, error: err.message });
-        });
+        (async () => {
+          try {
+            const info = await checkForExtensionUpdate(Boolean(request.force));
+            sendResponse({ success: true, ...info });
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
         return true;
       } else if (request && request.action === "dismiss_update") {
         if (request.commit && chrome.storage && chrome.storage.local) {
@@ -255,15 +299,20 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
         }
         return true;
       } else if (request && request.action === "load_env_runtime") {
-        loadRuntimeEnv().then(creds => {
-          sendResponse({
-            success: Boolean(creds && (creds.PATHAO_CLIENT_ID || creds.PATHAO_BEARER_TOKEN)),
-            hasCredentials: Boolean(creds && (creds.PATHAO_CLIENT_ID || creds.PATHAO_BEARER_TOKEN)),
-            clientId: creds && creds.PATHAO_CLIENT_ID ? creds.PATHAO_CLIENT_ID.substring(0, 4) + "..." : "",
-            username: creds ? (creds.PATHAO_USERNAME || "") : "",
-            hasBearerToken: Boolean(creds && creds.PATHAO_BEARER_TOKEN && creds.PATHAO_BEARER_TOKEN.length > 20)
-          });
-        });
+        (async () => {
+          try {
+            const creds = await loadRuntimeEnv();
+            sendResponse({
+              success: Boolean(creds && (creds.PATHAO_CLIENT_ID || creds.PATHAO_BEARER_TOKEN)),
+              hasCredentials: Boolean(creds && (creds.PATHAO_CLIENT_ID || creds.PATHAO_BEARER_TOKEN)),
+              clientId: creds && creds.PATHAO_CLIENT_ID ? creds.PATHAO_CLIENT_ID.substring(0, 4) + "..." : "",
+              username: creds ? (creds.PATHAO_USERNAME || "") : "",
+              hasBearerToken: Boolean(creds && creds.PATHAO_BEARER_TOKEN && creds.PATHAO_BEARER_TOKEN.length > 20)
+            });
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
         return true;
       } else if (request && request.action === "save_api_credentials") {
         if (request.credentials && chrome.storage && chrome.storage.local) {
@@ -294,56 +343,191 @@ if (typeof chrome !== "undefined" && chrome.runtime) {
           return false;
         }
       } else if (request && request.action === "get_api_credentials") {
-        loadRuntimeEnv().then(creds => {
-          sendResponse({
-            success: true,
-            clientId: creds ? (creds.PATHAO_CLIENT_ID || "") : "",
-            username: creds ? (creds.PATHAO_USERNAME || "") : "",
-            hasSecret: Boolean(creds && creds.PATHAO_CLIENT_SECRET),
-            hasPassword: Boolean(creds && creds.PATHAO_PASSWORD),
-            hasBearerToken: Boolean(creds && creds.PATHAO_BEARER_TOKEN)
-          });
-        });
+        (async () => {
+          try {
+            const creds = await loadRuntimeEnv();
+            sendResponse({
+              success: true,
+              clientId: creds ? (creds.PATHAO_CLIENT_ID || "") : "",
+              username: creds ? (creds.PATHAO_USERNAME || "") : "",
+              hasSecret: Boolean(creds && creds.PATHAO_CLIENT_SECRET),
+              hasPassword: Boolean(creds && creds.PATHAO_PASSWORD),
+              hasBearerToken: Boolean(creds && creds.PATHAO_BEARER_TOKEN)
+            });
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
         return true;
       } else if (request && request.action === "login_with_wordpress") {
-        authenticateWordPressUser(request.username, request.password, request.storeUrl).then(res => {
-          sendResponse(res);
-        }).catch(err => {
-          sendResponse({ success: false, error: err ? err.message : String(err) });
-        });
+        (async () => {
+          try {
+            const res = await authenticateWordPressUser(request.username, request.password, request.storeUrl);
+            sendResponse(res);
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
         return true;
       } else if (request && request.action === "sync_from_wordpress") {
-        syncFromWordPressAdmin(request.siteUrl).then(res => {
-          sendResponse(res);
-        }).catch(err => {
-          sendResponse({ success: false, error: err ? err.message : String(err) });
-        });
+        (async () => {
+          try {
+            const res = await syncFromWordPressAdmin(request.siteUrl);
+            sendResponse(res);
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
         return true;
       } else if (request && request.action === "get_wordpress_connection_status") {
-        getWordPressConnectionStatus().then(res => {
-          sendResponse(res);
-        }).catch(err => {
-          sendResponse({ connected: false, siteUrl: "https://deencommerce.com", error: err ? err.message : String(err) });
-        });
+        (async () => {
+          try {
+            const res = await getWordPressConnectionStatus();
+            sendResponse(res);
+          } catch (err) {
+            sendResponse({ connected: false, siteUrl: "https://deencommerce.com", error: err ? err.message : String(err) });
+          }
+        })();
         return true;
       } else if (request && request.action === "disconnect_wordpress") {
-        disconnectWordPressSession().then(res => {
-          sendResponse(res);
-        }).catch(err => {
-          sendResponse({ success: false, error: err ? err.message : String(err) });
-        });
+        (async () => {
+          try {
+            const res = await disconnectWordPressSession();
+            sendResponse(res);
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
         return true;
       } else if (request && request.action === "sync_wordpress_credentials") {
-        saveWordPressExtractedCredentials(request.credentials, request.siteUrl, request.adminUser, request.userRole, request.userPermissions, request.userLogin).then(res => {
-          sendResponse(res);
-        }).catch(err => {
-          sendResponse({ success: false, error: err ? err.message : String(err) });
-        });
+        (async () => {
+          try {
+            const res = await saveWordPressExtractedCredentials(request.credentials, request.siteUrl, request.adminUser, request.userRole, request.userPermissions, request.userLogin);
+            sendResponse(res);
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
+        return true;
+      } else if (request && request.action === "get_tinyfish_config") {
+        (async () => {
+          try {
+            const cfg = await getTinyFishConfig();
+            const key = cfg.apiKey || "";
+            const masked = key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : (key ? "••••" : "");
+            sendResponse({
+              success: true,
+              hasApiKey: Boolean(key),
+              maskedKey: masked,
+              browserProfile: cfg.browserProfile || "lite"
+            });
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
+        return true;
+      } else if (request && request.action === "save_tinyfish_config") {
+        (async () => {
+          try {
+            const res = await saveTinyFishConfig(request.config || request);
+            sendResponse(res);
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
+        return true;
+      } else if (request && request.action === "run_tinyfish_agent") {
+        (async () => {
+          try {
+            const res = await runTinyFishAutomation(request.payload || request, null, null);
+            sendResponse(res);
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
+        return true;
+      } else if (request && request.action === "cancel_tinyfish_run") {
+        (async () => {
+          try {
+            const res = await cancelTinyFishRun(request.runId);
+            sendResponse(res);
+          } catch (err) {
+            sendResponse({ success: false, error: err ? err.message : String(err) });
+          }
+        })();
         return true;
       } else {
         sendResponse({ status: "ignored" });
       }
       return false;
+    });
+  }
+
+  // Persistent Port listener for live TinyFish SSE streaming to Popup / Side Panel
+  if (chrome.runtime.onConnect && chrome.runtime.onConnect.addListener) {
+    chrome.runtime.onConnect.addListener((port) => {
+      if (!port || port.name !== "tinyfish_stream") return;
+      let controller = null;
+      let activeRunId = null;
+      let isFinished = false;
+
+      port.onDisconnect.addListener(() => {
+        if (controller && !isFinished) {
+          try { controller.abort(); } catch (e) {}
+          if (activeRunId) {
+            cancelTinyFishRun(activeRunId).catch(() => {});
+          }
+        }
+      });
+
+      port.onMessage.addListener((msg) => {
+        if (!msg || typeof msg !== "object") return;
+        if (msg.action === "cancel_tinyfish_run") {
+          isFinished = true;
+          if (controller) {
+            try { controller.abort(); } catch (e) {}
+          }
+          const runToCancel = msg.runId || activeRunId;
+          if (runToCancel) {
+            cancelTinyFishRun(runToCancel).then((res) => {
+              try { port.postMessage({ type: "tinyfish_cancelled", runId: runToCancel, result: res }); } catch (e) {}
+            }).catch(() => {});
+          }
+          return;
+        }
+
+        if (msg.action === "start_tinyfish_run") {
+          controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+          activeRunId = null;
+          isFinished = false;
+
+          runTinyFishAutomation(
+            msg.payload || msg,
+            (evt) => {
+              if (evt && evt.run_id) activeRunId = evt.run_id;
+              try {
+                port.postMessage({ type: "tinyfish_event", event: evt });
+              } catch (e) {}
+            },
+            controller ? controller.signal : undefined
+          ).then((finalRes) => {
+            isFinished = true;
+            try {
+              port.postMessage({ type: "tinyfish_done", result: finalRes });
+            } catch (e) {}
+          }).catch((err) => {
+            isFinished = true;
+            if (!err || err.name !== "AbortError") {
+              try {
+                port.postMessage({
+                  type: "tinyfish_error",
+                  error: err ? err.message : String(err)
+                });
+              } catch (e) {}
+            }
+          });
+        }
+      });
     });
   }
 }
@@ -585,8 +769,7 @@ async function authenticateWordPressUser(username, password, storeUrl) {
 
     // Attempt 1: Standard follow redirect (browser runtime in MV3)
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
+      const { signal, cleanup } = createTimeoutSignal(10000);
       const followRes = await fetch(`${baseUrl}/wp-login.php`, {
         method: "POST",
         redirect: "follow",
@@ -597,9 +780,9 @@ async function authenticateWordPressUser(username, password, storeUrl) {
           "User-Agent": "DEEN-Delivery-Parser-Auth-Agent/2.0"
         },
         body: bodyParams.toString(),
-        signal: controller.signal
+        signal
       });
-      clearTimeout(timeout);
+      cleanup();
 
       if (followRes.ok) {
         resText = await followRes.text();
@@ -793,17 +976,16 @@ async function syncFromWordPressAdmin(siteUrl) {
 
   for (const ep of candidateEndpoints) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7000);
+      const { signal, cleanup } = createTimeoutSignal(7000);
       const resp = await fetch(ep, {
         method: "GET",
         credentials: "include",
-        signal: controller.signal,
+        signal,
         headers: {
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         }
       });
-      clearTimeout(timeoutId);
+      cleanup();
 
       // Check if redirected to login
       if (resp.url && (resp.url.includes("wp-login.php") || resp.url.includes("redirect_to"))) {
@@ -1011,21 +1193,20 @@ async function issuePathaoTokenFromCredentials(creds) {
   ];
   for (const ep of externalEndpoints) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const { signal, cleanup } = createTimeoutSignal(6000);
       const extResp = await fetch(ep, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json"
         },
-        signal: controller.signal,
+        signal,
         body: JSON.stringify({
           client_id: creds.clientId,
           client_secret: creds.clientSecret
         })
       });
-      clearTimeout(timeoutId);
+      cleanup();
       if (extResp.ok) {
         const data = await extResp.json();
         if (data && data.access_token) {
@@ -1485,14 +1666,13 @@ async function fetchPathaoTokenFromWooCommercePlugin() {
  */
 async function fetchSteadfastRating(cleanPhone) {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const { signal, cleanup } = createTimeoutSignal(3500);
     const fetchResp = await fetch(`https://steadfast.com.bd/user/frauds/check/${cleanPhone}`, {
       headers: { "Accept": "application/json, text/plain, */*" },
       credentials: "include",
-      signal: controller.signal
+      signal
     });
-    clearTimeout(timeoutId);
+    cleanup();
     if (fetchResp.ok) {
       const ct = fetchResp.headers.get("content-type") || "";
       if (ct.includes("json")) {
@@ -1502,6 +1682,91 @@ async function fetchSteadfastRating(cleanPhone) {
     }
   } catch (e) { }
   return null;
+}
+
+/**
+ * Direct Steadfast Order Booking Engine
+ * Creates consignment via Steadfast API v1 using stored credentials or environment fallback
+ */
+async function handleCreateSteadfastOrder(orderData) {
+  if (!orderData) {
+    return { success: false, error: "Missing orderData" };
+  }
+
+  // Retrieve Steadfast credentials from local storage or environment
+  const storage = await new Promise(resolve => {
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get([
+        "wp_steadfast_api_key",
+        "wp_steadfast_secret_key",
+        "steadfast_api_key",
+        "steadfast_secret_key"
+      ], resolve);
+    } else {
+      resolve({});
+    }
+  });
+
+  const env = loadRuntimeEnv();
+  const apiKey = (storage && (storage.wp_steadfast_api_key || storage.steadfast_api_key)) || env.STEADFAST_API_KEY || "";
+  const secretKey = (storage && (storage.wp_steadfast_secret_key || storage.steadfast_secret_key)) || env.STEADFAST_SECRET_KEY || "";
+
+  if (!apiKey || !secretKey) {
+    return {
+      success: false,
+      error: "Steadfast API Key or Secret Key is missing. Please connect WordPress Admin or configure Steadfast in Settings."
+    };
+  }
+
+  const cod = orderData.cod !== undefined ? Number(orderData.cod) : (orderData.cod_amount !== undefined ? Number(orderData.cod_amount) : 0);
+  const payload = {
+    invoice: String(orderData.orderId || orderData.invoice || "").replace(/^#/, "").trim(),
+    recipient_name: orderData.name || orderData.recipient_name || "Customer",
+    recipient_phone: (typeof normalizeBDPhone === "function" ? normalizeBDPhone(orderData.phone || orderData.recipient_phone) : (orderData.phone || orderData.recipient_phone)) || "",
+    recipient_address: orderData.address || orderData.recipient_address || "",
+    cod_amount: cod,
+    note: orderData.notes || orderData.customerNote || orderData.note || ""
+  };
+
+  const { signal, cleanup } = createTimeoutSignal(10000);
+  try {
+    const resp = await fetch("https://steadfast.com.bd/api/v1/create_order", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Api-Key": apiKey,
+        "Secret-Key": secretKey
+      },
+      body: JSON.stringify(payload),
+      signal
+    });
+    cleanup();
+
+    const json = await resp.json();
+    if (resp.ok && (json.status === 200 || json.status === 201 || (json.consignment && json.consignment.consignment_id))) {
+      return {
+        success: true,
+        courier: "steadfast",
+        consignmentId: json.consignment ? json.consignment.consignment_id : null,
+        trackingCode: json.consignment ? json.consignment.tracking_code : null,
+        data: json
+      };
+    } else {
+      return {
+        success: false,
+        courier: "steadfast",
+        error: json.message || (typeof json.errors === "object" ? JSON.stringify(json.errors) : json.errors) || "Failed to book Steadfast order",
+        data: json
+      };
+    }
+  } catch (err) {
+    cleanup();
+    return {
+      success: false,
+      courier: "steadfast",
+      error: err ? err.message : String(err)
+    };
+  }
 }
 
 const customerRatingMemoryCache = new Map();
@@ -2194,8 +2459,23 @@ async function handleOnlineAddressGuess(rawQuery, sendResponse) {
     }
   }
 
-  // Limit to 3 candidate searches
-  const toSearch = candidates.slice(0, 3);
+  // Strip trailing landmark nouns (Heliped, Bazar, Ghat, Stand, etc.) for broader Nominatim matching
+  if (sanitized) {
+    const strippedLandmark = sanitized
+      .replace(/\b(?:heliped|helipad|bazar|bazaar|hat|haat|ghat|mor|more|chattar|chatar|stand|bus\s*stand|gate|mosque|masjid|school|college|hospital|clinic|market|plaza|tower)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (strippedLandmark && strippedLandmark.length >= 3 && !candidates.includes(strippedLandmark)) {
+      candidates.push(strippedLandmark);
+    }
+    const firstWord = strippedLandmark.split(/\s+/)[0];
+    if (firstWord && firstWord.length >= 4 && !candidates.includes(firstWord)) {
+      candidates.push(firstWord);
+    }
+  }
+
+  // Limit to 4 candidate searches
+  const toSearch = candidates.slice(0, 4);
   let resolvedResult = null;
 
   for (const candidate of toSearch) {
@@ -2204,22 +2484,21 @@ async function handleOnlineAddressGuess(rawQuery, sendResponse) {
       let data = null;
 
       if (typeof fetch === "function") {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const { signal, cleanup } = createTimeoutSignal(3500);
         try {
           const resp = await fetch(url, {
-            signal: controller.signal,
+            signal,
             headers: {
               "User-Agent": "DEEN-Delivery-Parser/1.0 (contact@deencommerce.com)",
               "Accept": "application/json"
             }
           });
-          clearTimeout(timeoutId);
+          cleanup();
           if (resp.ok) {
             data = await resp.json();
           }
         } catch (fetchErr) {
-          clearTimeout(timeoutId);
+          cleanup();
         }
       }
 
@@ -2246,6 +2525,299 @@ async function handleOnlineAddressGuess(rawQuery, sendResponse) {
       success: false,
       error: "Could not guess address online via OpenStreetMap"
     });
+  }
+}
+
+/**
+ * =============================================================================
+ * TinyFish Web Agent Client (SSE Streaming, BYOK Config & Run Cancellation)
+ * =============================================================================
+ */
+const TINYFISH_SSE_ENDPOINT = "https://agent.tinyfish.ai/v1/automation/run-sse";
+const activeTinyFishControllers = new Map();
+
+/**
+ * Retrieve TinyFish API key and default browser profile ("lite" | "stealth")
+ */
+async function getTinyFishConfig() {
+  let apiKey = "";
+  let browserProfile = "lite";
+
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    try {
+      const stored = await new Promise((resolve) =>
+        chrome.storage.local.get(["tinyfish_api_key", "tinyfish_browser_profile"], (res) => resolve(res || {}))
+      );
+      if (stored && typeof stored.tinyfish_api_key === "string" && stored.tinyfish_api_key.trim()) {
+        apiKey = stored.tinyfish_api_key.trim();
+      }
+      if (stored && (stored.tinyfish_browser_profile === "stealth" || stored.tinyfish_browser_profile === "lite")) {
+        browserProfile = stored.tinyfish_browser_profile;
+      }
+    } catch (e) {}
+  }
+
+  if (!apiKey) {
+    if (typeof self !== "undefined" && self.DEEN_ENV && self.DEEN_ENV.TINYFISH_API_KEY) {
+      apiKey = String(self.DEEN_ENV.TINYFISH_API_KEY).trim();
+    } else if (typeof process !== "undefined" && process.env && process.env.TINYFISH_API_KEY) {
+      apiKey = String(process.env.TINYFISH_API_KEY).trim();
+    } else {
+      try {
+        const envCreds = await loadRuntimeEnv();
+        if (envCreds && envCreds.TINYFISH_API_KEY) {
+          apiKey = String(envCreds.TINYFISH_API_KEY).trim();
+        }
+      } catch (e) {}
+    }
+  }
+
+  return { apiKey, browserProfile };
+}
+
+/**
+ * Persist TinyFish BYOK API key and browser profile into chrome.storage.local
+ */
+async function saveTinyFishConfig({ apiKey, browserProfile } = {}) {
+  const payload = {};
+  if (typeof apiKey === "string") {
+    const cleaned = apiKey.trim();
+    if (cleaned) {
+      payload.tinyfish_api_key = cleaned;
+      if (typeof self !== "undefined") {
+        self.DEEN_ENV = Object.assign({}, self.DEEN_ENV || {}, { TINYFISH_API_KEY: cleaned });
+      }
+    } else if (apiKey === "") {
+      payload.tinyfish_api_key = "";
+    }
+  }
+  if (browserProfile === "lite" || browserProfile === "stealth") {
+    payload.tinyfish_browser_profile = browserProfile;
+  }
+
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    await new Promise((resolve) => chrome.storage.local.set(payload, resolve));
+  }
+  const latest = await getTinyFishConfig();
+  return {
+    success: true,
+    hasApiKey: Boolean(latest.apiKey),
+    browserProfile: latest.browserProfile
+  };
+}
+
+/**
+ * Parse a single SSE line emitted by TinyFish /v1/automation/run-sse
+ */
+function parseTinyFishSSELine(line) {
+  if (!line || typeof line !== "string") return null;
+  const trimmed = line.replace(/\r$/, "").trim();
+  if (!trimmed || trimmed.startsWith(":")) return null;
+  if (!trimmed.startsWith("data:")) return null;
+
+  const rawPayload = trimmed.slice(5).trim();
+  if (!rawPayload || rawPayload === "[DONE]") return null;
+
+  try {
+    return JSON.parse(rawPayload);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Execute a goal-based browser automation task via TinyFish Web Agent API (SSE)
+ */
+async function runTinyFishAutomation(params = {}, onEvent = null, externalSignal = null) {
+  const rawUrl = params && params.url ? String(params.url).trim() : "";
+  const rawGoal = params && params.goal ? String(params.goal).trim() : "";
+
+  if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) {
+    return { success: false, error: "Valid target URL (http:// or https://) is required." };
+  }
+  if (!rawGoal) {
+    return { success: false, error: "Natural-language goal is required." };
+  }
+
+  const cfg = await getTinyFishConfig();
+  const apiKey = (params && params.apiKey !== undefined && params.apiKey !== null)
+    ? String(params.apiKey).trim()
+    : cfg.apiKey;
+  if (!apiKey) {
+    return {
+      success: false,
+      error: "Missing TinyFish API key. Configure it in AI Tools (TinyFish Cloud Web Agent)."
+    };
+  }
+
+  const profile = (params.browserProfile === "stealth" || params.browserProfile === "lite")
+    ? params.browserProfile
+    : (params.browser_profile === "stealth" || params.browser_profile === "lite" ? params.browser_profile : cfg.browserProfile || "lite");
+
+  let parsedSchema = params.outputSchema || params.output_schema || null;
+  if (typeof parsedSchema === "string" && parsedSchema.trim()) {
+    try {
+      parsedSchema = JSON.parse(parsedSchema);
+    } catch (e) {
+      return { success: false, error: `Invalid output_schema JSON: ${e.message}` };
+    }
+  }
+
+  const requestBody = {
+    url: rawUrl,
+    goal: rawGoal,
+    browser_profile: profile
+  };
+  if (parsedSchema && typeof parsedSchema === "object") {
+    requestBody.output_schema = parsedSchema;
+  }
+  if (params.agentConfig || params.agent_config) {
+    requestBody.agent_config = params.agentConfig || params.agent_config;
+  }
+  if (params.webhookUrl || params.webhook_url) {
+    requestBody.webhook_url = params.webhookUrl || params.webhook_url;
+  }
+
+  if (typeof fetch !== "function") {
+    return { success: false, error: "Global fetch API is unavailable in this runtime." };
+  }
+
+  const localController = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const effectiveSignal = externalSignal || (localController ? localController.signal : undefined);
+
+  const response = await fetch(TINYFISH_SSE_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "text/event-stream",
+      "X-API-Key": apiKey
+    },
+    signal: effectiveSignal,
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response || !response.ok) {
+    let errText = "";
+    try { errText = response ? await response.text() : ""; } catch (e) {}
+    return {
+      success: false,
+      status: response ? response.status : 0,
+      error: `TinyFish API error (${response ? response.status : "network"}): ${errText || "Request failed"}`
+    };
+  }
+
+  let runId = null;
+  let streamingUrl = null;
+  let terminalEvent = null;
+  const events = [];
+
+  const handleParsedEvent = (evt) => {
+    if (!evt || typeof evt !== "object") return;
+    events.push(evt);
+    if (evt.run_id && !runId) {
+      runId = evt.run_id;
+      if (localController) activeTinyFishControllers.set(runId, localController);
+    }
+    if (evt.streaming_url) {
+      streamingUrl = evt.streaming_url;
+    }
+    if (evt.type === "COMPLETE" || evt.type === "ERROR" || evt.type === "FAILED") {
+      terminalEvent = evt;
+    }
+    if (typeof onEvent === "function") {
+      try { onEvent(evt); } catch (e) {}
+    }
+  };
+
+  try {
+    if (response.body && typeof response.body.getReader === "function") {
+      const reader = response.body.getReader();
+      const decoder = typeof TextDecoder !== "undefined" ? new TextDecoder() : null;
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunkText = decoder
+          ? decoder.decode(value, { stream: true })
+          : (typeof Buffer !== "undefined" ? Buffer.from(value).toString("utf8") : String(value));
+        buffer += chunkText;
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          handleParsedEvent(parseTinyFishSSELine(line));
+        }
+      }
+      if (buffer.trim()) {
+        for (const line of buffer.split("\n")) {
+          handleParsedEvent(parseTinyFishSSELine(line));
+        }
+      }
+    } else if (typeof response.text === "function") {
+      const fullText = await response.text();
+      if (fullText.trim().startsWith("{")) {
+        try {
+          handleParsedEvent(JSON.parse(fullText));
+        } catch (e) {}
+      } else {
+        for (const line of fullText.split("\n")) {
+          handleParsedEvent(parseTinyFishSSELine(line));
+        }
+      }
+    } else if (typeof response.json === "function") {
+      handleParsedEvent(await response.json());
+    }
+  } finally {
+    if (runId) activeTinyFishControllers.delete(runId);
+  }
+
+  const terminalStatus = terminalEvent && terminalEvent.status ? String(terminalEvent.status).toUpperCase() : (terminalEvent ? "COMPLETED" : "UNKNOWN");
+  const isFailure = (terminalEvent && (terminalEvent.type === "ERROR" || terminalEvent.type === "FAILED")) ||
+                    terminalStatus === "FAILED" ||
+                    terminalStatus === "CANCELLED" ||
+                    terminalStatus === "ERROR";
+
+  return {
+    success: !isFailure && Boolean(terminalEvent),
+    runId,
+    status: terminalStatus,
+    streamingUrl,
+    result: terminalEvent ? (terminalEvent.result !== undefined ? terminalEvent.result : terminalEvent) : null,
+    error: isFailure ? (terminalEvent && (terminalEvent.error || terminalEvent.message) || `Run ended with status ${terminalStatus}`) : undefined,
+    events
+  };
+}
+
+/**
+ * Cancel an active TinyFish cloud run by run_id
+ */
+async function cancelTinyFishRun(runId) {
+  if (!runId) return { success: false, error: "Missing runId" };
+
+  const localCtrl = activeTinyFishControllers.get(runId);
+  if (localCtrl) {
+    try { localCtrl.abort(); } catch (e) {}
+    activeTinyFishControllers.delete(runId);
+  }
+
+  const cfg = await getTinyFishConfig();
+  if (!cfg.apiKey || typeof fetch !== "function") {
+    return { success: false, error: "Missing TinyFish API key or fetch unavailable" };
+  }
+
+  const { signal, cleanup } = createTimeoutSignal(5000);
+  try {
+    const resp = await fetch(`https://agent.tinyfish.ai/v1/runs/${encodeURIComponent(runId)}/cancel`, {
+      method: "POST",
+      headers: { "X-API-Key": cfg.apiKey },
+      signal
+    });
+    cleanup();
+    return { success: Boolean(resp && resp.ok), status: resp ? resp.status : 0, runId };
+  } catch (err) {
+    cleanup();
+    return { success: false, error: err ? err.message : String(err), runId };
   }
 }
 
@@ -2295,7 +2867,13 @@ if (typeof module !== "undefined" && module.exports) {
     issuePathaoTokenFromCredentials,
     loadRuntimeEnv,
     getPathaoToken,
-    fetchPathaoTokenFromWooCommercePlugin
+    fetchPathaoTokenFromWooCommercePlugin,
+    getTinyFishConfig,
+    saveTinyFishConfig,
+    parseTinyFishSSELine,
+    runTinyFishAutomation,
+    cancelTinyFishRun,
+    handleCreateSteadfastOrder
   };
 }
 

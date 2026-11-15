@@ -374,6 +374,82 @@
 
   /**
    * ---------------------------------------------------------------------------
+   * Tool: normalize_customer_name
+   * ---------------------------------------------------------------------------
+   * Standardizes customer recipient names, fixes honorifics, strips noise,
+   * and strictly preserves Bengali names byte-for-byte.
+   */
+  registryInstance.registerTool({
+    name: "normalize_customer_name",
+    description: "Standardize messy recipient customer names for parcel dispatch, receipts, and address labels. Formats Title Casing, standardizes honorifics (Md., Mst., Dr., Engr., Adv., Prof., Haji), strips emojis, order IDs, phones, and emails, while preserving Bengali names byte-for-byte.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        rawName: {
+          type: "string",
+          description: "Raw unformatted customer name"
+        }
+      },
+      required: ["rawName"]
+    },
+    readOnlyHint: true,
+    idempotentHint: true,
+    execute: async ({ rawName }) => {
+      const normFn = (typeof _parser.normalizeCustomerName === "function")
+        ? _parser.normalizeCustomerName
+        : (typeof normalizeCustomerName === "function" ? normalizeCustomerName : (n => (n || "").trim()));
+
+      const normalized = normFn(rawName);
+      return {
+        success: true,
+        normalizedName: normalized,
+        originalName: rawName || ""
+      };
+    }
+  });
+
+  /**
+   * ---------------------------------------------------------------------------
+   * Tool: extract_advance_payment
+   * ---------------------------------------------------------------------------
+   * Extracts advance delivery charge payments (৳50, ৳90, ৳100, ৳150, ৳180, etc.),
+   * payment channels (bKash, Nagad, Rocket, Upay), and TrxID from order notes or messages.
+   */
+  registryInstance.registerTool({
+    name: "extract_advance_payment",
+    description: "Detect and extract advance delivery charge payments (৳50, ৳90, ৳100, ৳150, ৳180), payment methods (bKash, Nagad, Rocket, Upay), and transaction IDs (TrxID) from order notes, SMS, or customer chat.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: {
+          type: "string",
+          description: "Order note, customer comment, or transaction text"
+        },
+        explicitAmount: {
+          type: "number",
+          description: "Optional explicit advance payment amount"
+        }
+      },
+      required: ["text"]
+    },
+    readOnlyHint: true,
+    idempotentHint: true,
+    execute: async ({ text, explicitAmount }) => {
+      const advFn = (typeof _parser.extractAdvancePayment === "function")
+        ? _parser.extractAdvancePayment
+        : (typeof extractAdvancePayment === "function" ? extractAdvancePayment : null);
+
+      if (!advFn) {
+        return { success: false, error: "Advance payment engine not available" };
+      }
+
+      const res = advFn(text, explicitAmount);
+      return Object.assign({ success: true }, res);
+    }
+  });
+
+  /**
+   * ---------------------------------------------------------------------------
    * Tool 4: calculate_delivery_fee
    * ---------------------------------------------------------------------------
    * Computes inside (৳50) vs outside (৳90) shipping fee with auto-correction
@@ -1056,6 +1132,80 @@
   });
 
   /**
+   * 15. Run TinyFish Cloud Web Agent
+   * Executes a goal-based autonomous browser workflow via TinyFish SSE API.
+   */
+  registryInstance.registerTool({
+    name: "run_tinyfish_web_agent",
+    description: "Run an autonomous TinyFish cloud browser agent from a starting URL and natural-language goal, optionally enforcing a structured JSON output schema.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Target starting URL (must start with http:// or https://)."
+        },
+        goal: {
+          type: "string",
+          description: "Natural-language instructions describing what data to extract or actions to perform."
+        },
+        browserProfile: {
+          type: "string",
+          enum: ["lite", "stealth"],
+          description: "Cloud browser profile: 'lite' (default, fast) or 'stealth' (anti-bot protection)."
+        },
+        outputSchema: {
+          type: "object",
+          description: "Optional JSON Schema object to structure the returned agent output."
+        }
+      },
+      required: ["url", "goal"]
+    },
+    readOnlyHint: false,
+    consequentialHint: true,
+    execute: async (params) => {
+      const p = params || {};
+      const url = p.url ? String(p.url).trim() : "";
+      const goal = p.goal ? String(p.goal).trim() : "";
+
+      if (!url || !/^https?:\/\//i.test(url)) {
+        return { success: false, error: "A valid http(s) URL is required." };
+      }
+      if (!goal) {
+        return { success: false, error: "A natural-language goal is required." };
+      }
+
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        return new Promise((resolve) => {
+          chrome.runtime.sendMessage(
+            {
+              action: "run_tinyfish_agent",
+              payload: {
+                url,
+                goal,
+                browserProfile: p.browserProfile || p.browser_profile || "lite",
+                outputSchema: p.outputSchema || p.output_schema
+              }
+            },
+            (res) => {
+              if (chrome.runtime.lastError) {
+                resolve({ success: false, error: chrome.runtime.lastError.message });
+              } else {
+                resolve(res || { success: false, error: "No response from background TinyFish worker." });
+              }
+            }
+          );
+        });
+      }
+
+      return {
+        success: false,
+        error: "TinyFish Web Agent requires Chrome Extension background runtime (chrome.runtime.sendMessage)."
+      };
+    }
+  });
+
+  /**
    * ---------------------------------------------------------------------------
    * Cross-Context Window Messaging Bridge
    * ---------------------------------------------------------------------------
@@ -1086,6 +1236,56 @@
       }
     });
   }
+
+  /**
+   * ---------------------------------------------------------------------------
+   * Tool 15: reconcile_courier_invoice
+   * ---------------------------------------------------------------------------
+   * Cross-references courier payout statements against store orders
+   */
+  registryInstance.registerTool({
+    name: "reconcile_courier_invoice",
+    description: "Audit courier payment statement / invoice records against store orders to detect COD shortages, delivery fee overcharges, and revenue leakage.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        invoiceRecords: {
+          type: "array",
+          description: "Array of courier payout invoice rows (each having orderId, collected_amount, delivery_charge, net_payable)"
+        },
+        storeOrders: {
+          type: "array",
+          description: "Array of store WooCommerce orders (each having orderId, cod, isOutsideDhaka)"
+        }
+      },
+      required: ["invoiceRecords"]
+    },
+    readOnlyHint: true,
+    execute: async (params) => {
+      const p = params || {};
+      const invRecords = Array.isArray(p.invoiceRecords) ? p.invoiceRecords : [];
+      const stOrders = Array.isArray(p.storeOrders) ? p.storeOrders : [];
+
+      let assistant = null;
+      if (typeof DeenAssistant !== "undefined") {
+        assistant = DeenAssistant;
+      } else if (typeof require !== "undefined") {
+        try { assistant = require("./deen-assistant.js"); } catch (e) {}
+      }
+
+      if (assistant && typeof assistant.reconcileCourierInvoices === "function") {
+        return {
+          success: true,
+          ...assistant.reconcileCourierInvoices(invRecords, stOrders)
+        };
+      }
+
+      return {
+        success: false,
+        error: "DEEN Assistant reconciliation engine unavailable."
+      };
+    }
+  });
 
   // CommonJS export for unit testing
   if (typeof module !== "undefined" && module.exports) {

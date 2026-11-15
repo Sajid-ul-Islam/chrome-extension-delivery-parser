@@ -201,11 +201,7 @@
         renderWidget(container);
       });
 
-      container.querySelector("#deen-btn-excel").addEventListener("click", () => {
-        if (!records.length) {
-          showToast("No parcels detected on this page!");
-          return;
-        }
+      function executeExcelExport() {
         try {
           const todayStr = new Date().toISOString().split("T")[0];
           exportToXLSX(records, `pathao_deliveries_${todayStr}.xlsx`);
@@ -214,6 +210,20 @@
           console.error("Excel export error:", e);
           exportToCSV(records, `pathao_deliveries_${new Date().toISOString().split("T")[0]}.csv`);
           showToast(`Exported as CSV (Excel fallback)!`);
+        }
+      }
+
+      container.querySelector("#deen-btn-excel").addEventListener("click", () => {
+        if (!records.length) {
+          showToast("No parcels detected on this page!");
+          return;
+        }
+        if (typeof XLSX === "undefined" && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({ action: "inject_xlsx_script" }, () => {
+            executeExcelExport();
+          });
+        } else {
+          executeExcelExport();
         }
       });
 
@@ -429,16 +439,19 @@
     const existing = document.getElementById("deen-ndr-modal-backdrop");
     if (existing) existing.remove();
 
-    const backdrop = document.createElement("div");
+    const backdrop = document.createElement("dialog");
     backdrop.id = "deen-ndr-modal-backdrop";
     backdrop.className = "deen-ndr-modal-backdrop";
+    if (typeof backdrop.setAttribute === "function") {
+      backdrop.setAttribute("aria-label", "DEEN Non-Delivery Report Rescue Center");
+    }
     backdrop.innerHTML = `
       <div class="deen-ndr-modal">
         <div class="deen-ndr-modal-header">
           <div class="deen-ndr-modal-title">
             <span>🚨 DEEN Non-Delivery Report (NDR) Rescue Center</span>
           </div>
-          <button class="deen-ndr-modal-close" id="deen-ndr-close">✕</button>
+          <button class="deen-ndr-modal-close" id="deen-ndr-close" aria-label="Close dialog">✕</button>
         </div>
         <div class="deen-ndr-modal-body">
           ${alerts.map((a, i) => `
@@ -458,10 +471,19 @@
     `;
 
     document.body.appendChild(backdrop);
+    if (typeof backdrop.showModal === "function") {
+      try { backdrop.showModal(); } catch (e) {}
+    }
+    const closeDialog = () => {
+      if (typeof backdrop.close === "function") {
+        try { backdrop.close(); } catch (e) {}
+      }
+      backdrop.remove();
+    };
     const closeBtn = backdrop.querySelector("#deen-ndr-close");
-    if (closeBtn) closeBtn.addEventListener("click", () => backdrop.remove());
+    if (closeBtn) closeBtn.addEventListener("click", closeDialog);
     backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) backdrop.remove();
+      if (e.target === backdrop) closeDialog();
     });
 
     backdrop.querySelectorAll(".deen-ndr-card-btn").forEach(btn => {
@@ -512,19 +534,21 @@
     if (!inputEl) return false;
 
     const proto = (typeof HTMLTextAreaElement !== "undefined" && inputEl instanceof HTMLTextAreaElement)
-      ? window.HTMLTextAreaElement.prototype
-      : window.HTMLInputElement.prototype;
-    const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      ? (window.HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : null)
+      : (typeof window !== "undefined" && window.HTMLInputElement ? window.HTMLInputElement.prototype : null);
+    const nativeSetter = proto ? Object.getOwnPropertyDescriptor(proto, "value")?.set : null;
     if (nativeSetter) {
       nativeSetter.call(inputEl, value);
     } else {
       inputEl.value = value;
     }
 
-    inputEl.dispatchEvent(new Event("input", { bubbles: true }));
-    inputEl.dispatchEvent(new Event("change", { bubbles: true }));
-    if (shouldBlur) {
-      inputEl.dispatchEvent(new Event("blur", { bubbles: true }));
+    if (typeof inputEl.dispatchEvent === "function") {
+      inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+      inputEl.dispatchEvent(new Event("change", { bubbles: true }));
+      if (shouldBlur) {
+        inputEl.dispatchEvent(new Event("blur", { bubbles: true }));
+      }
     }
     return true;
   }
@@ -737,7 +761,9 @@
       cod: document.querySelector("input[id*='amount_to_collect'], input[name*='amount_to_collect'], input[id*='cod'], input[name*='cod'], input[placeholder*='Amount' i], input[placeholder*='টাকা' i]"),
       citySelect: document.querySelector("input#city_id, [id*='city'] input, .ant-select[id*='city'] input, [data-testid*='city'] input, input[placeholder*='City' i], input[placeholder*='শহর' i]"),
       zoneSelect: document.querySelector("input#zone_id, [id*='zone'] input, .ant-select[id*='zone'] input, [data-testid*='zone'] input, input[placeholder*='Zone' i], input[placeholder*='থানা' i]"),
-      areaSelect: document.querySelector("input#area_id, [id*='area'] input, .ant-select[id*='area'] input, [data-testid*='area'] input, input[placeholder*='Area' i]")
+      areaSelect: document.querySelector("input#area_id, [id*='area'] input, .ant-select[id*='area'] input, [data-testid*='area'] input, input[placeholder*='Area' i]"),
+      instruction: document.querySelector("textarea[id*='instruction'], input[id*='instruction'], textarea[name*='instruction'], input[name*='instruction'], textarea[placeholder*='Instruction' i], textarea[placeholder*='নির্দেশনা' i], textarea[placeholder*='Special' i]"),
+      itemTypeSelect: document.querySelector("input#item_type, [id*='item_type'] input, input[placeholder*='Item Type' i]")
     };
   }
 
@@ -808,6 +834,146 @@
         clearInterval(intervalId);
       }
     }, interval);
+  }
+
+  /**
+   * Inject inline Customer Name Normalizer option directly beneath Pathao Merchant recipient name input
+   */
+  function injectMerchantNameNormalizer(explicitInput) {
+    if (typeof document === "undefined") return null;
+    const fields = !explicitInput ? findPathaoRecipientFields() : null;
+    const nameInput = explicitInput || (fields && fields.name);
+    if (!nameInput || !nameInput.parentNode) return null;
+    if (!nameInput.dataset) nameInput.dataset = {};
+
+    if (nameInput.dataset.deenMerchantHelperInjected === "true" && nameInput._deenMerchantBar) {
+      return nameInput._deenMerchantBar;
+    }
+
+    let normFn = typeof normalizeCustomerName === "function" ? normalizeCustomerName : null;
+    if (!normFn && typeof require !== "undefined") {
+      try { normFn = require("./parser.js").normalizeCustomerName; } catch (e) {}
+    }
+    if (!normFn) return null;
+
+    let autoEnabled = nameInput.dataset.deenAutoNameEnabled !== "false";
+
+    const bar = document.createElement("div");
+    bar.id = "deen-merchant-name-helper";
+    bar.className = "deen-merchant-name-helper";
+    bar.innerHTML = `
+      <span class="deen-merchant-name-badge">👤 Smart Name</span>
+      <button type="button" class="deen-merchant-name-btn" id="deen-merchant-btn-name-clean" title="Normalize capitalization, honorifics & remove phone/noise">
+        ✨ Normalize Name
+      </button>
+      <button type="button" class="deen-merchant-name-btn revert" id="deen-merchant-btn-name-revert" style="display: none;" title="Restore original unformatted name">
+        ↩️ Revert
+      </button>
+      <span class="deen-merchant-name-status" id="deen-merchant-name-status"></span>
+      <label class="deen-merchant-name-auto" title="Auto-normalize recipient name on blur">
+        <input type="checkbox" id="deen-merchant-chk-auto-name" checked />
+        <span>Auto</span>
+      </label>
+    `;
+
+    if (typeof nameInput.parentNode.appendChild === "function") {
+      nameInput.parentNode.appendChild(bar);
+    }
+    nameInput.dataset.deenMerchantHelperInjected = "true";
+    nameInput._deenMerchantBar = bar;
+
+    const btnClean = typeof bar.querySelector === "function" ? bar.querySelector("#deen-merchant-btn-name-clean") : null;
+    const btnRevert = typeof bar.querySelector === "function" ? bar.querySelector("#deen-merchant-btn-name-revert") : null;
+    const chkAuto = typeof bar.querySelector === "function" ? bar.querySelector("#deen-merchant-chk-auto-name") : null;
+    const statusEl = typeof bar.querySelector === "function" ? bar.querySelector("#deen-merchant-name-status") : null;
+
+    const syncBarState = () => {
+      const orig = nameInput.dataset.deenOriginalName || "";
+      const cur = nameInput.value || "";
+      if (btnRevert && btnRevert.style) {
+        btnRevert.style.display = (orig && orig !== cur) ? "inline-flex" : "none";
+      }
+    };
+
+    const runNormalize = () => {
+      const raw = nameInput.value || "";
+      if (!raw.trim()) return;
+      if (!nameInput.dataset.deenOriginalName) {
+        nameInput.dataset.deenOriginalName = raw;
+      }
+      const cleaned = normFn(raw);
+      if (cleaned && cleaned !== raw) {
+        setReactInputValue(nameInput, cleaned, true);
+        highlightField(nameInput);
+        if (statusEl) {
+          statusEl.textContent = "✅ Normalized";
+          setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 2200);
+        }
+      } else if (statusEl) {
+        statusEl.textContent = "✓ Clean";
+        setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 1800);
+      }
+      nameInput.dataset.deenNameNormalized = "true";
+      syncBarState();
+    };
+
+    if (chkAuto) {
+      chkAuto.checked = autoEnabled;
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        try {
+          chrome.storage.local.get(["deen_auto_normalize_name"], (res) => {
+            if (res && res.deen_auto_normalize_name === false) {
+              autoEnabled = false;
+              nameInput.dataset.deenAutoNameEnabled = "false";
+              chkAuto.checked = false;
+            }
+          });
+        } catch (e) {}
+      }
+      if (typeof chkAuto.addEventListener === "function") {
+        chkAuto.addEventListener("change", () => {
+          autoEnabled = Boolean(chkAuto.checked);
+          nameInput.dataset.deenAutoNameEnabled = autoEnabled ? "true" : "false";
+          if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+            try { chrome.storage.local.set({ deen_auto_normalize_name: autoEnabled }); } catch (e) {}
+          }
+          if (autoEnabled) runNormalize();
+        });
+      }
+    }
+
+    if (btnClean && typeof btnClean.addEventListener === "function") {
+      btnClean.addEventListener("click", (e) => {
+        if (e && typeof e.preventDefault === "function") e.preventDefault();
+        runNormalize();
+      });
+    }
+
+    if (btnRevert && typeof btnRevert.addEventListener === "function") {
+      btnRevert.addEventListener("click", (e) => {
+        if (e && typeof e.preventDefault === "function") e.preventDefault();
+        if (nameInput.dataset.deenOriginalName) {
+          setReactInputValue(nameInput, nameInput.dataset.deenOriginalName, true);
+          nameInput.dataset.deenNameNormalized = "false";
+          if (statusEl) {
+            statusEl.textContent = "↩️ Reverted";
+            setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 2000);
+          }
+          syncBarState();
+        }
+      });
+    }
+
+    if (!nameInput.dataset.deenMerchantBlurBound && typeof nameInput.addEventListener === "function") {
+      nameInput.dataset.deenMerchantBlurBound = "true";
+      nameInput.addEventListener("blur", () => {
+        if (autoEnabled) runNormalize();
+        else syncBarState();
+      });
+    }
+
+    syncBarState();
+    return bar;
   }
 
   function renderAddressHelperPill(details) {
@@ -906,10 +1072,19 @@
       }
     }
 
-    // 2. Fill Name if available
-    if (data.name && fields.name) {
-      setReactInputValue(fields.name, data.name, true);
-      highlightField(fields.name);
+    // 2. Fill Name if available & inject interactive Normalize Name option
+    if (fields.name) {
+      if (data.name) {
+        if (!fields.name.dataset) fields.name.dataset = {};
+        fields.name.dataset.deenOriginalName = data.name;
+        let normName = data.name;
+        if (typeof normalizeCustomerName === "function") {
+          normName = normalizeCustomerName(data.name);
+        }
+        setReactInputValue(fields.name, normName || data.name, true);
+        highlightField(fields.name);
+      }
+      injectMerchantNameNormalizer(fields.name);
     }
 
     // 3. Fill Address (Canonical Full Address preferred for courier clarity)
@@ -927,25 +1102,42 @@
     }
 
     // 4. Fill COD if provided
-    if (data.cod && fields.cod) {
-      setReactInputValue(fields.cod, data.cod, false);
+    if (data.cod !== undefined && data.cod !== null && data.cod !== "" && fields.cod) {
+      setReactInputValue(fields.cod, String(data.cod), false);
       highlightField(fields.cod);
     }
 
+    // 4b. Fill Special Instruction if provided
+    let instructionText = (data.instruction || data.customerNote || data.notes || "").trim();
+    if (data.advancePaid && Number(data.advancePaid) > 0) {
+      const advTag = `[Advance ৳${data.advancePaid} Paid via ${data.advanceMethod || 'bKash'}${data.advanceTrxId ? ' TrxID: ' + data.advanceTrxId : ''}]`;
+      instructionText = instructionText ? `${instructionText} - ${advTag}` : advTag;
+    }
+    if (instructionText && fields.instruction) {
+      setReactInputValue(fields.instruction, instructionText, true);
+      highlightField(fields.instruction);
+    }
+
     // 5. Select City and Zone with alias fallback & polling retry
-    const targetCity = (parsedAddr && parsedAddr.district) || data.district || "Dhaka";
-    const targetZone = (parsedAddr && parsedAddr.zone) || data.zone || "";
+    const targetCity = (parsedAddr && (parsedAddr.pathaoCityName || parsedAddr.district)) || data.district || "Dhaka";
+    const targetZone = (parsedAddr && (parsedAddr.pathaoZoneName || parsedAddr.zone)) || data.zone || "";
 
     let cityAliases = [];
     if (typeof BD_DISTRICTS !== "undefined") {
       const dObj = BD_DISTRICTS.find(d => d.name.toLowerCase() === targetCity.toLowerCase());
-      if (dObj) cityAliases = dObj.aliases;
+      if (dObj) cityAliases = [...(dObj.aliases || [])];
+    }
+    if (parsedAddr && parsedAddr.pathaoCityName && !cityAliases.includes(parsedAddr.pathaoCityName)) {
+      cityAliases.push(parsedAddr.pathaoCityName);
     }
 
     let zoneAliases = [];
     if (typeof OTHER_CITY_ZONES !== "undefined" && OTHER_CITY_ZONES[targetCity]) {
       const zObj = OTHER_CITY_ZONES[targetCity].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === targetZone.toLowerCase());
-      if (zObj && typeof zObj === "object") zoneAliases = zObj.aliases || [];
+      if (zObj && typeof zObj === "object") zoneAliases = [...(zObj.aliases || [])];
+    }
+    if (parsedAddr && parsedAddr.pathaoZoneName && !zoneAliases.includes(parsedAddr.pathaoZoneName)) {
+      zoneAliases.push(parsedAddr.pathaoZoneName);
     }
 
     if (fields.citySelect && targetCity) {
@@ -1451,11 +1643,27 @@
       scanAndDecorateNDRRows,
       showNDRRescueModal,
       initNDRRescueListener,
+      injectMerchantNameNormalizer,
       getNDRAlerts: () => cachedNDRAlerts
     };
   }
 
 })();
+
+  function initMerchantNameNormalizerObserver() {
+    if (typeof document === "undefined" || !document.body) return;
+    injectMerchantNameNormalizer();
+    if (typeof MutationObserver !== "undefined") {
+      let debounceTimer = null;
+      const obs = new MutationObserver(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          injectMerchantNameNormalizer();
+        }, 250);
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+    }
+  }
 
   // When arriving on page (e.g. after clicking trigger), immediately check for pending autofill
   checkPendingAutofill(0);
@@ -1464,11 +1672,11 @@
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => {
         checkPendingAutofill(0);
-        setTimeout(() => { initFloatingWidget(); initNDRRescueListener(); }, 800);
+        setTimeout(() => { initFloatingWidget(); initNDRRescueListener(); initMerchantNameNormalizerObserver(); }, 800);
       });
     } else {
       checkPendingAutofill(0);
-      setTimeout(() => { initFloatingWidget(); initNDRRescueListener(); }, 800);
+      setTimeout(() => { initFloatingWidget(); initNDRRescueListener(); initMerchantNameNormalizerObserver(); }, 800);
     }
   }
 })();

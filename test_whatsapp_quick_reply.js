@@ -1799,6 +1799,17 @@ assert.strictEqual(fullBenapoleBn, "বেনাপোল সিটি, থা�
 console.log("  ✅ normalizeAddressForPathao & buildFullAddress transform raw abbreviations, strip noise, resolve ISO codes, and produce modified full addresses!");
 
 // 2. Test in-popup DOM normalizer injection and interactive features
+const rawName1 = "  MD. RAFIQUL ISLAM  ";
+const mockShippingName = {
+  tagName: "INPUT",
+  id: "ptc_wc_shipping_name",
+  value: rawName1,
+  dataset: {},
+  listeners: {},
+  dispatchEvent: (evt) => {},
+  addEventListener: function(evt, handler) { this.listeners[evt] = handler; }
+};
+
 const mockShippingAddress = {
   tagName: "TEXTAREA",
   id: "ptc_wc_shipping_address",
@@ -1841,12 +1852,13 @@ const mockZoneSelect = {
   addEventListener: (evt, handler) => {}
 };
 
-const mockModalChildren = [mockShippingAddress, mockCitySelect, mockZoneSelect];
+const mockModalChildren = [mockShippingName, mockShippingAddress, mockCitySelect, mockZoneSelect];
 
 const mockPtcModal = {
   id: "ptc-custom-modal",
   querySelectorAll: (sel) => [],
   querySelector: (sel) => {
+    if (sel.includes("ptc_wc_shipping_name") || sel.includes("shipping_name")) return mockShippingName;
     if (sel.includes("ptc_wc_shipping_address")) return mockShippingAddress;
     if (sel.includes("city")) return mockCitySelect;
     if (sel.includes("zone")) return mockZoneSelect;
@@ -1864,6 +1876,7 @@ global.document.querySelectorAll = (sel) => {
 };
 global.document.getElementById = (id) => {
   if (id === "ptc-custom-modal") return mockPtcModal;
+  if (id === "ptc_wc_shipping_name") return mockShippingName;
   if (id === "ptc_wc_shipping_address") return mockShippingAddress;
   return null;
 };
@@ -1873,15 +1886,38 @@ initPathaoPluginAddressNormalizer();
 // Assert helper was created and injected
 const injectedHelper = mockModalChildren.find(c => c.id === "deen-ptc-address-helper");
 assert(injectedHelper, "Must inject #deen-ptc-address-helper inside Pathao modal");
+assert(injectedHelper.innerHTML.includes("deen-ptc-btn-auto-fix"), "Smart Address must provide ⚡ 1-Click Fix & Match hero button");
+assert(injectedHelper.innerHTML.includes("deen-ptc-suggested-box"), "Smart Address must provide 1-click live suggested preview box");
+assert(injectedHelper.innerHTML.includes("deen-ptc-ready-badge"), "Smart Address must provide readiness status badge");
+assert(injectedHelper.innerHTML.includes("deen-ptc-btn-copy-addr"), "Smart Address must provide 📋 Copy button");
+assert(injectedHelper.innerHTML.includes("deen-ptc-btn-more-tools"), "Smart Address must provide More tools toggle");
 assert(injectedHelper.innerHTML.includes("deen-ptc-btn-full"), "Smart Address must provide 📝 Full Address button");
 assert(injectedHelper.innerHTML.includes("deen-ptc-chips-row"), "Smart Address must provide interactive quick-insert chips row");
 
-// Assert auto-normalization occurred
+// Assert address auto-normalization occurred
 assert.strictEqual(mockShippingAddress.value, "House 12, Road 4, Block C, Sector 11, Flat 3B, Mirpur 10", "Shipping address input must be auto-normalized");
 assert.strictEqual(mockShippingAddress.dataset.deenRawAddress, rawAddr1, "Original raw address must be saved in dataset");
 assert.strictEqual(mockShippingAddress.dataset.deenNormalized, "true", "Normalized flag must be set");
 
-console.log("  ✅ Pathao popup modal #ptc_wc_shipping_address auto-normalized, Full Address button & chips row injected!");
+// Assert name auto-normalization occurred
+assert.strictEqual(mockShippingName.value, "Md. Rafiqul Islam", "Recipient name in Pathao modal must be auto-normalized to Title Case with honorific dot");
+assert.strictEqual(mockShippingName.dataset.deenOriginalName, rawName1, "Original raw customer name must be saved in dataset");
+assert.strictEqual(mockShippingName.dataset.deenNameNormalized, "true", "Name normalized flag must be set");
+
+// Test blur event listener for manual name edit
+mockShippingName.value = "sajid ul islam";
+if (mockShippingName.listeners["blur"]) {
+  mockShippingName.listeners["blur"]();
+}
+assert.strictEqual(mockShippingName.value, "Sajid Ul Islam", "Recipient name must auto-normalize on blur event");
+
+// Test Bengali recipient name normalization and preservation
+assert.strictEqual(wcIntegration.normalizeCustomerName("মোঃসাজিদ"), "মোঃ সাজিদ", "Bengali honorifics must be spaced properly");
+assert.strictEqual(wcIntegration.normalizeCustomerName("মোসাঃ শিরিন আক্তার"), "মোসাঃ শিরিন আক্তার", "Bengali names must be preserved byte-for-byte");
+assert.strictEqual(wcIntegration.normalizeCustomerName("Customer: Md. Tanvir (01715485035)"), "Md. Tanvir", "Noise and embedded phone numbers must be stripped from name");
+assert.strictEqual(wcIntegration.normalizeCustomerName("user@example.com"), "", "Invalid email string must return empty name");
+
+console.log("  ✅ Pathao popup modal #ptc_wc_shipping_address & #ptc_wc_shipping_name auto-normalized, Full Address button & chips row injected!");
 
 // -----------------------------------------------------------------------------
 // Test 23: Testing ISO 3166-2:BD District Code Detection (BD-01 to BD-64, e.g. BD-15 -> Faridpur)
@@ -1992,9 +2028,9 @@ renderRatingState(mockCard, ptcHighRiskData);
 
 assert(mockCard.classList.contains("rating-danger"), "High risk customer must apply 'rating-danger' class");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").textContent, "High Return Risk (40% Delivery Rate!)", "Badge text must match high risk");
-assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").style.backgroundColor, "#ef4444", "Badge color must be red");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").style.backgroundColor, "#b91c1c", "Badge color must be WCAG AA red");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-stat-rate").textContent, "40%", "Rate stat must be 40%");
-assert.strictEqual(mockCard.querySelector("#deen-ptc-stat-rate").style.color, "#ef4444", "Rate color must be red");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-stat-rate").style.color, "#b91c1c", "Rate color must be WCAG AA red");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-progress-fill").style.width, "40%", "Progress fill must be 40%");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-delivered-count").textContent, "📦 Delivered: 4", "Delivered count must match 4");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-cancelled-count").textContent, "⚠️ Returned: 6", "Cancelled count must match 6");
@@ -2016,7 +2052,7 @@ const ptcSafeData = {
 
 renderRatingState(mockCard, ptcSafeData);
 assert(mockCard.classList.contains("rating-safe"), "Safe customer must apply 'rating-safe' class");
-assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").style.backgroundColor, "#10b981", "Badge color must be green");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").style.backgroundColor, "#047857", "Badge color must be WCAG AA green");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-stat-rate").textContent, "95%", "Rate stat must be 95%");
 assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-btn-wa"), null, "Safe customer must not have WhatsApp Ask COD button");
 
@@ -2036,7 +2072,7 @@ const ptcNewCustomerData = {
 
 renderRatingState(mockCard, ptcNewCustomerData);
 assert(mockCard.classList.contains("rating-safe"), "New customer must apply 'rating-safe' class");
-assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").style.backgroundColor, "#3b82f6", "Badge color must be blue");
+assert.strictEqual(mockCard.querySelector("#deen-ptc-rating-badge").style.backgroundColor, "#0369a1", "Badge color must be WCAG AA blue");
 assert(mockCard.querySelector("#deen-ptc-stat-text").textContent.includes("Clean delivery history"), "Stat text must reflect clean new customer history");
 
 // 24d. In-Popup Modal Injection with Phone Input
@@ -2531,7 +2567,31 @@ assert(listeners28["guess_click"], "Smart Guess button listener must be register
 listeners28["guess_click"]({ preventDefault: () => {} });
 assert(mockAddrInput.value.includes("Cumilla"), "Smart guess must ensure Cumilla is present");
 
-console.log("  ✅ Pathao modal helper accurately identified Cumilla & Titas, completed full address, and added Smart Guess button!");
+// Verify Mithamian Sadar Heliped resolves to Kishoreganj > Mithamain (NEVER Dhaka!)
+const parserMod = require("./parser.js");
+const mithamianParsed = parserMod.parseBDAddress("Mithamian Sadar Heliped");
+assert.strictEqual(mithamianParsed.district, "Kishoreganj", "Mithamian must resolve to Kishoreganj district");
+assert.strictEqual(mithamianParsed.zone, "Mithamain", "Mithamian must resolve to Mithamain zone");
+const mithamianFull = parserMod.buildFullAddress("Mithamian Sadar Heliped");
+assert.strictEqual(mithamianFull, "Mithamian Sadar Heliped, Kishoreganj", `Expected clean canonical Kishoreganj address, got '${mithamianFull}'`);
+
+// Verify fallback to top-right marked location when online OpenStreetMap guess returns failure
+const origSendMsg28 = global.chrome.runtime.sendMessage;
+let matchClickedOnFallback = false;
+mockModalElements["#deen-ptc-btn-match"].click = () => { matchClickedOnFallback = true; };
+global.chrome.runtime.sendMessage = (msg, cb) => {
+  if (msg && msg.action === "guess_address_online" && typeof cb === "function") {
+    cb({ success: false, error: "Could not guess address online" });
+  }
+};
+mockAddrInput.value = "Mohajanpur Heliped Bazar";
+listeners28["guess_click"]({ preventDefault: () => {} });
+assert(mockAddrInput.value.includes("Dhaka") || mockAddrInput.value.includes("Mohajanpur"), "Fallback must apply locally detected city/zone when online guess fails");
+assert.strictEqual(matchClickedOnFallback, true, "Fallback must still match City & Zone dropdowns using top-right detected location");
+assert(mockModalElements["#deen-ptc-status-hint"].textContent.includes("Used detected:"), `Expected 'Used detected:' status on fallback, got '${mockModalElements["#deen-ptc-status-hint"].textContent}'`);
+global.chrome.runtime.sendMessage = origSendMsg28;
+
+console.log("  ✅ Pathao modal helper accurately identified Cumilla & Titas, Kishoreganj > Mithamain, and fell back to right-corner detected location when online guess failed!");
 
 // -----------------------------------------------------------------------------
 // Test 29: Inside Dhaka Delivery Fee Addition for Real Order #19046 (1494 + 50 = 1544)
@@ -2710,8 +2770,95 @@ assert(drawnTexts30.includes("৳2988"), "Canvas COD total must display ৳2988 
 
 console.log("  ✅ Free Shipping threshold policy verified: only orders > ৳2500 (or merchant manual override) receive Free Shipping!");
 
+// =========================================================================
+// Test 31: Advance Payment Extraction, COD Deduction & Receipt Canvas Integration
+// =========================================================================
+console.log("\n▶ Test 31: Testing Advance Payment Extraction & Intelligent COD Reconciliation...");
+
+const orderWithAdvance = {
+  orderId: "19055",
+  name: "Md. Tanvir Hossain",
+  phone: "01715485035",
+  address: "Kandirpar, Cumilla",
+  subtotal: "1500",
+  cod: "1590",
+  notes: "Customer paid advance ৳90 via bKash, TrxID: 9AB7C1D2",
+  items: [{ name: "Casual Denim Shirt - L", qty: 1, unitPrice: "1500", total: "1500" }]
+};
+
+const normAdv = wcIntegration.normalizeCustomerAndOrderData(orderWithAdvance);
+assert.strictEqual(normAdv.advancePaid, 90, "Advance paid amount must be 90");
+assert.strictEqual(normAdv.advanceMethod, "bKash", "Advance method must be bKash");
+assert.strictEqual(normAdv.advanceTrxId, "9AB7C1D2", "Advance TrxID must be 9AB7C1D2");
+assert.strictEqual(normAdv.cod, "1500", "Reconciled net COD must be 1500 (1590 - 90 = 1500)");
+
+// Verify Canvas Rendering with Advance Payment
+const drawnTexts31 = [];
+const mockCanvas31 = {
+  width: 0,
+  height: 0,
+  style: {},
+  getContext: () => ({
+    scale: () => {}, clearRect: () => {}, fillRect: () => {}, strokeRect: () => {},
+    fillText: (text) => drawnTexts31.push(text), strokeText: () => {},
+    measureText: (txt) => ({ width: (txt || "").length * 7 }),
+    beginPath: () => {}, moveTo: () => {}, lineTo: () => {}, quadraticCurveTo: () => {},
+    closePath: () => {}, stroke: () => {}, fill: () => {}, save: () => {}, restore: () => {},
+    drawImage: () => {}
+  }),
+  toBlob: (cb) => cb({ type: "image/png" })
+};
+
+global.document.createElement = (tag) => {
+  if (tag.toLowerCase() === "canvas") return mockCanvas31;
+  return mockElement(tag);
+};
+
+wcIntegration.renderOrderReceiptCanvas(normAdv);
+assert(drawnTexts31.some(t => t.includes("Advance: -৳90")), "Canvas must display advance payment breakdown");
+assert(drawnTexts31.some(t => t.includes("Advance ৳90 paid via bKash")), "Canvas COD subtitle must confirm advance payment");
+assert(drawnTexts31.includes("৳1500"), "Canvas COD must show remaining ৳1500");
+
+// Verify WhatsApp message reflects advance payment
+const waAdvMsg = generateQuickReply("confirm_order", normAdv);
+assert(waAdvMsg.includes("অগ্রিম পরিশোধিত: ৳90"), "WhatsApp confirm template must mention advance paid");
+assert(waAdvMsg.includes("TrxID: 9AB7C1D2"), "WhatsApp confirm template must mention TrxID");
+assert(waAdvMsg.includes("অবশিষ্ট প্রদেয় (COD): ৳1500"), "WhatsApp confirm template must show remaining COD");
+
+console.log("  ✅ Advance payment extraction, COD reconciliation & WhatsApp template integration verified!");
+
+// =========================================================================
+// Test 32: Comprehensive Bangladesh 64-District Postal Code Range Mapping
+// =========================================================================
+console.log("\n▶ Test 32: Testing 64-District Postal Code Range Mapping...");
+
+const postalSamples = [
+  { pc: "3519", exp: "Cumilla" },
+  { pc: "4000", exp: "Chattogram" },
+  { pc: "3100", exp: "Sylhet" },
+  { pc: "5800", exp: "Bogura" },
+  { pc: "7400", exp: "Jashore" },
+  { pc: "8200", exp: "Barishal" },
+  { pc: "1740", exp: "Gazipur" },
+  { pc: "1400", exp: "Narayanganj" },
+  { pc: "9300", exp: "Bagerhat" },
+  { pc: "4700", exp: "Cox's Bazar" }
+];
+
+for (const s of postalSamples) {
+  const fromPc = wcIntegration.getDistrictFromPostcode(s.pc);
+  assert.strictEqual(fromPc, s.exp, `Postcode ${s.pc} must resolve to ${s.exp}`);
+
+  const parsed = wcIntegration.parseBDAddress ? wcIntegration.parseBDAddress(`Noyakandi Bazar, ${s.pc}`) : null;
+  if (parsed) {
+    assert.strictEqual(parsed.district, s.exp, `parseBDAddress with postcode ${s.pc} must resolve district to ${s.exp}`);
+  }
+}
+
+console.log("  ✅ 64-District Postal Code Range Mapping verified across all Bangladesh divisions!");
+
 console.log("\n==================================================");
-console.log("🎉 ALL 30 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
+console.log("🎉 ALL 32 WHATSAPP ADVANCE COD, ORDER CONFIRMATION, PATHAO NORMALIZATION, HERMES API & CACHING TESTS PASSED!");
 console.log("==================================================");
 
 process.exit(0);

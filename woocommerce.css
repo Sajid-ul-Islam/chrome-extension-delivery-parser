@@ -4,16 +4,16 @@
  */
 
 :root {
-  --deen-orange: #ea580c;
-  --deen-orange-hover: #f97316;
-  --deen-orange-glow: rgba(234, 88, 12, 0.35);
+  --deen-orange: #c2410c;
+  --deen-orange-hover: #9a3412;
+  --deen-orange-glow: rgba(194, 65, 12, 0.35);
 
-  --deen-wa-deep: #075E54;
-  --deen-wa-teal: #128C7E;
-  --deen-wa-bright: #25D366;
+  --deen-wa-deep: #064e3b;
+  --deen-wa-teal: #0f766e;
+  --deen-wa-bright: #047857;
 
-  --deen-pathao-red: #dc2626;
-  --deen-pathao-hover: #ef4444;
+  --deen-pathao-red: #b91c1c;
+  --deen-pathao-hover: #991b1b;
 
   --deen-slate-50: #f8fafc;
   --deen-slate-100: #f1f5f9;
@@ -260,8 +260,8 @@ th.column-deen_rating {
 
 .deen-table-rating-pill.deen-rating-loading {
   background: var(--deen-slate-100);
-  color: var(--deen-slate-500);
-  border-color: var(--deen-slate-200);
+  color: var(--deen-slate-600);
+  border-color: var(--deen-slate-300);
   position: relative;
   overflow: hidden;
 }
@@ -420,27 +420,27 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
 }
 
 .deen-btn-ask-wa {
-  background: linear-gradient(135deg, #FF6000 0%, var(--deen-orange) 100%);
+  background: linear-gradient(135deg, #c2410c 0%, #9a3412 100%);
   color: #ffffff !important;
   box-shadow: 0 2px 8px var(--deen-orange-glow);
 }
 
 .deen-btn-ask-wa:hover {
-  background: linear-gradient(135deg, #ff7a1a 0%, #FF6000 100%);
+  background: linear-gradient(135deg, #9a3412 0%, #7c2d12 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(255, 96, 0, 0.45);
+  box-shadow: 0 4px 12px rgba(194, 65, 12, 0.45);
 }
 
 .deen-btn-copy-shot {
-  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
   color: #ffffff !important;
-  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
 }
 
 .deen-btn-copy-shot:hover {
-  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+  background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(99, 102, 241, 0.45);
+  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.45);
 }
 
 .deen-btn-open-dialog {
@@ -457,9 +457,15 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
 /* ==========================================================================
    Interactive Order Confirmation & Screenshot Modal Dialog
    ========================================================================== */
-.deen-order-modal-backdrop {
+.deen-order-modal-backdrop,
+dialog.deen-order-modal-backdrop {
   position: fixed;
   inset: 0;
+  border: none;
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  max-height: 100vh;
   background: rgba(15, 23, 42, 0.65);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -468,7 +474,16 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
   align-items: center;
   justify-content: center;
   padding: 16px;
+  overscroll-behavior: contain;
   animation: deenFadeIn 0.2s var(--deen-ease);
+}
+
+dialog.deen-order-modal-backdrop::backdrop {
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .deen-order-modal-card {
@@ -484,6 +499,7 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
   box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.05);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: var(--deen-slate-900);
+  overscroll-behavior: contain;
   animation: deenPopIn 0.25s var(--deen-ease);
 }
 
@@ -534,7 +550,7 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
 .deen-modal-close {
   background: transparent;
   border: none;
-  color: var(--deen-slate-400);
+  color: var(--deen-slate-600);
   font-size: 24px;
   line-height: 1;
   cursor: pointer;
@@ -593,7 +609,7 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
 }
 
 .phone-highlight {
-  color: #0284c7 !important;
+  color: #0369a1 !important;
   font-weight: 700 !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
@@ -703,8 +719,8 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
 }
 
 .deen-tab-btn.deen-tab-active {
-  background: linear-gradient(135deg, #FF6000 0%, var(--deen-orange) 100%);
-  border-color: var(--deen-orange);
+  background: linear-gradient(135deg, #c2410c 0%, #9a3412 100%);
+  border-color: #9a3412;
   color: #ffffff;
   box-shadow: 0 2px 6px var(--deen-orange-glow);
 }
@@ -748,7 +764,12 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
 
 .deen-order-msg-text:focus {
   border-color: var(--deen-orange);
-  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.15);
+  box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.18);
+}
+
+.deen-order-msg-text::placeholder {
+  color: var(--deen-slate-600);
+  opacity: 1;
 }
 
 /* Modal Footer */
@@ -896,40 +917,40 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
 }
 
 .deen-ptc-btn-full {
-  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
   color: #ffffff;
-  border-color: #0284c7;
-  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.3);
+  border-color: #0369a1;
+  box-shadow: 0 1px 3px rgba(3, 105, 161, 0.3);
 }
 
 .deen-ptc-btn-full:hover {
-  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  background: linear-gradient(135deg, #075985 0%, #0c4a6e 100%);
   transform: translateY(-1px);
   color: #ffffff;
 }
 
 .deen-ptc-btn-clean {
-  background: linear-gradient(135deg, #FF6000 0%, var(--deen-orange) 100%);
+  background: linear-gradient(135deg, #c2410c 0%, #9a3412 100%);
   color: #ffffff;
-  border-color: var(--deen-orange);
+  border-color: #9a3412;
   box-shadow: 0 1px 3px var(--deen-orange-glow);
 }
 
 .deen-ptc-btn-clean:hover {
-  background: linear-gradient(135deg, #ff7a1a 0%, #FF6000 100%);
+  background: linear-gradient(135deg, #9a3412 0%, #7c2d12 100%);
   transform: translateY(-1px);
   color: #ffffff;
 }
 
 .deen-ptc-btn-guess {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #047857 0%, #065f46 100%);
   color: #ffffff;
-  border-color: #059669;
-  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.3);
+  border-color: #065f46;
+  box-shadow: 0 1px 3px rgba(4, 120, 87, 0.35);
 }
 
 .deen-ptc-btn-guess:hover {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  background: linear-gradient(135deg, #065f46 0%, #064e3b 100%);
   transform: translateY(-1px);
   color: #ffffff;
 }
@@ -960,31 +981,124 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
 .deen-ptc-btn-match {
   background: #ffffff;
   color: #0369a1;
-  border-color: #bae6fd;
+  border-color: #7dd3fc;
 }
 
 .deen-ptc-btn-match:hover {
   background: #f0f9ff;
-  border-color: #7dd3fc;
-  color: #0284c7;
+  border-color: #38bdf8;
+  color: #075985;
 }
 
 .deen-ptc-btn-revert {
   background: #ffffff;
-  color: var(--deen-slate-500);
+  color: var(--deen-slate-600);
   border-color: var(--deen-slate-300);
 }
 
 .deen-ptc-btn-revert:hover {
   background: var(--deen-slate-100);
-  color: var(--deen-slate-700);
+  color: var(--deen-slate-800);
 }
 
 .deen-ptc-status-hint {
   font-size: 11px;
-  color: #16a34a;
+  color: #15803d;
   font-weight: 600;
   margin-left: 4px;
+}
+
+.deen-ptc-btn-hero {
+  background: linear-gradient(135deg, #c2410c 0%, #9a3412 100%);
+  color: #ffffff;
+  border-color: #9a3412;
+  font-weight: 700;
+  padding: 6px 13px;
+  box-shadow: 0 2px 6px rgba(194, 65, 12, 0.35);
+}
+
+.deen-ptc-btn-hero:hover {
+  background: linear-gradient(135deg, #9a3412 0%, #7c2d12 100%);
+  transform: translateY(-1px);
+  color: #ffffff;
+}
+
+.deen-ptc-btn-subtle {
+  background: transparent;
+  color: var(--deen-slate-600);
+  border-color: var(--deen-slate-300);
+}
+
+.deen-ptc-btn-subtle:hover {
+  background: var(--deen-slate-100);
+  color: var(--deen-slate-800);
+}
+
+.deen-ptc-ready-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--deen-radius-full);
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.deen-ptc-ready-badge.needs-attention {
+  background: #fef3c7;
+  color: #b45309;
+  border-color: #fcd34d;
+}
+
+.deen-ptc-suggested-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: #eff6ff;
+  border: 1px dashed #60a5fa;
+  border-radius: var(--deen-radius-sm);
+  padding: 6px 10px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: #1e3a8a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.deen-ptc-suggested-box:hover {
+  background: #dbeafe;
+  border-color: #2563eb;
+}
+
+.deen-ptc-suggested-cta {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #0369a1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.deen-ptc-chip.is-missing {
+  background: #eff6ff;
+  border-color: #38bdf8;
+  color: #0369a1;
+  font-weight: 700;
+}
+
+.deen-ptc-secondary-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--deen-slate-200);
 }
 
 .deen-ptc-bulk-helper {
@@ -996,8 +1110,41 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
   margin: 10px 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.deen-ptc-name-helper {
+  background: var(--deen-slate-50);
+  border: 1px solid var(--deen-slate-200);
+  border-left: 4px solid #0284c7;
+  border-radius: var(--deen-radius-md);
+  padding: 8px 12px;
+  margin: 6px 0 8px 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--deen-slate-800);
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.deen-ptc-auto-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--deen-slate-600);
+  cursor: pointer;
+  margin-left: auto;
+  user-select: none;
+}
+
+.deen-ptc-auto-label input[type="checkbox"] {
+  margin: 0;
+  accent-color: #0284c7;
+  cursor: pointer;
 }
 
 /* ==========================================================================
@@ -1054,7 +1201,7 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
   padding: 3px 9px;
   border-radius: var(--deen-radius-full);
   color: #ffffff;
-  background: #10b981;
+  background: #047857;
   display: inline-flex;
   align-items: center;
 }
@@ -1075,7 +1222,7 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
   font-size: 20px;
   font-weight: 800;
   line-height: 1;
-  color: #10b981;
+  color: #047857;
   min-width: 50px;
   font-variant-numeric: tabular-nums;
 }
@@ -1097,7 +1244,7 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
 
 .deen-ptc-rating-progress-fill {
   height: 100%;
-  background: #10b981;
+  background: #047857;
   border-radius: var(--deen-radius-full);
   transition: width 0.4s ease, background-color 0.3s ease;
 }
@@ -1183,7 +1330,7 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
 }
 
 .deen-wc-toast-action {
-  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
   color: #ffffff;
   border: none;
   border-radius: var(--deen-radius-sm);
@@ -1193,18 +1340,18 @@ table.wc-orders-list-table tbody tr.deen-high-risk-order-row:hover {
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s ease;
-  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
+  box-shadow: 0 2px 6px rgba(3, 105, 161, 0.35);
 }
 
 .deen-wc-toast-action:hover {
-  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  background: linear-gradient(135deg, #075985 0%, #0c4a6e 100%);
   transform: translateY(-1px);
 }
 
 .deen-wc-toast-close {
   background: transparent;
   border: none;
-  color: var(--deen-slate-400);
+  color: #cbd5e1;
   font-size: 18px;
   cursor: pointer;
   line-height: 1;

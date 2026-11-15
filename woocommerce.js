@@ -131,6 +131,16 @@
    * Resilient network fetch with timeout protection (prevents hanging network requests)
    */
   function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+    if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+      try {
+        const timeoutSignal = AbortSignal.timeout(timeoutMs);
+        const signal = options.signal ? (typeof AbortSignal.any === "function" ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal) : timeoutSignal;
+        const opts = Object.assign({}, options, { signal });
+        return fetch(url, opts);
+      } catch (e) {
+        // Fallback to manual AbortController below
+      }
+    }
     if (typeof AbortController === "undefined") {
       return fetch(url, options);
     }
@@ -263,8 +273,22 @@
       ""
     );
 
-    const shipParts = [shipping.address_1, shipping.address_2, shipping.city, shipping.state, shipping.postcode].filter(Boolean);
-    const billParts = [billing.address_1, billing.address_2, billing.city, billing.state, billing.postcode].filter(Boolean);
+    const resolveWcState = (raw) => {
+      if (!raw) return "";
+      const s = String(raw).trim();
+      let isoFn = typeof detectDistrictFromISOCode === "function" ? detectDistrictFromISOCode : null;
+      if (!isoFn && typeof _parser.detectDistrictFromISOCode === "function") isoFn = _parser.detectDistrictFromISOCode;
+      if (!isoFn && typeof require !== "undefined") {
+        try { isoFn = require("./parser.js").detectDistrictFromISOCode; } catch (e) {}
+      }
+      return (isoFn ? isoFn(s) : "") || s;
+    };
+
+    const shipState = resolveWcState(shipping.state);
+    const billState = resolveWcState(billing.state);
+
+    const shipParts = [shipping.address_1, shipping.address_2, shipping.city, shipState, shipping.postcode].filter(Boolean);
+    const billParts = [billing.address_1, billing.address_2, billing.city, billState, billing.postcode].filter(Boolean);
     const addrParts = shipParts.length > 0 ? shipParts : billParts;
 
     let address = normalizeDisplayAddress(addrParts.join(", "), name);
@@ -463,21 +487,35 @@
       const sa1Match = rawHtml.match(/name=['"]_?shipping_address_1['"][^>]*value=['"]([^'"]+)['"]/i);
       const sa2Match = rawHtml.match(/name=['"]_?shipping_address_2['"][^>]*value=['"]([^'"]+)['"]/i);
       const scityMatch = rawHtml.match(/name=['"]_?shipping_city['"][^>]*value=['"]([^'"]+)['"]/i);
-      const sstateMatch = rawHtml.match(/name=['"]_?shipping_state['"][^>]*value=['"]([^'"]+)['"]/i);
       const spostMatch = rawHtml.match(/name=['"]_?shipping_postcode['"][^>]*value=['"]([^'"]+)['"]/i);
 
       const ba1Match = rawHtml.match(/name=['"]_?billing_address_1['"][^>]*value=['"]([^'"]+)['"]/i);
       const ba2Match = rawHtml.match(/name=['"]_?billing_address_2['"][^>]*value=['"]([^'"]+)['"]/i);
       const bcityMatch = rawHtml.match(/name=['"]_?billing_city['"][^>]*value=['"]([^'"]+)['"]/i);
-      const bstateMatch = rawHtml.match(/name=['"]_?billing_state['"][^>]*value=['"]([^'"]+)['"]/i);
       const bpostMatch = rawHtml.match(/name=['"]_?billing_postcode['"][^>]*value=['"]([^'"]+)['"]/i);
+
+      const extractStateValueFromHtml = (html, fieldPattern) => {
+        const inpM = html.match(new RegExp(`name=['"]${fieldPattern}['"][^>]*value=['"]([^'"]+)['"]`, "i")) ||
+                     html.match(new RegExp(`value=['"]([^'"]+)['"][^>]*name=['"]${fieldPattern}['"]`, "i"));
+        if (inpM) return inpM[1];
+        const selM = html.match(new RegExp(`<select[^>]*name=['"]${fieldPattern}['"][^>]*>([\\s\\S]*?)<\\/select>`, "i"));
+        if (selM) {
+          const optM = selM[1].match(/<option[^>]*value=['"]([^'"]+)['"][^>]*\bselected\b/i) ||
+                       selM[1].match(/<option[^>]*\bselected\b[^>]*value=['"]([^'"]+)['"]/i);
+          if (optM) return optM[1];
+        }
+        return "";
+      };
+
+      const sstateRaw = extractStateValueFromHtml(rawHtml, "_?shipping_state");
+      const bstateRaw = extractStateValueFromHtml(rawHtml, "_?billing_state");
 
       let isoDetect = typeof detectDistrictFromISOCode === "function" ? detectDistrictFromISOCode : null;
       if (!isoDetect && typeof require !== "undefined") {
         try { isoDetect = require("./parser.js").detectDistrictFromISOCode; } catch (e) {}
       }
-      const sstateVal = sstateMatch ? (isoDetect ? (isoDetect(sstateMatch[1]) || sstateMatch[1]) : sstateMatch[1]) : "";
-      const bstateVal = bstateMatch ? (isoDetect ? (isoDetect(bstateMatch[1]) || bstateMatch[1]) : bstateMatch[1]) : "";
+      const sstateVal = sstateRaw ? (isoDetect ? (isoDetect(sstateRaw) || sstateRaw) : sstateRaw) : "";
+      const bstateVal = bstateRaw ? (isoDetect ? (isoDetect(bstateRaw) || bstateRaw) : bstateRaw) : "";
 
       const shipParts = [sa1Match ? sa1Match[1] : "", sa2Match ? sa2Match[1] : "", scityMatch ? scityMatch[1] : "", sstateVal, spostMatch ? spostMatch[1] : ""].filter(Boolean);
       const billParts = [ba1Match ? ba1Match[1] : "", ba2Match ? ba2Match[1] : "", bcityMatch ? bcityMatch[1] : "", bstateVal, bpostMatch ? bpostMatch[1] : ""].filter(Boolean);
@@ -711,13 +749,13 @@
       const sa1 = doc.querySelector("#_shipping_address_1, input[name='_shipping_address_1'], #shipping_address_1, input[name='shipping_address_1']");
       const sa2 = doc.querySelector("#_shipping_address_2, input[name='_shipping_address_2'], #shipping_address_2, input[name='shipping_address_2']");
       const scity = doc.querySelector("#_shipping_city, input[name='_shipping_city'], #shipping_city, input[name='shipping_city']");
-      const sstate = doc.querySelector("#_shipping_state, input[name='_shipping_state'], #shipping_state, input[name='shipping_state']");
+      const sstate = doc.querySelector("#_shipping_state, input[name='_shipping_state'], select[name='_shipping_state'], #shipping_state, input[name='shipping_state'], select[name='shipping_state']");
       const spost = doc.querySelector("#_shipping_postcode, input[name='_shipping_postcode'], #shipping_postcode, input[name='shipping_postcode']");
 
       const ba1 = doc.querySelector("#_billing_address_1, input[name='_billing_address_1'], #billing_address_1, input[name='billing_address_1']");
       const ba2 = doc.querySelector("#_billing_address_2, input[name='_billing_address_2'], #billing_address_2, input[name='billing_address_2']");
       const bcity = doc.querySelector("#_billing_city, input[name='_billing_city'], #billing_city, input[name='billing_city']");
-      const bstate = doc.querySelector("#_billing_state, input[name='_billing_state'], #billing_state, input[name='billing_state']");
+      const bstate = doc.querySelector("#_billing_state, input[name='_billing_state'], select[name='_billing_state'], #billing_state, input[name='billing_state'], select[name='billing_state']");
       const bpost = doc.querySelector("#_billing_postcode, input[name='_billing_postcode'], #billing_postcode, input[name='billing_postcode']");
 
       let isoDetectDom = typeof detectDistrictFromISOCode === "function" ? detectDistrictFromISOCode : null;
@@ -1261,6 +1299,15 @@
       notes = (notesEl.textContent || notesEl.innerText || "").trim();
     }
 
+    let extractAdv = typeof extractAdvancePayment === "function" ? extractAdvancePayment : null;
+    if (!extractAdv && typeof _parser !== "undefined" && typeof _parser.extractAdvancePayment === "function") {
+      extractAdv = _parser.extractAdvancePayment;
+    }
+    if (!extractAdv && typeof require !== "undefined") {
+      try { extractAdv = require("./parser.js").extractAdvancePayment; } catch (e) {}
+    }
+    const advData = extractAdv ? extractAdv(notes + " " + text) : { hasAdvance: false, amount: 0, method: "", trxId: "" };
+
     const isFreeShipping = /free\s*shipping|free\s*delivery|ফ্রি\s*শিপিং|ফ্রি\s*ডেলিভারি|বিনামূল্যে/i.test(text + " " + notes);
 
     return {
@@ -1272,6 +1319,10 @@
       address: normalizeDisplayAddress(address, customerName),
       notes: notes,
       customerNote: notes,
+      instruction: notes,
+      advancePaid: advData.hasAdvance ? advData.amount : 0,
+      advanceMethod: advData.method || "",
+      advanceTrxId: advData.trxId || "",
       items: items,
       district: parsed.district || "",
       zone: parsed.zone || "",
@@ -1301,6 +1352,10 @@
       postcode: payload.postcode || "",
       cod: payload.cod || "",
       orderId: payload.orderId || "",
+      instruction: payload.instruction || payload.notes || payload.customerNote || "",
+      advancePaid: payload.advancePaid || 0,
+      advanceMethod: payload.advanceMethod || "",
+      advanceTrxId: payload.advanceTrxId || "",
       source: "woocommerce",
       userTriggered: isUserTriggered,
       timestamp: Date.now()
@@ -1330,6 +1385,39 @@
           chrome.runtime.sendMessage({ action: "focus_or_open_pathao" }).catch(() => {});
         }
       });
+    }
+  }
+
+  /**
+   * Dispatch order directly to Steadfast Courier network via 1-click API
+   */
+  function dispatchToSteadfast(payload, callback = null) {
+    if (!isExtensionValid()) {
+      if (typeof callback === "function") callback({ success: false, error: "Extension invalidated" });
+      return;
+    }
+    if (!payload || !payload.phone) {
+      if (typeof callback === "function") callback({ success: false, error: "Missing phone" });
+      return;
+    }
+
+    const data = {
+      phone: payload.phone,
+      name: payload.name || "",
+      address: payload.address || "",
+      district: payload.district || "",
+      zone: payload.zone || "",
+      cod: payload.cod || "",
+      orderId: payload.orderId || "",
+      notes: payload.notes || payload.instruction || payload.customerNote || ""
+    };
+
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ action: "create_steadfast_order", orderData: data }, (response) => {
+        if (typeof callback === "function") callback(response);
+      });
+    } else if (typeof callback === "function") {
+      callback({ success: false, error: "Chrome runtime unavailable" });
     }
   }
 
@@ -1430,6 +1518,20 @@
   function normalizeCustomerAndOrderData(rawDetails) {
     if (typeof _parser.normalizeCustomerAndOrderData === "function") return _parser.normalizeCustomerAndOrderData(rawDetails);
     return Object.assign({}, rawDetails || {});
+  }
+
+  /**
+   * Recipient name normalizer for WooCommerce and Pathao modals
+   */
+  function normalizeCustomerName(rawName) {
+    if (typeof _parser.normalizeCustomerName === "function") return _parser.normalizeCustomerName(rawName);
+    if (typeof require !== "undefined") {
+      try { return require("./parser.js").normalizeCustomerName(rawName); } catch (e) {}
+    }
+    if (!rawName || typeof rawName !== "string") return "";
+    let name = rawName.trim();
+    if (!name || isInvalidCustomerName(name)) return "";
+    return name;
   }
 
   function getQuickReplyConfig(callback) {
@@ -2034,7 +2136,11 @@
     }
     const subtotalText = subtotalVal && subtotalVal !== "0" ? `Subtotal: ৳${subtotalVal}` : "";
     const feeText = isFree ? "Delivery: Free (৳0)" : `Delivery (${isOutside ? "Outside Dhaka" : "Inside Dhaka"}): ৳${feeCalc}`;
-    ctx.fillText(`${subtotalText}${subtotalText ? "  •  " : ""}${feeText}`, 36, curY + 10);
+    let advText = "";
+    if (details.advancePaid && Number(details.advancePaid) > 0) {
+      advText = `  •  Advance: -৳${details.advancePaid} (${details.advanceMethod || "Paid"})`;
+    }
+    ctx.fillText(`${subtotalText}${subtotalText ? "  •  " : ""}${feeText}${advText}`, 36, curY + 10);
 
     curY += 20;
     // Divider before totals
@@ -2061,7 +2167,11 @@
 
     ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     ctx.fillStyle = "#64748b";
-    ctx.fillText("Pay upon receiving your parcel", 40, curY + 42);
+    let codSubtitle = "Pay upon receiving your parcel";
+    if (details.advancePaid && Number(details.advancePaid) > 0) {
+      codSubtitle = `Advance ৳${details.advancePaid} paid via ${details.advanceMethod || "bKash"} • Pay remaining at delivery`;
+    }
+    ctx.fillText(codSubtitle, 40, curY + 42);
 
     // Large COD Amount on Right
     ctx.textAlign = "right";
@@ -2192,9 +2302,12 @@
         isOutsideDhaka: isOutside
       }, config) : `আসসালামু আলাইকুম ${details.name || ""}!\n${config.storeName || "DEEN Commerce"} থেকে আপনার অর্ডার #${details.orderId || ""} কনফার্ম করতে রিপ্লাই দিন।`;
 
-      const backdrop = document.createElement("div");
+      const backdrop = document.createElement("dialog");
       backdrop.id = "deen-order-confirm-modal";
       backdrop.className = "deen-order-modal-backdrop";
+      if (typeof backdrop.setAttribute === "function") {
+        backdrop.setAttribute("aria-labelledby", "deen-modal-order-title");
+      }
 
       const modal = document.createElement("div");
       modal.className = "deen-order-modal-card";
@@ -2204,9 +2317,9 @@
           <div class="deen-modal-title-box">
             <img src="${DEEN_LOGO_BASE64}" alt="DEEN" width="28" height="28" style="border-radius: 6px; vertical-align: middle; box-shadow: 0 2px 6px rgba(255,96,0,0.35); flex-shrink: 0;" />
             <span class="deen-modal-badge">🛍️ Order Confirmation</span>
-            <h3 class="deen-modal-title">DEEN Commerce — Order #${escapeHTML(details.orderId || "N/A")}</h3>
+            <h3 class="deen-modal-title" id="deen-modal-order-title">DEEN Commerce — Order #${escapeHTML(details.orderId || "N/A")}</h3>
           </div>
-          <button type="button" class="deen-modal-close" id="deen-modal-close-btn">&times;</button>
+          <button type="button" class="deen-modal-close" id="deen-modal-close-btn" aria-label="Close dialog">&times;</button>
         </div>
 
         <div class="deen-order-modal-body">
@@ -2246,14 +2359,14 @@
                   <span>Pathao Courier Intelligence</span>
                   <span id="deen-order-rating-grade-tag" style="display: none; background: #dcfce7; color: #15803d; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px;"></span>
                 </div>
-                <div id="deen-order-rating-text" style="font-size: 11.5px; color: #64748b;">⏳ Checking delivery history for ${escapeHTML(details.phone || "")}...</div>
+                <div id="deen-order-rating-text" style="font-size: 11.5px; color: #475569;">⏳ Checking delivery history for ${escapeHTML(details.phone || "")}...</div>
               </div>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
-              <div id="deen-order-rating-badge" style="font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 9999px; background: #e2e8f0; color: #64748b; white-space: nowrap;">
+              <div id="deen-order-rating-badge" style="font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 9999px; background: #e2e8f0; color: #475569; white-space: nowrap;">
                 Checking...
               </div>
-              <button type="button" id="deen-order-rating-refresh-btn" title="Refresh Courier Rating" style="background: none; border: none; cursor: pointer; font-size: 13px; color: #64748b; padding: 2px 4px;">🔄</button>
+              <button type="button" id="deen-order-rating-refresh-btn" title="Refresh Courier Rating" style="background: none; border: none; cursor: pointer; font-size: 13px; color: #475569; padding: 2px 4px;">🔄</button>
             </div>
           </div>
 
@@ -2261,10 +2374,10 @@
             <div class="deen-items-header" style="display: flex; justify-content: space-between; align-items: center;">
               <span>Ordered Products (${items.length})</span>
               <div style="display: flex; align-items: center; gap: 8px;">
-                <button type="button" id="deen-modal-free-delivery-toggle" style="background: ${details.isFreeShipping ? '#dcfce7' : '#f8fafc'}; color: ${details.isFreeShipping ? '#166534' : '#64748b'}; border: 1px solid ${details.isFreeShipping ? '#86efac' : '#cbd5e1'}; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; cursor: pointer;">
+                <button type="button" id="deen-modal-free-delivery-toggle" style="background: ${details.isFreeShipping ? '#dcfce7' : '#f8fafc'}; color: ${details.isFreeShipping ? '#166534' : '#475569'}; border: 1px solid ${details.isFreeShipping ? '#86efac' : '#cbd5e1'}; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; cursor: pointer;">
                   ${details.isFreeShipping ? "✅ Free Delivery: ON" : "🎁 Free Delivery: OFF"}
                 </button>
-                ${details.subtotal ? `<span style="color: #EA580C; font-size: 11px; font-weight: 600;">Subtotal: ৳${escapeHTML(details.subtotal)}</span>` : ""}
+                ${details.subtotal ? `<span style="color: #c2410c; font-size: 11px; font-weight: 600;">Subtotal: ৳${escapeHTML(details.subtotal)}</span>` : ""}
               </div>
             </div>
             <div class="deen-items-table-wrapper">
@@ -2286,7 +2399,7 @@
                       <tr>
                         <td class="item-name">${escapeHTML(it.name)}</td>
                         <td class="item-qty" style="text-align: center;">${it.qty || 1}</td>
-                        <td class="item-unit-price" style="text-align: right; color: #64748b;">${uPrice ? '৳' + escapeHTML(uPrice) : '-'}</td>
+                        <td class="item-unit-price" style="text-align: right; color: #475569;">${uPrice ? '৳' + escapeHTML(uPrice) : '-'}</td>
                         <td class="item-total" style="text-align: right; color: #0f172a; font-weight: 600;">${lTotal ? '৳' + escapeHTML(lTotal) : '-'}</td>
                       </tr>
                       `;
@@ -2329,6 +2442,9 @@
             </button>
           </div>
           <div class="deen-footer-right">
+            <button type="button" class="deen-btn-footer deen-btn-sf-cta" id="deen-footer-btn-steadfast" style="background:#0284c7; color:#ffffff; margin-right:8px; border-color:#0284c7;" title="Book order directly into Steadfast Courier network via 1-click API">
+              🚀 Send with Steadfast
+            </button>
             <button type="button" class="deen-btn-footer deen-btn-wa-cta" id="deen-footer-btn-send" title="Copy text and open WhatsApp chat">
               💬 Ask Customer to Confirm (WhatsApp)
             </button>
@@ -2338,18 +2454,28 @@
 
       backdrop.appendChild(modal);
       document.body.appendChild(backdrop);
+      if (typeof backdrop.showModal === "function") {
+        try { backdrop.showModal(); } catch (e) {}
+      }
+
+      const closeModal = () => {
+        if (typeof backdrop.close === "function") {
+          try { backdrop.close(); } catch (e) {}
+        }
+        backdrop.remove();
+        if (typeof document.removeEventListener === "function") {
+          document.removeEventListener("keydown", keyHandler);
+        }
+      };
 
       const closeBtn = modal.querySelector("#deen-modal-close-btn");
-      if (closeBtn) closeBtn.addEventListener("click", () => backdrop.remove());
+      if (closeBtn) closeBtn.addEventListener("click", closeModal);
       backdrop.addEventListener("click", (e) => {
-        if (e.target === backdrop) backdrop.remove();
+        if (e.target === backdrop) closeModal();
       });
       const keyHandler = (e) => {
         if (e.key === "Escape") {
-          backdrop.remove();
-          if (typeof document.removeEventListener === "function") {
-            document.removeEventListener("keydown", keyHandler);
-          }
+          closeModal();
         }
       };
       if (typeof document.addEventListener === "function") {
@@ -2386,8 +2512,8 @@
           ratingText.textContent = rating.riskLabel || "Customer Ready";
         }
         ratingBadge.textContent = rating.riskLabel || `${rating.successRate}% Success`;
-        ratingBadge.style.backgroundColor = rating.riskColor || (rating.riskLevel === "high" ? "#fee2e2" : "#dcfce7");
-        ratingBadge.style.color = rating.riskLevel === "high" ? "#b91c1c" : (rating.riskLevel === "medium" ? "#b45309" : "#15803d");
+        ratingBadge.style.backgroundColor = rating.riskLevel === "high" ? "#fee2e2" : (rating.riskLevel === "medium" ? "#fef3c7" : (rating.isNewCustomer ? "#eff6ff" : "#dcfce7"));
+        ratingBadge.style.color = rating.riskLevel === "high" ? "#b91c1c" : (rating.riskLevel === "medium" ? "#b45309" : (rating.isNewCustomer ? "#0369a1" : "#15803d"));
 
         // Automated High-Risk Alert & Advance Delivery Charge Gate
         const isHighRisk = rating.riskLevel === "high" ||
@@ -2472,7 +2598,7 @@
             details.deliveryFee = standardFee;
             details.cod = (subVal > 0 ? subVal + standardFee : Number(details.cod) + standardFee).toString();
             freeToggleBtn.style.background = "#f8fafc";
-            freeToggleBtn.style.color = "#64748b";
+            freeToggleBtn.style.color = "#475569";
             freeToggleBtn.style.borderColor = "#cbd5e1";
             freeToggleBtn.textContent = "🎁 Free Delivery: OFF";
             const delValEl = modal.querySelector("#deen-modal-delivery-val");
@@ -2528,6 +2654,44 @@
           const textToSend = textarea.value.trim() || currentMsg;
           injectWhatsAppMessage(textToSend, { phone: details.phone, openChat: true });
           backdrop.remove();
+        });
+      }
+
+      const sfBtn = modal.querySelector("#deen-footer-btn-steadfast");
+      if (sfBtn) {
+        sfBtn.addEventListener("click", () => {
+          sfBtn.disabled = true;
+          sfBtn.textContent = "🚀 Booking Steadfast...";
+          dispatchToSteadfast(details, (res) => {
+            sfBtn.disabled = false;
+            if (res && res.success) {
+              const code = res.trackingCode || res.consignmentId || "Success";
+              sfBtn.textContent = `✅ Booked: ${code}`;
+              sfBtn.style.background = "#15803d";
+              sfBtn.style.borderColor = "#15803d";
+              showWCToast(
+                `🚀 Steadfast order #${details.orderId} booked! Tracking: <strong>${code}</strong>`,
+                "📋 Copy Tracking",
+                () => {
+                  if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(code);
+                  }
+                }
+              );
+            } else {
+              sfBtn.textContent = "⚠️ Booking Failed";
+              sfBtn.style.background = "#b91c1c";
+              sfBtn.style.borderColor = "#b91c1c";
+              setTimeout(() => {
+                if (sfBtn) {
+                  sfBtn.textContent = "🚀 Send with Steadfast";
+                  sfBtn.style.background = "#0284c7";
+                  sfBtn.style.borderColor = "#0284c7";
+                }
+              }, 3000);
+              showWCToast(`⚠️ Steadfast Dispatch: ${res && res.error ? res.error : "Booking failed"}`);
+            }
+          });
         });
       }
 
@@ -3343,7 +3507,7 @@
 
           // Order was fetched successfully, but genuinely has no phone number in WooCommerce
           ratingCell.dataset.renderedPhone = "none";
-          ratingCell.innerHTML = `<span style="color:#94a3b8; font-size:11px; font-weight:500; cursor:pointer;" title="No mobile number entered for Order #${escapeHTML(orderId)}. Click to re-check.">No Phone</span>`;
+          ratingCell.innerHTML = `<span style="color:#475569; font-size:11px; font-weight:500; cursor:pointer;" title="No mobile number entered for Order #${escapeHTML(orderId)}. Click to re-check.">No Phone</span>`;
           ratingCell.onclick = () => {
             delete ratingCell.dataset.renderedPhone;
             delete ratingCell.dataset.fetchingOrderId;
@@ -3359,7 +3523,7 @@
     // No order ID and no phone
     if (!ratingCell.dataset.renderedPhone) {
       ratingCell.dataset.renderedPhone = "none";
-      ratingCell.innerHTML = `<span style="color:#94a3b8; font-size:11px; font-weight:500;">No Phone</span>`;
+      ratingCell.innerHTML = `<span style="color:#475569; font-size:11px; font-weight:500;">No Phone</span>`;
     }
   }
 
@@ -3620,7 +3784,7 @@
         } else {
           ratingPill.innerHTML = `🛡️ No Phone`;
           ratingPill.style.background = "#f1f5f9";
-          ratingPill.style.color = "#94a3b8";
+          ratingPill.style.color = "#475569";
         }
       };
 
@@ -3904,18 +4068,22 @@
       }
     }
 
+    const normalizedRiskColor = (!data.riskColor || ["#10b981", "#22c55e", "#f59e0b", "#ef4444", "#3b82f6", "#94a3b8"].includes(String(data.riskColor).toLowerCase()))
+      ? (data.riskLevel === "high" ? "#b91c1c" : (data.riskLevel === "medium" ? "#b45309" : (String(data.riskColor).toLowerCase() === "#94a3b8" ? "#475569" : ((data.isNewCustomer || String(data.riskColor).toLowerCase() === "#3b82f6") ? "#0369a1" : "#047857"))))
+      : data.riskColor;
+
     if (badge) {
       badge.className = "deen-ptc-rating-badge";
       badge.textContent = data.riskLabel || (data.successRate + "% Success");
       if (badge.style) {
-        badge.style.backgroundColor = data.riskColor || (data.riskLevel === "high" ? "#ef4444" : "#10b981");
+        badge.style.backgroundColor = normalizedRiskColor;
       }
     }
 
     if (statRate) {
       statRate.textContent = data.successRate !== undefined ? `${data.successRate}%` : "--%";
       if (statRate.style) {
-        statRate.style.color = data.riskColor || (data.riskLevel === "high" ? "#ef4444" : "#10b981");
+        statRate.style.color = normalizedRiskColor;
       }
     }
 
@@ -3937,7 +4105,7 @@
 
     if (fill && fill.style) {
       fill.style.width = `${Math.min(100, Math.max(0, data.successRate || 0))}%`;
-      fill.style.backgroundColor = data.riskColor || (data.riskLevel === "high" ? "#ef4444" : "#10b981");
+      fill.style.backgroundColor = normalizedRiskColor;
     }
 
     if (delEl) delEl.textContent = `📦 Delivered: ${data.deliveredCount || 0}`;
@@ -3945,6 +4113,39 @@
     if (srcEl) {
       srcEl.textContent = (data.ratingGrade ? `⭐ ${data.ratingGrade} • ` : "") + (data.pathaoStats ? "Pathao Live" : (data.steadfastStats ? "Courier Network" : "Verified"));
     }
+  }
+
+  /**
+   * Locate the recipient name input inside any WooCommerce Pathao plugin modal
+   * using explicit attribute selectors and a "Name:" label fallback.
+   */
+  function findPathaoModalNameInput(root) {
+    if (!root || typeof root.querySelector !== "function") return null;
+    const direct = root.querySelector(
+      "#ptc_wc_shipping_name, [name='ptc_wc_shipping_name'], #ptc_wc_billing_name, [name='ptc_wc_billing_name'], #ptc_wc_recipient_name, [name='ptc_wc_recipient_name'], #ptc_wc_name, [name='ptc_wc_name'], input[name*='shipping_name'], input[name*='recipient_name'], input[name*='customer_name'], input[id*='recipient_name'], input[id*='customer_name'], input[name='name'], input#name, #ptc-name, #ptc_name, #recipient_name"
+    );
+    if (direct) return direct;
+    if (typeof root.querySelectorAll !== "function") return null;
+    const labels = root.querySelectorAll("label, .form-label, th, span");
+    for (const lbl of labels) {
+      const txt = (lbl.textContent || "").trim();
+      if (/^(?:recipient\s*|customer\s*)?name\s*:?$/i.test(txt)) {
+        if (lbl.htmlFor && typeof document !== "undefined" && typeof document.getElementById === "function") {
+          const linked = document.getElementById(lbl.htmlFor);
+          if (linked) return linked;
+        }
+        const container = lbl.parentElement || lbl.parentNode;
+        if (container && typeof container.querySelector === "function") {
+          const cand = container.querySelector("input:not([type='hidden']):not([type='checkbox']):not([type='radio'])");
+          if (cand) return cand;
+        }
+        if (container && container.nextElementSibling && typeof container.nextElementSibling.querySelector === "function") {
+          const cand2 = container.nextElementSibling.querySelector("input:not([type='hidden']):not([type='checkbox']):not([type='radio'])");
+          if (cand2) return cand2;
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -3960,6 +4161,186 @@
     );
 
     modalCandidates.forEach(modal => {
+
+      // Check for recipient name input (explicit selectors + "Name:" label fallback for all Pathao plugin versions)
+      const nameInput = findPathaoModalNameInput(modal);
+      if (nameInput) {
+        if (!nameInput.dataset) nameInput.dataset = {};
+        let normNameFn = typeof normalizeCustomerName === "function" ? normalizeCustomerName : null;
+        if (!normNameFn && typeof _parser.normalizeCustomerName === "function") {
+          normNameFn = _parser.normalizeCustomerName;
+        }
+        if (!normNameFn && typeof require !== "undefined") {
+          try { normNameFn = require("./parser.js").normalizeCustomerName; } catch (e) {}
+        }
+
+        let nameHelper = modal.querySelector ? modal.querySelector("#deen-ptc-name-helper") : null;
+        let autoNormalizeNameEnabled = nameInput.dataset.deenAutoNameEnabled !== "false";
+
+        const syncNameHelperUI = () => {
+          if (!nameHelper || typeof nameHelper.querySelector !== "function") return;
+          const statusEl = nameHelper.querySelector("#deen-ptc-name-status-text");
+          const revertBtn = nameHelper.querySelector("#deen-ptc-btn-name-revert");
+          const current = nameInput.value || "";
+          const rawOrig = nameInput.dataset.deenOriginalName || "";
+          const preview = normNameFn ? normNameFn(current) : current;
+          const canNormalize = Boolean(current.trim() && preview && preview !== current);
+
+          if (statusEl) {
+            if (!current.trim()) {
+              statusEl.textContent = "Waiting for customer name...";
+            } else if (canNormalize) {
+              statusEl.innerHTML = `Suggested: <strong>${escapeHTML(preview)}</strong>`;
+            } else {
+              statusEl.textContent = "✅ Clean Format";
+            }
+          }
+          if (revertBtn && revertBtn.style) {
+            revertBtn.style.display = (rawOrig && rawOrig !== current) ? "inline-flex" : "none";
+          }
+        };
+
+        const applyNameNormalization = (force = false) => {
+          const rawName = nameInput.value || "";
+          if (!rawName.trim()) {
+            syncNameHelperUI();
+            return false;
+          }
+          if (!nameInput.dataset) nameInput.dataset = {};
+          let changed = false;
+          if (force || (autoNormalizeNameEnabled && nameInput.dataset.deenNameNormalized !== "true")) {
+            if (!nameInput.dataset.deenOriginalName) {
+              nameInput.dataset.deenOriginalName = rawName;
+            }
+            if (normNameFn) {
+              const cleaned = normNameFn(rawName);
+              if (cleaned && cleaned !== rawName) {
+                nameInput.value = cleaned;
+                changed = true;
+                if (typeof nameInput.dispatchEvent === "function") {
+                  nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+                  nameInput.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+              }
+            }
+            nameInput.dataset.deenNameNormalized = "true";
+          }
+          syncNameHelperUI();
+          return changed;
+        };
+
+        if (!nameHelper && nameInput.parentNode && typeof nameInput.parentNode.insertBefore === "function") {
+          nameHelper = document.createElement("div");
+          nameHelper.id = "deen-ptc-name-helper";
+          nameHelper.className = "deen-ptc-name-helper";
+          nameHelper.innerHTML = `
+            <div class="deen-ptc-helper-top" style="margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                <span class="deen-ptc-badge" style="background:#eff6ff; color:#0369a1; border-color:#7dd3fc;">👤 DEEN Smart Name</span>
+                <span class="deen-ptc-detected-text" id="deen-ptc-name-status-text">Ready</span>
+              </div>
+            </div>
+            <div class="deen-ptc-helper-actions">
+              <button type="button" class="deen-ptc-btn deen-ptc-btn-clean" id="deen-ptc-btn-name-clean" title="Standardize capitalization, honorifics & remove phone/noise from customer name">
+                ✨ Normalize Name
+              </button>
+              <button type="button" class="deen-ptc-btn deen-ptc-btn-revert" id="deen-ptc-btn-name-revert" title="Restore original customer name" style="display: none;">
+                ↩️ Revert
+              </button>
+              <label class="deen-ptc-auto-label" title="Automatically normalize customer name when modal opens or loses focus">
+                <input type="checkbox" id="deen-ptc-chk-auto-name" checked />
+                <span>Auto</span>
+              </label>
+              <span class="deen-ptc-status-hint" id="deen-ptc-name-hint"></span>
+            </div>
+          `;
+          nameInput.parentNode.insertBefore(nameHelper, nameInput.nextSibling || null);
+
+          const cleanNameBtn = typeof nameHelper.querySelector === "function" ? nameHelper.querySelector("#deen-ptc-btn-name-clean") : null;
+          const revertNameBtn = typeof nameHelper.querySelector === "function" ? nameHelper.querySelector("#deen-ptc-btn-name-revert") : null;
+          const autoNameChk = typeof nameHelper.querySelector === "function" ? nameHelper.querySelector("#deen-ptc-chk-auto-name") : null;
+          const nameHint = typeof nameHelper.querySelector === "function" ? nameHelper.querySelector("#deen-ptc-name-hint") : null;
+
+          if (autoNameChk) {
+            autoNameChk.checked = autoNormalizeNameEnabled;
+            if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+              try {
+                chrome.storage.local.get(["deen_auto_normalize_name"], (res) => {
+                  if (res && res.deen_auto_normalize_name === false) {
+                    autoNormalizeNameEnabled = false;
+                    nameInput.dataset.deenAutoNameEnabled = "false";
+                    autoNameChk.checked = false;
+                  }
+                });
+              } catch (e) {}
+            }
+            if (typeof autoNameChk.addEventListener === "function") {
+              autoNameChk.addEventListener("change", () => {
+                autoNormalizeNameEnabled = Boolean(autoNameChk.checked);
+                nameInput.dataset.deenAutoNameEnabled = autoNormalizeNameEnabled ? "true" : "false";
+                if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+                  try { chrome.storage.local.set({ deen_auto_normalize_name: autoNormalizeNameEnabled }); } catch (e) {}
+                }
+                if (autoNormalizeNameEnabled) {
+                  applyNameNormalization(true);
+                }
+                syncNameHelperUI();
+              });
+            }
+          }
+
+          if (cleanNameBtn && typeof cleanNameBtn.addEventListener === "function") {
+            cleanNameBtn.addEventListener("click", (e) => {
+              if (e && typeof e.preventDefault === "function") e.preventDefault();
+              applyNameNormalization(true);
+              if (nameHint) {
+                nameHint.textContent = "✅ Normalized!";
+                setTimeout(() => { if (nameHint) nameHint.textContent = ""; }, 2000);
+              }
+            });
+          }
+
+          if (revertNameBtn && typeof revertNameBtn.addEventListener === "function") {
+            revertNameBtn.addEventListener("click", (e) => {
+              if (e && typeof e.preventDefault === "function") e.preventDefault();
+              if (nameInput.dataset.deenOriginalName) {
+                nameInput.value = nameInput.dataset.deenOriginalName;
+                nameInput.dataset.deenNameNormalized = "false";
+                if (typeof nameInput.dispatchEvent === "function") {
+                  nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+                  nameInput.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+                syncNameHelperUI();
+                if (nameHint) {
+                  nameHint.textContent = "↩️ Reverted";
+                  setTimeout(() => { if (nameHint) nameHint.textContent = ""; }, 2000);
+                }
+              }
+            });
+          }
+        }
+
+        // Auto-normalize current value if already populated (and Auto-Normalize enabled)
+        applyNameNormalization(false);
+
+        // Attach blur & input listeners for live feedback and optional auto-format
+        if (!nameInput.dataset.deenBlurAttached) {
+          nameInput.dataset.deenBlurAttached = "true";
+          if (typeof nameInput.addEventListener === "function") {
+            nameInput.addEventListener("blur", () => {
+              if (autoNormalizeNameEnabled) {
+                applyNameNormalization(true);
+              } else {
+                syncNameHelperUI();
+              }
+            });
+            nameInput.addEventListener("input", () => {
+              syncNameHelperUI();
+            });
+          }
+        }
+      }
+
       // Check for phone input to inject live Pathao customer rating card
       const phoneInput = modal.querySelector(
         "#ptc_wc_shipping_phone, [name='ptc_wc_shipping_phone'], input[name*='shipping_phone'], input[name*='phone'], input[type='tel'], #ptc-phone"
@@ -4025,7 +4406,7 @@
               phone: "",
               riskLevel: "low",
               riskLabel: "No Phone Entered",
-              riskColor: "#94a3b8",
+              riskColor: "#475569",
               successRate: 0,
               totalParcels: 0,
               deliveredCount: 0,
@@ -4064,12 +4445,34 @@
         helper.innerHTML = `
           <div class="deen-ptc-helper-top">
             <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
-              <span class="deen-ptc-badge">⚡ DEEN Smart Address</span>
+              <div style="display: inline-flex; align-items: center; gap: 6px;">
+                <span class="deen-ptc-badge">⚡ DEEN Smart Address</span>
+                <span class="deen-ptc-ready-badge" id="deen-ptc-ready-badge" style="display: none;"></span>
+              </div>
               <span class="deen-ptc-detected-text" id="deen-ptc-detected-text">📍 Detecting location...</span>
             </div>
+            <button type="button" class="deen-ptc-suggested-box" id="deen-ptc-suggested-box" style="display: none;" title="Click once to apply this normalized full address and auto-match City & Zone">
+              <span id="deen-ptc-suggested-text"></span>
+              <span class="deen-ptc-suggested-cta">Apply 1-Click →</span>
+            </button>
             <div class="deen-ptc-chips-row" id="deen-ptc-chips-row" style="display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; align-items: center;"></div>
           </div>
           <div class="deen-ptc-helper-actions">
+            <button type="button" class="deen-ptc-btn deen-ptc-btn-hero" id="deen-ptc-btn-auto-fix" title="1-click: normalize, smart-guess missing district/zone, and select Pathao City & Zone dropdowns">
+              ⚡ 1-Click Fix &amp; Match
+            </button>
+            <button type="button" class="deen-ptc-btn deen-ptc-btn-subtle" id="deen-ptc-btn-copy-addr" title="Copy address to clipboard">
+              📋 Copy
+            </button>
+            <button type="button" class="deen-ptc-btn deen-ptc-btn-revert" id="deen-ptc-btn-revert" title="Restore original raw address" style="display: none;">
+              ↩️ Revert
+            </button>
+            <button type="button" class="deen-ptc-btn deen-ptc-btn-subtle" id="deen-ptc-btn-more-tools" aria-expanded="false" title="Show advanced address controls">
+              More ▾
+            </button>
+            <span class="deen-ptc-status-hint" id="deen-ptc-status-hint"></span>
+          </div>
+          <div class="deen-ptc-secondary-tools" id="deen-ptc-secondary-tools" style="display: none;">
             <button type="button" class="deen-ptc-btn deen-ptc-btn-full" id="deen-ptc-btn-full" title="Build & insert complete modified full address with City/District & Zone">
               📝 Full Address
             </button>
@@ -4080,12 +4483,8 @@
               ✨ Clean Address
             </button>
             <button type="button" class="deen-ptc-btn deen-ptc-btn-match" id="deen-ptc-btn-match" title="Auto-match detected City & Zone dropdowns">
-              🎯 Match City & Zone
+              🎯 Match City &amp; Zone
             </button>
-            <button type="button" class="deen-ptc-btn deen-ptc-btn-revert" id="deen-ptc-btn-revert" title="Restore original raw address" style="display: none;">
-              ↩️ Revert
-            </button>
-            <span class="deen-ptc-status-hint" id="deen-ptc-status-hint"></span>
           </div>
         `;
 
@@ -4093,6 +4492,13 @@
           addrInput.parentNode.insertBefore(helper, addrInput);
         }
 
+        const autoFixBtn = helper.querySelector("#deen-ptc-btn-auto-fix");
+        const copyAddrBtn = helper.querySelector("#deen-ptc-btn-copy-addr");
+        const moreToolsBtn = helper.querySelector("#deen-ptc-btn-more-tools");
+        const secondaryTools = helper.querySelector("#deen-ptc-secondary-tools");
+        const suggestedBox = helper.querySelector("#deen-ptc-suggested-box");
+        const suggestedText = helper.querySelector("#deen-ptc-suggested-text");
+        const readyBadge = helper.querySelector("#deen-ptc-ready-badge");
         const fullBtn = helper.querySelector("#deen-ptc-btn-full");
         const guessBtn = helper.querySelector("#deen-ptc-btn-guess");
         const cleanBtn = helper.querySelector("#deen-ptc-btn-clean");
@@ -4103,14 +4509,49 @@
         const updateDetectedDisplay = () => {
           const currentVal = addrInput.value || "";
           let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
-          if (!parseBD && typeof require !== "undefined") {
-            try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
+          let buildFull = typeof buildFullAddress === "function" ? buildFullAddress : null;
+          if ((!parseBD || !buildFull) && typeof require !== "undefined") {
+            try {
+              const pMod = require("./parser.js");
+              if (!parseBD) parseBD = pMod.parseBDAddress;
+              if (!buildFull) buildFull = pMod.buildFullAddress;
+            } catch (e) {}
           }
           const parsed = parseBD ? parseBD(currentVal) : { district: "Dhaka", zone: "Dhaka Sadar", postcode: "" };
           const detectedEl = helper.querySelector("#deen-ptc-detected-text");
           if (detectedEl) {
             const pcText = parsed.postcode ? ` (${parsed.postcode})` : "";
             detectedEl.innerHTML = `📍 City: <strong>${escapeHTML(parsed.district || 'Dhaka')}</strong> | Zone: <strong>${escapeHTML(parsed.zone || 'N/A')}</strong>${pcText}`;
+          }
+
+          // Compute suggested normalized full address preview & readiness pill
+          const canonicalFull = (currentVal.trim() && buildFull) ? buildFull(currentVal, parsed) : "";
+          const hasMissingSuggestion = Boolean(
+            canonicalFull &&
+            canonicalFull.trim() !== currentVal.trim().replace(/[,.\s-]+$/, "")
+          );
+          if (suggestedBox && suggestedBox.style) {
+            if (hasMissingSuggestion) {
+              if (suggestedText) {
+                suggestedText.innerHTML = `✨ Suggested: <strong>${escapeHTML(canonicalFull)}</strong>`;
+              }
+              suggestedBox.style.display = "flex";
+            } else {
+              suggestedBox.style.display = "none";
+            }
+          }
+          if (readyBadge && readyBadge.style) {
+            if (!currentVal.trim()) {
+              readyBadge.style.display = "none";
+            } else if (!hasMissingSuggestion && parsed && parsed.district && (!parsed.isDefaulted || /\b(?:dhaka|dacca|ঢাকা)\b/i.test(currentVal))) {
+              readyBadge.textContent = "✅ Ready to Send";
+              readyBadge.className = "deen-ptc-ready-badge";
+              readyBadge.style.display = "inline-flex";
+            } else {
+              readyBadge.textContent = "⚠️ 1-Click Fix Available";
+              readyBadge.className = "deen-ptc-ready-badge needs-attention";
+              readyBadge.style.display = "inline-flex";
+            }
           }
 
           // Populate interactive quick-insert chips
@@ -4141,10 +4582,10 @@
               if (!valToInsert) return;
               const chip = document.createElement("button");
               chip.type = "button";
-              chip.className = "deen-ptc-chip";
               const alreadyIn = isAlreadyIn(valToInsert, aliases);
+              chip.className = alreadyIn ? "deen-ptc-chip" : "deen-ptc-chip is-missing";
               chip.innerHTML = alreadyIn ? `✓ ${escapeHTML(label)}` : `+ ${escapeHTML(label)}`;
-              chip.title = alreadyIn ? `'${valToInsert}' is in address box` : `Click to append '${valToInsert}' to address input box`;
+              chip.title = alreadyIn ? `'${valToInsert}' is already in address box` : `Click to append '${valToInsert}' to address input box`;
               if (alreadyIn) {
                 chip.style.opacity = "0.65";
                 chip.style.cursor = "default";
@@ -4274,7 +4715,25 @@
                   setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3500);
                 }
               } else {
-                if (statusHint) {
+                // Fallback gracefully to the locally detected City & Zone (shown in top-right marked location)
+                const fallbackParsed = localParsed || (parseBD ? parseBD(raw) : null);
+                if (fallbackParsed && (fallbackParsed.district || fallbackParsed.zone)) {
+                  const fallbackFull = buildFull ? buildFull(raw, fallbackParsed) : raw;
+                  if (fallbackFull && fallbackFull !== addrInput.value) {
+                    addrInput.value = fallbackFull;
+                    addrInput.dispatchEvent(new Event("input", { bubbles: true }));
+                    addrInput.dispatchEvent(new Event("change", { bubbles: true }));
+                  }
+                  updateDetectedDisplay();
+                  if (matchBtn && typeof matchBtn.click === "function") matchBtn.click();
+                  if (revertBtn && revertBtn.style) revertBtn.style.display = "inline-flex";
+                  if (statusHint) {
+                    const distLabel = fallbackParsed.district || "Dhaka";
+                    const zoneLabel = fallbackParsed.zone ? ` > ${fallbackParsed.zone}` : "";
+                    statusHint.textContent = `🎯 Used detected: ${distLabel}${zoneLabel}`;
+                    setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3500);
+                  }
+                } else if (statusHint) {
                   statusHint.textContent = "ℹ️ Could not guess location online";
                   setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 3000);
                 }
@@ -4355,7 +4814,7 @@
               } catch (e) {}
             }
 
-            if (citySelect && parsed.district) {
+            if (citySelect && (parsed.pathaoCityId || parsed.district)) {
               const options = Array.from(citySelect.options || []);
               let getISO = null;
               if (typeof getISOCodeFromDistrict === "function") getISO = getISOCodeFromDistrict;
@@ -4367,12 +4826,22 @@
               const dObj = allDistricts.find(d => d.name === parsed.district);
               const distAliases = dObj ? [dObj.name, ...dObj.aliases] : [parsed.district];
 
-              const opt = options.find(o => {
-                const t = (o.text || "").toLowerCase();
-                const v = (o.value || "").toLowerCase();
-                const textMatch = distAliases.some(a => t.includes(a.toLowerCase()) || a.toLowerCase().includes(t));
-                return textMatch || (isoCode && (t.includes(isoCode) || v === isoCode));
-              });
+              // Primary: Match by exact Pathao official City ID
+              let opt = null;
+              if (parsed.pathaoCityId) {
+                opt = options.find(o => String(o.value) === String(parsed.pathaoCityId));
+              }
+
+              // Secondary: Match by district text, aliases, or ISO code
+              if (!opt) {
+                opt = options.find(o => {
+                  const t = (o.text || "").toLowerCase();
+                  const v = (o.value || "").toLowerCase();
+                  const textMatch = distAliases.some(a => t.includes(a.toLowerCase()) || a.toLowerCase().includes(t));
+                  return textMatch || (isoCode && (t.includes(isoCode) || v === isoCode));
+                });
+              }
+
               if (opt) {
                 citySelect.value = opt.value;
                 citySelect.dispatchEvent(new Event("change", { bubbles: true }));
@@ -4384,25 +4853,36 @@
             }
 
             const applyZoneMatch = (retriesLeft) => {
-              if (!zoneSelect || !parsed.zone) return;
+              if (!zoneSelect || (!parsed.pathaoZoneId && !parsed.zone)) return;
               const zOptions = Array.from(zoneSelect.options || []);
               if (zOptions.length <= 1 && retriesLeft > 0) {
                 setTimeout(() => applyZoneMatch(retriesLeft - 1), 350);
                 return;
               }
-              let zAliases = [parsed.zone];
-              if (allOtherZones[parsed.district]) {
-                const fz = allOtherZones[parsed.district].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === parsed.zone.toLowerCase());
-                if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
-              } else if (dhakaZones) {
-                const fz = dhakaZones.find(z => (typeof z === "object" ? z.name : z).toLowerCase() === parsed.zone.toLowerCase());
-                if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
+
+              // Primary: Match by exact Pathao official Zone ID
+              let zOpt = null;
+              if (parsed.pathaoZoneId) {
+                zOpt = zOptions.find(o => String(o.value) === String(parsed.pathaoZoneId));
               }
 
-              const zOpt = zOptions.find(o => {
-                const t = (o.text || "").toLowerCase();
-                return zAliases.some(a => t.includes(a.toLowerCase()) || a.toLowerCase().includes(t));
-              });
+              // Secondary: Match by zone aliases & fuzzy names
+              if (!zOpt) {
+                let zAliases = [parsed.zone].filter(Boolean);
+                if (allOtherZones[parsed.district]) {
+                  const fz = allOtherZones[parsed.district].find(z => (typeof z === "object" ? z.name : z).toLowerCase() === (parsed.zone || "").toLowerCase());
+                  if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
+                } else if (dhakaZones) {
+                  const fz = dhakaZones.find(z => (typeof z === "object" ? z.name : z).toLowerCase() === (parsed.zone || "").toLowerCase());
+                  if (fz && typeof fz === "object") zAliases = [fz.name, ...(fz.aliases || [])];
+                }
+
+                zOpt = zOptions.find(o => {
+                  const t = (o.text || "").toLowerCase();
+                  return zAliases.some(a => t.includes(a.toLowerCase()) || a.toLowerCase().includes(t));
+                });
+              }
+
               if (zOpt) {
                 zoneSelect.value = zOpt.value;
                 zoneSelect.dispatchEvent(new Event("change", { bubbles: true }));
@@ -4428,6 +4908,56 @@
             setTimeout(() => applyZoneMatch(3), 350);
           });
         }
+
+        if (autoFixBtn && typeof autoFixBtn.addEventListener === "function") {
+          autoFixBtn.addEventListener("click", (e) => {
+            if (e && typeof e.preventDefault === "function") e.preventDefault();
+            if (guessBtn && typeof guessBtn.click === "function") {
+              guessBtn.click();
+            } else if (fullBtn && typeof fullBtn.click === "function") {
+              fullBtn.click();
+            }
+          });
+        }
+
+        if (suggestedBox && typeof suggestedBox.addEventListener === "function") {
+          suggestedBox.addEventListener("click", (e) => {
+            if (e && typeof e.preventDefault === "function") e.preventDefault();
+            if (fullBtn && typeof fullBtn.click === "function") {
+              fullBtn.click();
+            }
+          });
+        }
+
+        if (copyAddrBtn && typeof copyAddrBtn.addEventListener === "function") {
+          copyAddrBtn.addEventListener("click", (e) => {
+            if (e && typeof e.preventDefault === "function") e.preventDefault();
+            const txt = (addrInput.value || "").trim();
+            if (!txt) return;
+            if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(txt).then(() => {
+                if (statusHint) {
+                  statusHint.textContent = "📋 Address Copied!";
+                  setTimeout(() => { if (statusHint) statusHint.textContent = ""; }, 2000);
+                }
+              }).catch(() => {});
+            }
+          });
+        }
+
+        if (moreToolsBtn && secondaryTools && typeof moreToolsBtn.addEventListener === "function") {
+          moreToolsBtn.addEventListener("click", (e) => {
+            if (e && typeof e.preventDefault === "function") e.preventDefault();
+            const isHidden = secondaryTools.style.display === "none" || !secondaryTools.style.display;
+            secondaryTools.style.display = isHidden ? "flex" : "none";
+            if (typeof moreToolsBtn.setAttribute === "function") {
+              moreToolsBtn.setAttribute("aria-expanded", isHidden ? "true" : "false");
+            }
+            moreToolsBtn.textContent = isHidden ? "Less ▴" : "More ▾";
+          });
+        }
+
+        helper._deenRefreshPreview = updateDetectedDisplay;
 
         addrInput.addEventListener("input", () => {
           updateDetectedDisplay();
@@ -4463,15 +4993,19 @@
           if (matchBtn && typeof matchBtn.click === "function") matchBtn.click();
         }
 
-        const detectedEl = helper && typeof helper.querySelector === "function" ? helper.querySelector("#deen-ptc-detected-text") : null;
-        let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
-        if (!parseBD && typeof require !== "undefined") {
-          try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
-        }
-        const parsed = parseBD ? parseBD(rawCurrent) : null;
-        if (detectedEl && parsed) {
-          const pcText = parsed.postcode ? ` (${parsed.postcode})` : "";
-          detectedEl.innerHTML = `📍 City: <strong>${escapeHTML(parsed.district || 'Dhaka')}</strong> | Zone: <strong>${escapeHTML(parsed.zone || 'N/A')}</strong>${pcText}`;
+        if (helper && typeof helper._deenRefreshPreview === "function") {
+          helper._deenRefreshPreview();
+        } else {
+          const detectedEl = helper && typeof helper.querySelector === "function" ? helper.querySelector("#deen-ptc-detected-text") : null;
+          let parseBD = typeof parseBDAddress === "function" ? parseBDAddress : null;
+          if (!parseBD && typeof require !== "undefined") {
+            try { parseBD = require("./parser.js").parseBDAddress; } catch (e) {}
+          }
+          const parsed = parseBD ? parseBD(rawCurrent) : null;
+          if (detectedEl && parsed) {
+            const pcText = parsed.postcode ? ` (${parsed.postcode})` : "";
+            detectedEl.innerHTML = `📍 City: <strong>${escapeHTML(parsed.district || 'Dhaka')}</strong> | Zone: <strong>${escapeHTML(parsed.zone || 'N/A')}</strong>${pcText}`;
+          }
         }
       }
     });
@@ -4484,9 +5018,12 @@
       bulkHelper.id = "deen-ptc-bulk-helper";
       bulkHelper.className = "deen-ptc-bulk-helper";
       bulkHelper.innerHTML = `
-        <span class="deen-ptc-badge">⚡ DEEN Address Normalizer</span>
+        <span class="deen-ptc-badge">⚡ DEEN Normalizer</span>
         <button type="button" class="deen-ptc-btn deen-ptc-btn-clean" id="deen-ptc-btn-bulk-clean">
           ✨ Normalize All Addresses
+        </button>
+        <button type="button" class="deen-ptc-btn deen-ptc-btn-full" id="deen-ptc-btn-bulk-clean-names">
+          👤 Normalize All Names
         </button>
         <span class="deen-ptc-status-hint" id="deen-ptc-bulk-status"></span>
       `;
@@ -4494,6 +5031,7 @@
       footerOrHeader.prepend(bulkHelper);
 
       const bulkCleanBtn = bulkHelper.querySelector("#deen-ptc-btn-bulk-clean");
+      const bulkCleanNamesBtn = bulkHelper.querySelector("#deen-ptc-btn-bulk-clean-names");
       const bulkStatus = bulkHelper.querySelector("#deen-ptc-bulk-status");
 
       if (bulkCleanBtn) {
@@ -4537,6 +5075,63 @@
           }
         });
       }
+
+      if (bulkCleanNamesBtn) {
+        bulkCleanNamesBtn.addEventListener("click", () => {
+          let normFn = typeof normalizeCustomerName === "function" ? normalizeCustomerName : null;
+          if (!normFn && typeof _parser.normalizeCustomerName === "function") {
+            normFn = _parser.normalizeCustomerName;
+          }
+          if (!normFn && typeof require !== "undefined") {
+            try { normFn = require("./parser.js").normalizeCustomerName; } catch (e) {}
+          }
+
+          let count = 0;
+          if (normFn && typeof window !== "undefined" && window.hotInstance && typeof window.hotInstance.getData === "function") {
+            const hot = window.hotInstance;
+            const data = hot.getData();
+            const colHeaders = hot.getColHeader() || [];
+            let nameColIdx = colHeaders.findIndex(h =>
+              /(?:name|recipient|customer)/i.test(h) && !/(?:address|phone|mobile|email|store|city|zone|area|weight|price|cod)/i.test(h)
+            );
+            if (nameColIdx === -1) nameColIdx = 0;
+
+            data.forEach((row, rowIdx) => {
+              const current = row[nameColIdx];
+              if (current && typeof current === "string") {
+                const cleaned = normFn(current);
+                if (cleaned && cleaned !== current) {
+                  hot.setDataAtCell(rowIdx, nameColIdx, cleaned);
+                  count++;
+                }
+              }
+            });
+            hot.render();
+          }
+
+          if (normFn) {
+            const nameInputs = bulkModal.querySelectorAll(
+              "input[name*='name'], input[name*='recipient'], input[name*='customer_name'], td[data-col*='name'] input, td[data-col*='name'] textarea"
+            );
+            nameInputs.forEach(inp => {
+              if (inp.value) {
+                const cleaned = normFn(inp.value);
+                if (cleaned && cleaned !== inp.value) {
+                  inp.value = cleaned;
+                  inp.dispatchEvent(new Event("input", { bubbles: true }));
+                  inp.dispatchEvent(new Event("change", { bubbles: true }));
+                  count++;
+                }
+              }
+            });
+          }
+
+          if (bulkStatus) {
+            bulkStatus.textContent = `✅ Normalized ${count} customer names!`;
+            setTimeout(() => { if (bulkStatus) bulkStatus.textContent = ""; }, 3000);
+          }
+        });
+      }
     }
 
     // 3. Reset normalization state when clicking "Send with Pathao" on a new order
@@ -4564,6 +5159,11 @@
             if (addrInput) {
               addrInput.dataset.deenNormalized = "false";
               delete addrInput.dataset.deenRawAddress;
+            }
+            const nameInput = findPathaoModalNameInput(document);
+            if (nameInput && nameInput.dataset) {
+              nameInput.dataset.deenNameNormalized = "false";
+              delete nameInput.dataset.deenOriginalName;
             }
           }, 50);
         });
@@ -4625,7 +5225,7 @@
           <div style="font-size: 11px; color: #cbd5e1; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(info.commitMessage || "New updates pushed to GitHub main branch")}</div>
         </div>
         <div style="display: flex; align-items: center; gap: 6px;">
-          <button id="deen-wc-btn-update-download" style="background: #0284c7; color: #fff; border: 1px solid #38bdf8; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600; cursor: pointer;">Download ZIP</button>
+          <button id="deen-wc-btn-update-download" style="background: #0369a1; color: #fff; border: 1px solid #38bdf8; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600; cursor: pointer;">Download ZIP</button>
           <button id="deen-wc-btn-update-dismiss" style="background: transparent; color: #94a3b8; border: none; font-size: 14px; cursor: pointer; padding: 2px 4px;" title="Dismiss update notification">✕</button>
         </div>
       `;
@@ -4907,6 +5507,7 @@
       injectOrderPreviewModalActions,
       getSelectedOrderRows,
       syncToPathao,
+      dispatchToSteadfast,
       initBulkDispatchBar,
       updateBulkDispatchBar,
       normalizeBDPhone,
@@ -4916,6 +5517,7 @@
       getQuickReplyConfig,
       DEFAULT_QUICK_REPLY_CONFIG,
       normalizeCustomerAndOrderData,
+      normalizeCustomerName,
       parseWooCommerceAddressBlock,
       isInvalidCustomerName,
       extractItemNameWithSize,
@@ -4958,6 +5560,10 @@
       BD_ISO_DISTRICTS: typeof BD_ISO_DISTRICTS !== "undefined" ? BD_ISO_DISTRICTS : (typeof require !== "undefined" ? require("./parser.js").BD_ISO_DISTRICTS : {}),
       detectDistrictFromISOCode: typeof detectDistrictFromISOCode !== "undefined" ? detectDistrictFromISOCode : (typeof require !== "undefined" ? require("./parser.js").detectDistrictFromISOCode : null),
       getISOCodeFromDistrict: typeof getISOCodeFromDistrict !== "undefined" ? getISOCodeFromDistrict : (typeof require !== "undefined" ? require("./parser.js").getISOCodeFromDistrict : null),
+      normalizeCustomerName: typeof normalizeCustomerName !== "undefined" ? normalizeCustomerName : (typeof require !== "undefined" ? require("./parser.js").normalizeCustomerName : null),
+      extractAdvancePayment: typeof extractAdvancePayment !== "undefined" ? extractAdvancePayment : (typeof require !== "undefined" ? require("./parser.js").extractAdvancePayment : null),
+      getDistrictFromPostcode: typeof getDistrictFromPostcode !== "undefined" ? getDistrictFromPostcode : (typeof require !== "undefined" ? require("./parser.js").getDistrictFromPostcode : null),
+      BD_POSTCODE_RANGES: typeof BD_POSTCODE_RANGES !== "undefined" ? BD_POSTCODE_RANGES : (typeof require !== "undefined" ? require("./parser.js").BD_POSTCODE_RANGES : []),
       extractCredentialsFromDOM,
       initWordPressAdminAutoSync
     };

@@ -22,6 +22,9 @@
         extractWhatsAppActivePhone,
         renderWhatsAppHeaderBadge,
         initWhatsAppActiveChatDetector,
+        renderWhatsAppQueueBanner,
+        initWhatsAppQueue,
+        removeWhatsAppQueueBanner
       };
     }
     return;
@@ -284,6 +287,9 @@
       extractWhatsAppActivePhone,
       renderWhatsAppHeaderBadge,
       initWhatsAppActiveChatDetector,
+      renderWhatsAppQueueBanner,
+      initWhatsAppQueue,
+      removeWhatsAppQueueBanner,
       getLocalCachedRating,
       setLocalCachedRating,
       localPageRatingCache,
@@ -424,6 +430,9 @@
 
   function removeRatingModal() {
     if (activeRatingModalEl) {
+      if (typeof activeRatingModalEl.close === "function") {
+        try { activeRatingModalEl.close(); } catch (e) {}
+      }
       if (activeRatingModalEl.parentElement) {
         activeRatingModalEl.parentElement.removeChild(activeRatingModalEl);
       }
@@ -436,8 +445,11 @@
     removeFloatingPill();
     if (!phone) return;
 
-    const backdrop = document.createElement("div");
+    const backdrop = document.createElement("dialog");
     backdrop.id = "deen-rating-modal-backdrop";
+    if (typeof backdrop.setAttribute === "function") {
+      backdrop.setAttribute("aria-label", "Customer Delivery Intelligence");
+    }
 
     const modal = document.createElement("div");
     modal.id = "deen-rating-modal";
@@ -469,6 +481,9 @@
     if (closeBtnX) closeBtnX.addEventListener("click", removeRatingModal);
 
     document.body.appendChild(backdrop);
+    if (typeof backdrop.showModal === "function") {
+      try { backdrop.showModal(); } catch (e) {}
+    }
     activeRatingModalEl = backdrop;
 
     const onKeyEsc = (e) => {
@@ -531,7 +546,10 @@
 
   function renderRatingModalContent(modal, data) {
     const riskClass = data.riskLevel === "high" ? "risk-high" : (data.riskLevel === "medium" ? "risk-medium" : "risk-low");
-    const progressColor = data.riskColor || (data.riskLevel === "high" ? "#ef4444" : (data.riskLevel === "medium" ? "#f59e0b" : "#10b981"));
+    const rawColor = String(data.riskColor || "").toLowerCase();
+    const progressColor = (!data.riskColor || ["#ef4444", "#3b82f6", "#f59e0b", "#10b981"].includes(rawColor))
+      ? (data.riskLevel === "high" ? "#f87171" : (data.riskLevel === "medium" ? "#fbbf24" : ((data.isNewCustomer || rawColor === "#3b82f6") ? "#60a5fa" : "#34d399")))
+      : data.riskColor;
     const safeCustomerName = escapeHTML(data.customerName || (data.pathaoStats && data.pathaoStats.name) || "");
     const safePhone = escapeHTML(data.phone || "");
     const safeRiskLabel = escapeHTML(data.riskLabel || "");
@@ -1019,7 +1037,7 @@
     if (!listEl) return;
 
     if (!items || items.length === 0) {
-      listEl.innerHTML = `<div style="font-size: 11px; color: #64748b; text-align: center; padding: 10px;">No recent checks yet</div>`;
+      listEl.innerHTML = `<div style="font-size: 11px; color: #94a3b8; text-align: center; padding: 10px;">No recent checks yet</div>`;
       return;
     }
 
@@ -1035,8 +1053,8 @@
 
       const rateSpan = document.createElement("span");
       rateSpan.className = "deen-sidebar-history-tag";
-      const tagColor = item.riskLevel === "high" ? "#ef4444" : (item.riskLevel === "medium" ? "#f59e0b" : "#10b981");
-      const tagBg = item.riskLevel === "high" ? "rgba(239, 68, 68, 0.2)" : (item.riskLevel === "medium" ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)");
+      const tagColor = item.riskLevel === "high" ? "#f87171" : (item.riskLevel === "medium" ? "#fbbf24" : "#34d399");
+      const tagBg = item.riskLevel === "high" ? "rgba(248, 113, 113, 0.16)" : (item.riskLevel === "medium" ? "rgba(251, 191, 36, 0.16)" : "rgba(52, 211, 153, 0.16)");
       rateSpan.style.cssText = `background: ${tagBg} !important; color: ${tagColor} !important; border: 1px solid ${tagColor} !important;`;
       rateSpan.textContent = `${item.successRate}%`;
 
@@ -1055,7 +1073,10 @@
 
   function renderSidebarActiveCard(container, data) {
     const riskClass = data.riskLevel === "high" ? "risk-high" : (data.riskLevel === "medium" ? "risk-medium" : "risk-low");
-    const progressColor = data.riskColor || (data.riskLevel === "high" ? "#ef4444" : (data.riskLevel === "medium" ? "#f59e0b" : "#10b981"));
+    const rawColor = String(data.riskColor || "").toLowerCase();
+    const progressColor = (!data.riskColor || ["#ef4444", "#3b82f6", "#f59e0b", "#10b981"].includes(rawColor))
+      ? (data.riskLevel === "high" ? "#f87171" : (data.riskLevel === "medium" ? "#fbbf24" : ((data.isNewCustomer || rawColor === "#3b82f6") ? "#60a5fa" : "#34d399")))
+      : data.riskColor;
     const safeCustomerName = escapeHTML(data.customerName || (data.pathaoStats && data.pathaoStats.name) || "");
     const safePhone = escapeHTML(data.phone || "");
     const safeRiskLabel = escapeHTML(data.riskLabel || "");
@@ -1127,7 +1148,7 @@
         <div class="deen-sidebar-qr-box" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 10px; padding: 10px; margin-bottom: 12px;">
           <div style="font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
             <span>💬 WhatsApp Quick Reply</span>
-            ${data.riskLevel === 'high' ? '<span style="color:#ef4444; font-size:9.5px; background:rgba(239,68,68,0.2); padding:1px 6px; border-radius:4px; font-weight:600;">⚠️ Advance Advised</span>' : ''}
+            ${data.riskLevel === 'high' ? '<span style="color:#fca5a5; font-size:9.5px; background:rgba(239,68,68,0.22); padding:1px 6px; border-radius:4px; font-weight:600;">⚠️ Advance Advised</span>' : ''}
           </div>
 
           <div class="deen-sidebar-qr-tabs" style="display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap;">
@@ -1140,7 +1161,7 @@
           <textarea id="deen-sidebar-qr-preview" style="width: 100%; box-sizing: border-box; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #f8fafc; font-size: 11px; line-height: 1.4; padding: 6px 8px; resize: vertical; min-height: 70px; font-family: inherit; margin-bottom: 8px;"></textarea>
 
           <div style="display: flex; gap: 6px;">
-            <button id="deen-sidebar-btn-qr-send" style="flex: 1; background: linear-gradient(135deg, #128C7E 0%, #075E54 100%); color: #fff; border: 1px solid #075E54; border-radius: 6px; padding: 6px 10px; font-weight: 700; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 1px 4px rgba(7, 94, 84, 0.35);">
+            <button id="deen-sidebar-btn-qr-send" style="flex: 1; background: linear-gradient(135deg, #0f766e 0%, #064e3b 100%); color: #fff; border: 1px solid #064e3b; border-radius: 6px; padding: 6px 10px; font-weight: 700; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 1px 4px rgba(6, 78, 59, 0.35);">
               <span>💬 Send to WhatsApp</span>
             </button>
             <button id="deen-sidebar-btn-qr-copy" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 10px; font-weight: 600; font-size: 11px; cursor: pointer;">
@@ -1378,7 +1399,7 @@
 
         <!-- Active Customer Card Container -->
         <div id="deen-sidebar-card-container">
-          <div style="text-align: center; padding: 24px 12px; color: #64748b; font-size: 12.5px;">
+          <div style="text-align: center; padding: 24px 12px; color: #94a3b8; font-size: 12.5px;">
             <span>Highlight, copy, or enter any BD phone number above to see real-time Pathao delivery score & fraud risk.</span>
           </div>
         </div>
@@ -1387,10 +1408,10 @@
         <div class="deen-sidebar-history-box" id="deen-sidebar-history-box">
           <div class="deen-sidebar-history-title">
             <span>🕒 Recent Checked Numbers</span>
-            <button id="deen-sidebar-clear-history" style="background: none; border: none; color: #64748b; font-size: 10px; cursor: pointer;">Clear</button>
+            <button id="deen-sidebar-clear-history" style="background: none; border: none; color: #94a3b8; font-size: 10px; cursor: pointer;">Clear</button>
           </div>
           <div class="deen-sidebar-history-list" id="deen-sidebar-history-list">
-            <div style="font-size: 11px; color: #64748b; text-align: center; padding: 6px;">No recent checks yet</div>
+            <div style="font-size: 11px; color: #94a3b8; text-align: center; padding: 6px;">No recent checks yet</div>
           </div>
         </div>
       </div>
@@ -1756,6 +1777,133 @@
     }
   }
 
+  /**
+   * WhatsApp Web Sequential Order Confirmation Queue
+   */
+  function removeWhatsAppQueueBanner() {
+    const existing = document.getElementById("deen-wa-queue-banner");
+    if (existing) existing.remove();
+  }
+
+  function renderWhatsAppQueueBanner(queue) {
+    if (typeof document === "undefined" || !document.body) return;
+    if (!queue || !Array.isArray(queue.orders) || queue.orders.length === 0) {
+      removeWhatsAppQueueBanner();
+      return;
+    }
+
+    let banner = document.getElementById("deen-wa-queue-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "deen-wa-queue-banner";
+      banner.className = "deen-wa-queue-banner";
+      banner.style.cssText = "position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:99999; display:flex; align-items:center; gap:10px; background:#0f172a; color:#ffffff; padding:8px 16px; border-radius:30px; box-shadow:0 8px 24px rgba(0,0,0,0.3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; border:1px solid #334155;";
+      document.body.appendChild(banner);
+    }
+
+    const { orders, currentIndex, total } = queue;
+    const isFinished = currentIndex >= orders.length;
+    const curr = orders[currentIndex] || {};
+
+    if (isFinished) {
+      banner.innerHTML = `
+        <span style="color:#10b981; font-weight:700;">🎉 All ${total} Orders Confirmed!</span>
+        <button type="button" id="deen-wa-queue-done-btn" style="background:#1e293b; color:#cbd5e1; border:none; padding:4px 10px; border-radius:12px; cursor:pointer; font-size:11px;">Clear Queue</button>
+      `;
+      const doneBtn = banner.querySelector("#deen-wa-queue-done-btn");
+      if (doneBtn) {
+        doneBtn.addEventListener("click", () => {
+          if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.remove(["deen_wa_order_queue"]);
+          }
+          removeWhatsAppQueueBanner();
+        });
+      }
+      return;
+    }
+
+    const orderNum = currentIndex + 1;
+    const orderTitle = curr.orderId ? `#${String(curr.orderId).replace(/^#/, "")}` : `Order ${orderNum}`;
+    const nameStr = curr.name ? ` (${curr.name})` : "";
+    const phoneStr = curr.phone ? ` - ${curr.phone}` : "";
+    const codStr = curr.cod ? ` [৳${curr.cod}]` : "";
+
+    banner.innerHTML = `
+      <span style="background:#ea580c; color:#fff; font-weight:700; padding:2px 8px; border-radius:10px; font-size:11px;">📦 Queue ${orderNum}/${total}</span>
+      <span style="font-weight:600; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${orderTitle}${nameStr}${phoneStr}${codStr}</span>
+      <button type="button" id="deen-wa-queue-open-btn" style="background:#25d366; color:#ffffff; border:none; padding:4px 12px; border-radius:14px; font-weight:700; cursor:pointer; font-size:11px;" title="Open customer WhatsApp chat and prepare confirmation">💬 Open Chat</button>
+      <button type="button" id="deen-wa-queue-skip-btn" style="background:#334155; color:#cbd5e1; border:none; padding:4px 8px; border-radius:14px; cursor:pointer; font-size:11px;" title="Skip to next order in queue">⏭️ Skip</button>
+      <button type="button" id="deen-wa-queue-close-btn" style="background:transparent; color:#94a3b8; border:none; font-size:16px; cursor:pointer; padding:0 4px;" title="Dismiss Queue">&times;</button>
+    `;
+
+    const openBtn = banner.querySelector("#deen-wa-queue-open-btn");
+    if (openBtn) {
+      openBtn.addEventListener("click", () => {
+        if (!curr.phone) return;
+        getQuickReplyConfig((config) => {
+          const msg = generateQuickReply("confirm_order", curr, config);
+          injectWhatsAppMessage(msg, { phone: curr.phone, openChat: true });
+          openBtn.textContent = "✅ Chat Opened!";
+          setTimeout(() => {
+            const nextIdx = currentIndex + 1;
+            const updated = { ...queue, currentIndex: nextIdx };
+            if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+              chrome.storage.local.set({ deen_wa_order_queue: updated });
+            }
+            renderWhatsAppQueueBanner(updated);
+          }, 1200);
+        });
+      });
+    }
+
+    const skipBtn = banner.querySelector("#deen-wa-queue-skip-btn");
+    if (skipBtn) {
+      skipBtn.addEventListener("click", () => {
+        const nextIdx = currentIndex + 1;
+        const updated = { ...queue, currentIndex: nextIdx };
+        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ deen_wa_order_queue: updated });
+        }
+        renderWhatsAppQueueBanner(updated);
+      });
+    }
+
+    const closeBtn = banner.querySelector("#deen-wa-queue-close-btn");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => {
+        if (confirm("Exit WhatsApp Order Confirmation Queue?")) {
+          if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.remove(["deen_wa_order_queue"]);
+          }
+          removeWhatsAppQueueBanner();
+        }
+      });
+    }
+  }
+
+  function initWhatsAppQueue() {
+    if (typeof window === "undefined" || !window.location ||
+        !window.location.hostname || !window.location.hostname.includes("web.whatsapp.com")) {
+      return;
+    }
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(["deen_wa_order_queue"], (res) => {
+        if (res && res.deen_wa_order_queue) {
+          renderWhatsAppQueueBanner(res.deen_wa_order_queue);
+        }
+      });
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === "local" && changes.deen_wa_order_queue) {
+          if (changes.deen_wa_order_queue.newValue) {
+            renderWhatsAppQueueBanner(changes.deen_wa_order_queue.newValue);
+          } else {
+            removeWhatsAppQueueBanner();
+          }
+        }
+      });
+    }
+  }
+
   // Initialize listeners
   function init() {
     if (!isExtensionValid()) return;
@@ -1763,6 +1911,7 @@
     initHighlightListener();
     initCopyListener();
     initWhatsAppActiveChatDetector();
+    initWhatsAppQueue();
   }
 
   if (document.readyState === "loading") {

@@ -189,8 +189,33 @@ async function runTests() {
   assert(caughtError, "Missing required argument must throw an error");
   console.log("  ✅ Missing required schema properties rejected with descriptive error message.");
 
+  // ---------------------------------------------------------------------------
+  // Test 12: Tool Execution: normalize_customer_name
+  // ---------------------------------------------------------------------------
+  console.log("\n▶ Test 12: Testing normalize_customer_name Execution...");
+  const normNameRes = await webMCP.executeTool("normalize_customer_name", {
+    rawName: "Customer: MD. RAFIQUL ISLAM (01715485035)"
+  });
+  assert.strictEqual(normNameRes.success, true, "normalize_customer_name must succeed");
+  assert.strictEqual(normNameRes.normalizedName, "Md. Rafiqul Islam", "Must normalize to 'Md. Rafiqul Islam'");
+  console.log(`  ✅ normalize_customer_name: '${normNameRes.normalizedName}'`);
+
+  // ---------------------------------------------------------------------------
+  // Test 13: Tool Execution: extract_advance_payment
+  // ---------------------------------------------------------------------------
+  console.log("\n▶ Test 13: Testing extract_advance_payment Execution...");
+  const advRes = await webMCP.executeTool("extract_advance_payment", {
+    text: "Customer paid advance ৳90 via bKash, TrxID: 9AB7C1D2"
+  });
+  assert.strictEqual(advRes.success, true, "extract_advance_payment must succeed");
+  assert.strictEqual(advRes.hasAdvance, true, "Must detect advance");
+  assert.strictEqual(advRes.amount, 90, "Advance amount must be 90");
+  assert.strictEqual(advRes.method, "bKash", "Payment method must be bKash");
+  assert.strictEqual(advRes.trxId, "9AB7C1D2", "TrxID must be 9AB7C1D2");
+  console.log(`  ✅ extract_advance_payment: amount=৳${advRes.amount}, method=${advRes.method}, TrxID=${advRes.trxId}`);
+
   console.log("\n==================================================");
-  console.log("🎉 ALL 11 WEBMCP INTEGRATION TESTS PASSED SUCCESSFULLY!");
+  console.log("🎉 ALL 13 WEBMCP INTEGRATION TESTS PASSED SUCCESSFULLY!");
   console.log("==================================================");
 }
 

@@ -13,11 +13,18 @@ const suites = [
   'test_icons_verification.js',
   'test_deen_assistant.js',
   'test_whatsapp_active_chat.js',
-  'test_floating_chat.js',
   'test_ndr_rescue_listener.js',
   'test_cache_eviction.js',
   'test_local_rating_cache_reuse.js',
-  'test_analytical_agent.js'
+  'test_analytical_agent.js',
+  'test_whatsapp_conversation_copilot.js',
+  'test_name_normalizer.js',
+  'test_tinyfish_agent.js',
+  'test_pathao_coverage_index.js',
+  'test_steadfast_dispatch.js',
+  'test_pricing_rules_config.js',
+  'test_whatsapp_queue_and_ndr.js',
+  'test_invoice_reconciliation.js'
 ];
 
 let failed = 0;

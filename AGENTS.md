@@ -13,7 +13,6 @@ The codebase adheres strictly to **Google Chrome Manifest V3**:
 | **Parser Core** | [`parser.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/parser.js) | Global / Shared | Centralized parsing engine, regex anchors, BD address normalizer, ISO district detection, delivery fee calculations, WhatsApp message generator. |
 | **WebMCP Provider** | [`webmcp-provider.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/webmcp-provider.js) | Content Script / Page | W3C WebMCP tool registry (`navigator.modelContext` / `window.modelContext`). Exposes 14 structured AI tools to browser agents. |
 | **DEEN Assistant Core** | [`deen-assistant.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/deen-assistant.js) | Global / Shared / Extension UI | Autonomous analytical query engine, in-browser SQL executor (<2ms), SVG visual chart generator, C-level executive reporter, Banglish/Bengali customer note interpreter, and BYOK (Gemini, OpenAI, Groq) client. |
-| **Floating Assistant Chatbox** | [`deen-floating-chat.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/deen-floating-chat.js) | Content Script (WordPress, Pathao, WhatsApp Web) | In-page collapsible floating Copilot window with draggable circular brand launcher, coordinate persistence, contextual telemetry banner, dynamic prompt chips, 1-click WhatsApp message injector, zero-cost + BYOK completions. |
 | **WooCommerce Integration** | [`woocommerce.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/woocommerce.js) | Content Script (`*://*/wp-admin/*`) | WooCommerce table parsing, order details extraction, 2x Retina Order Receipt canvas rendering, Pathao popup address auto-normalizer, same-origin Pathao settings probe (`get_wc_pathao_credentials`). |
 | **Universal Phone Check** | [`phone-check.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/phone-check.js) | Content Script (`*://*/*`) | Highlight & copy phone detector across WhatsApp Web, Facebook, CRMs; WhatsApp Web active chat header auto-detection & inline rating badge; interactive floating action pill & sidebar drawer. |
 | **Pathao Content Script & NDR Rescue** | [`content.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/content.js), [`courier-adapters.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/courier-adapters.js) | Content Script (`merchant.pathao.com`) | In-page floating toolbar, parcel table extractor, 1-click Excel/CSV exporter, form autofill listener, and automated Non-Delivery Report (NDR) rescue detector with WhatsApp quick rescue triggers. |
@@ -29,7 +28,7 @@ When refactoring or adding features, you **MUST NEVER VIOLATE** these invariants
 ### Invariant 1: Preserve All Module Exports
 Automated test suites (`test_whatsapp_quick_reply.js`, `test_autofill_flow.js`, etc.) import functions directly from `woocommerce.js`, `phone-check.js`, `parser.js`, and `background.js`.
 - Always preserve `module.exports` in `woocommerce.js`:
-  - `extractRowOrderDetails`, `extractOrderDetailsFromModal`, `renderOrderReceiptCanvas`, `copyCanvasScreenshotToClipboard`, `downloadCanvasScreenshot`, `showOrderConfirmModal`, `injectOrderPreviewModalActions`, `getSelectedOrderRows`, `syncToPathao`, `initBulkDispatchBar`, `updateBulkDispatchBar`, `normalizeBDPhone`, `injectTableActionButtons`, `injectSingleOrderPageButton`, `injectWhatsAppMessage`, `getQuickReplyConfig`, `DEFAULT_QUICK_REPLY_CONFIG`, `normalizeCustomerAndOrderData`, `parseWooCommerceAddressBlock`, `isInvalidCustomerName`, `extractItemNameWithSize`, `bengaliToAsciiDigits`, `parseOrderEditPageHTML`, `fetchOrderDetailsViaEditPage`, `orderDetailsCache`, `inFlightOrderRequests`, `fetchWithTimeout`, `DEEN_LOGO_BASE64`, `getWooCommerceAjaxConfig`, `parseWooCommerceAjaxOrderDetails`, `normalizeAddressForPathao`, `buildFullAddress`, `normalizeDisplayAddress`, `initPathaoPluginAddressNormalizer`, `fetchCustomerRatingBackground`, `renderRatingState`, `BD_ISO_DISTRICTS`, `detectDistrictFromISOCode`, `getISOCodeFromDistrict`, `extractCredentialsFromDOM`.
+  - `extractRowOrderDetails`, `extractOrderDetailsFromModal`, `renderOrderReceiptCanvas`, `copyCanvasScreenshotToClipboard`, `downloadCanvasScreenshot`, `showOrderConfirmModal`, `injectOrderPreviewModalActions`, `getSelectedOrderRows`, `syncToPathao`, `initBulkDispatchBar`, `updateBulkDispatchBar`, `normalizeBDPhone`, `injectTableActionButtons`, `injectSingleOrderPageButton`, `injectWhatsAppMessage`, `getQuickReplyConfig`, `DEFAULT_QUICK_REPLY_CONFIG`, `normalizeCustomerAndOrderData`, `parseWooCommerceAddressBlock`, `isInvalidCustomerName`, `extractItemNameWithSize`, `bengaliToAsciiDigits`, `parseOrderEditPageHTML`, `fetchOrderDetailsViaEditPage`, `orderDetailsCache`, `inFlightOrderRequests`, `fetchWithTimeout`, `DEEN_LOGO_BASE64`, `getWooCommerceAjaxConfig`, `parseWooCommerceAjaxOrderDetails`, `normalizeAddressForPathao`, `buildFullAddress`, `normalizeDisplayAddress`, `initPathaoPluginAddressNormalizer`, `fetchCustomerRatingBackground`, `renderRatingState`, `BD_ISO_DISTRICTS`, `detectDistrictFromISOCode`, `getISOCodeFromDistrict`, `extractCredentialsFromDOM`, `initWordPressAdminAutoSync`, `normalizeCustomerName`, `extractAdvancePayment`, `getDistrictFromPostcode`, `BD_POSTCODE_RANGES`.
 - Always preserve `module.exports` in `phone-check.js`:
   - `normalizeBDPhone`, `escapeHTML`, `DEFAULT_QUICK_REPLY_CONFIG`, `calculateDeliveryFee`, `buildWhatsAppDeepLink`, `generateQuickReply`, `getQuickReplyConfig`, `injectWhatsAppMessage`, `extractWhatsAppActivePhone`, `renderWhatsAppHeaderBadge`, `initWhatsAppActiveChatDetector`.
 - Always preserve `module.exports` in `background.js`:
@@ -66,10 +65,12 @@ The 2x Retina Order Receipt canvas rendered by `renderOrderReceiptCanvas`:
   - Inside Dhaka: `Subtotal + ৳50` (e.g. `1494 + 50 = ৳1544` as in Order #19046).
   - Outside Dhaka: `Subtotal + ৳90` (e.g. `1500 + 90 = ৳1590`).
 - **False-Dhaka 50 TK Correction**: When a customer outside Dhaka falsely selected inside-Dhaka delivery (paying only ৳50), the system corrects COD to `Subtotal + ৳90` (e.g. `1500 + 90 = 1590`) so the merchant is never underpaid.
+- **Advance Delivery Charge Deduction**: When an order note or custom field records advance payment (e.g. `bKash TrxID`, `অগ্রিম ৯০ টাকা পেইড`, `Advance 90 tk paid by bkash`), the system extracts the advance amount via `extractAdvancePayment` and deducts it from payable COD (`COD = GrossCOD - AdvancePaid`). The 2x Retina Order Receipt canvas displays `Advance: -৳XX (bKash)` and `Due COD: ৳XXXX (Advance Paid)`, and WhatsApp confirmation confirms advance received.
 
 ### Invariant 8: 100% 64 Districts Coverage, Reverse Zone Inference & Online Geocoding Fallback
 - `OTHER_CITY_ZONES` in [`parser.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/parser.js) must cover 100% of all 64 Bangladesh districts and their ~495 upazilas with English and Bengali aliases.
 - When an incomplete address mentions a thana/upazila without the district name (e.g. `Titas`), the parser must infer the parent district (`Cumilla`) via reverse zone index and never fall back to Dhaka.
+- `BD_POSTCODE_RANGES` and `getDistrictFromPostcode` cover 100% of Bangladesh postal codes (1000-9499) to resolve obscure villages/thanas directly to their parent district with zero ambiguity.
 - Intelligent Online Geocoding via `guess_address_online` in [`background.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/background.js) queries OpenStreetMap Nominatim with `ISO3166-2-lvl5` code mapping as a fast, free fallback for obscure bazars or villages.
 
 ### Invariant 9: WordPress SSO & Role/Permissions Isolation
@@ -94,7 +95,7 @@ The 2x Retina Order Receipt canvas rendered by `renderOrderReceiptCanvas`:
 
 ## 3. Automated Verification & Test Suites
 
-Before committing or pushing any change, **all 17 test suites must pass 100%**:
+Before committing or pushing any change, **all 18 test suites must pass 100%**:
 
 ```powershell
 # Run complete test suite:
@@ -113,11 +114,18 @@ node test_wordpress_login_sync.js; `
 node test_icons_verification.js; `
 node test_deen_assistant.js; `
 node test_whatsapp_active_chat.js; `
-node test_floating_chat.js; `
 node test_ndr_rescue_listener.js; `
 node test_cache_eviction.js; `
 node test_local_rating_cache_reuse.js; `
-node test_analytical_agent.js
+node test_analytical_agent.js; `
+node test_whatsapp_conversation_copilot.js; `
+node test_name_normalizer.js; `
+node test_tinyfish_agent.js; `
+node test_pathao_coverage_index.js; `
+node test_steadfast_dispatch.js; `
+node test_pricing_rules_config.js; `
+node test_whatsapp_queue_and_ndr.js; `
+node test_invoice_reconciliation.js
 ```
 
 ### Test Suite Directory:
@@ -127,17 +135,24 @@ node test_analytical_agent.js
 4. [`test_live_pathao_rating_parsing.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_live_pathao_rating_parsing.js) — Real Hermes API responses, multi-courier composite aggregation, token handling.
 5. [`test_universal_phone_e2e.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_universal_phone_e2e.js) — Universal phone detection, DOM highlight/copy triggers, sidebar drawer, floating pill.
 6. [`test_whatsapp_quick_reply.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_whatsapp_quick_reply.js) — Comprehensive 30-test suite for Order Receipt canvas, line items, AJAX fallbacks, real orders #17819, #18264, #18276, #18304, address deduplication & normalization (#19029), Pathao address normalizer, Smart Guess online geocoding, ISO district detection, and 10-minute caching.
-7. [`test_webmcp_integration.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_webmcp_integration.js) — WebMCP registry conformance, tool discovery, execution of all 12 tools, semantic hints (`readOnlyHint`, `consequentialHint`), and argument schema validation.
+7. [`test_webmcp_integration.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_webmcp_integration.js) — WebMCP registry conformance, tool discovery, execution of all 19 tools, semantic hints (`readOnlyHint`, `consequentialHint`), and argument schema validation.
 8. [`test_full_fetch_improvements.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_full_fetch_improvements.js) — Shipping priority over billing, address 2 preservation, customer notes extraction across AJAX, edit page, modal, and table row, concurrent fetch deduplication (`inFlightOrderRequests`), timeout protection, and free shipping advance charge omission.
 9. [`test_wordpress_login_sync.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_wordpress_login_sync.js) — WordPress Admin auto-connect, active session sync, wp-login credentials authentication, PTC & Pathao plugin settings HTML extraction, Steadfast keys, inlined JSON configs, role & permissions verification, B2B external login, and WooCommerce Pathao plugin bridge fallback.
 10. [`test_icons_verification.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_icons_verification.js) — Validates manifest icon declarations, presence and integrity of PNG/JPEG/SVG icon assets across 16px, 32px, 48px, and 128px resolutions.
 11. [`test_deen_assistant.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_deen_assistant.js) — In-memory deterministic analytical queries (parcels count, COD, revenue, delivery fee totals, district breakdowns, Bengali greetings), Banglish/Bengali customer note & message interpreter, and BYOK client interfaces.
 12. [`test_whatsapp_active_chat.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_whatsapp_active_chat.js) — WhatsApp Web conversation header phone extraction from title and custom status, header rating badge injection, colored risk pills (High/Medium/Low/New), 1-click quick replies, and debounced MutationObserver listeners.
-13. [`test_floating_chat.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_floating_chat.js) — In-page floating AI Assistant Copilot chatbox validation across WordPress Admin, Pathao Merchant Portal, and WhatsApp Web (platform detection, context extractors, markdown rendering, clean WhatsApp message injection, and public visibility toggle API).
-14. [`test_ndr_rescue_listener.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_ndr_rescue_listener.js) — Pathao NDR failed delivery attempt detector, Bengali retry/return keyword filters, delivered parcel exclusion, alert storage, table row decoration, and 1-click WhatsApp rescue modal.
-15. [`test_cache_eviction.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_cache_eviction.js) — Cache capacity limit (500 entries) FIFO eviction, 10-minute rating TTL, 24-hour address TTL, and periodic sweeper (`pruneExpiredCaches`).
-16. [`test_local_rating_cache_reuse.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_local_rating_cache_reuse.js) — Unified local rating cache, zero-network instant reuse across background and in-page contexts, and force-refresh cache bypass.
-17. [`test_analytical_agent.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_analytical_agent.js) — In-browser SQL execution engine, DataFrame descriptive statistics, native SVG bar/donut charts, C-level executive reports, universal table scraper, and WebMCP analytical tools.
+13. [`test_ndr_rescue_listener.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_ndr_rescue_listener.js) — Pathao NDR failed delivery attempt detector, Bengali retry/return keyword filters, delivered parcel exclusion, alert storage, table row decoration, and 1-click WhatsApp rescue modal.
+14. [`test_cache_eviction.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_cache_eviction.js) — Cache capacity limit (500 entries) FIFO eviction, 10-minute rating TTL, 24-hour address TTL, and periodic sweeper (`pruneExpiredCaches`).
+15. [`test_local_rating_cache_reuse.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_local_rating_cache_reuse.js) — Unified local rating cache, zero-network instant reuse across background and in-page contexts, and force-refresh cache bypass.
+16. [`test_analytical_agent.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_analytical_agent.js) — In-browser SQL execution engine, DataFrame descriptive statistics, native SVG bar/donut charts, C-level executive reports, universal table scraper, and WebMCP analytical tools.
+17. [`test_whatsapp_conversation_copilot.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_whatsapp_conversation_copilot.js) — WhatsApp Web deep conversation extraction, 9-domain customer intent detection (size exchange, delivery tracking, NDR rescue, advance payment, order confirm, address change, cancel request, pricing), CRM executive action checklist, and 1-click WhatsApp quick reply injection.
+18. [`test_name_normalizer.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_name_normalizer.js) — Recipient customer name standardization, title casing, honorific dots (Md., Mst., Dr., Engr., Adv., Prof.), noise stripping (emojis, order IDs, phones, emails, trailing locations), Invariant 5 Bengali name preservation byte-for-byte, and Pathao popup input auto-normalizer.
+19. [`test_tinyfish_agent.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_tinyfish_agent.js) — TinyFish cloud agent configuration, SSE streaming parser, cancel protocol, and WebMCP runner integration.
+20. [`test_pathao_coverage_index.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_pathao_coverage_index.js) — Real-time offline Pathao zone index resolution (<1ms), exact city_id and zone_id matching, zero-network geocoding, and WooCommerce Pathao modal auto-switching (resolving Mithamain, Chandgaon, Titas).
+21. [`test_steadfast_dispatch.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_steadfast_dispatch.js) — 1-Click Steadfast Courier API order creation (`/api/v1/create_order`), credential retrieval from WordPress sync, consignment formatting, and tracking code assignment.
+22. [`test_pricing_rules_config.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_pricing_rules_config.js) — Dynamic merchant pricing rules, configurable Free Shipping subtotal threshold, custom Inside/Outside Dhaka delivery fee rates, and Invariant 7 fallback safety.
+23. [`test_whatsapp_queue_and_ndr.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_whatsapp_queue_and_ndr.js) — WhatsApp Web sequential order confirmation queue lifecycle (render, skip, confirm, clear) and high-converting Bengali NDR rapid rescue templates.
+24. [`test_invoice_reconciliation.js`](https://github.com/Sajid-ul-Islam/chrome-extension-delivery-parser/blob/main/test_invoice_reconciliation.js) — Courier financial payout reconciliation, discrepancy detection for COD shortages and delivery fee overcharges, and WebMCP auditor tool execution.
 
 ---
 

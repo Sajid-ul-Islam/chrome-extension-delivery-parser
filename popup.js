@@ -24,7 +24,6 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
     checkPendingStorage();
     initSyncTab();
     initQuickReplyTab();
-    initAssistantTab();
     initWebMCPTab();
     initCredentialsManager();
     initWordPressConnectManager();
@@ -43,10 +42,16 @@ function initTabs() {
 
       // Compatibility handler for tab-paste trigger (e.g. from context menu)
       if (targetId === "tab-paste") {
-        tabs.forEach(t => t.classList.remove("active"));
+        tabs.forEach(t => {
+          t.classList.remove("active");
+          t.setAttribute("aria-selected", "false");
+        });
         document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
         const currentTab = document.querySelector('.nav-tab[data-tab="tab-current"]');
-        if (currentTab) currentTab.classList.add("active");
+        if (currentTab) {
+          currentTab.classList.add("active");
+          currentTab.setAttribute("aria-selected", "true");
+        }
         const currentEl = document.getElementById("tab-current");
         if (currentEl) currentEl.classList.add("active");
         const pasteSub = document.querySelector('.delivery-sub-tab[data-sub="paste"]');
@@ -54,10 +59,14 @@ function initTabs() {
         return;
       }
 
-      tabs.forEach(t => t.classList.remove("active"));
+      tabs.forEach(t => {
+        t.classList.remove("active");
+        t.setAttribute("aria-selected", "false");
+      });
       document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
 
       tab.classList.add("active");
+      tab.setAttribute("aria-selected", "true");
       const targetEl = document.getElementById(targetId);
       if (targetEl) targetEl.classList.add("active");
     });
@@ -71,8 +80,12 @@ function initTabs() {
   if (deliverySubTabs && deliverySubTabs.length > 0) {
     deliverySubTabs.forEach(subTab => {
       subTab.addEventListener("click", () => {
-        deliverySubTabs.forEach(t => t.classList.remove("active"));
+        deliverySubTabs.forEach(t => {
+          t.classList.remove("active");
+          t.setAttribute("aria-selected", "false");
+        });
         subTab.classList.add("active");
+        subTab.setAttribute("aria-selected", "true");
         const sub = subTab.getAttribute("data-sub");
         if (viewExtract) viewExtract.classList.toggle("hidden", sub !== "extract");
         if (viewPaste) viewPaste.classList.toggle("hidden", sub !== "paste");
@@ -126,6 +139,33 @@ async function initActiveTabInfo() {
  * Set up button events
  */
 function initActionHandlers() {
+  // Open Side Panel button
+  const btnSidePanel = document.getElementById("btn-open-sidepanel");
+  if (btnSidePanel) {
+    btnSidePanel.addEventListener("click", async () => {
+      if (typeof chrome !== "undefined" && chrome.sidePanel && typeof chrome.sidePanel.open === "function") {
+        try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab && tab.id) {
+            await chrome.sidePanel.open({ tabId: tab.id });
+            window.close();
+            return;
+          }
+        } catch (e) {
+          try {
+            const currentWin = await chrome.windows.getCurrent();
+            if (currentWin && currentWin.id) {
+              await chrome.sidePanel.open({ windowId: currentWin.id });
+              window.close();
+              return;
+            }
+          } catch (err) {}
+        }
+      }
+      showToast("Side panel not available in this window");
+    });
+  }
+
   // Extract from current tab
   document.getElementById("btn-extract-tab").addEventListener("click", handleExtractFromCurrentTab);
 
@@ -353,7 +393,6 @@ function displayResults(result) {
   metrics.totalCOD = Number(metrics.totalCOD) || 0;
   metrics.netRevenue = Number(metrics.netRevenue) || 0;
   currentMetrics = metrics;
-  if (typeof updateAssistantContextPill === "function") updateAssistantContextPill();
 
   const mode = result.mode || "standard";
 
@@ -895,7 +934,10 @@ function initSyncTab() {
 
       const renderRatingCard = (data) => {
         if (!ratingCardEl) return;
-        const riskBadgeColor = data.riskColor || (data.riskLevel === "high" ? "#ef4444" : (data.riskLevel === "medium" ? "#f59e0b" : "#10b981"));
+    const rawPopupColor = String(data.riskColor || "").toLowerCase();
+    const riskBadgeColor = (!data.riskColor || ["#ef4444", "#3b82f6", "#f59e0b", "#10b981"].includes(rawPopupColor))
+      ? (data.riskLevel === "high" ? "#f87171" : (data.riskLevel === "medium" ? "#fbbf24" : ((data.isNewCustomer || rawPopupColor === "#3b82f6") ? "#60a5fa" : "#34d399")))
+      : data.riskColor;
 
         ratingCardEl.innerHTML = `
           <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 8px; padding: 12px;">
@@ -1042,12 +1084,6 @@ function initSyncTab() {
           btnQuickCheck.innerHTML = `<span>⚡ Check</span>`;
         }
       });
-      return;
-      if (false) {
-        clearTimeout(safetyTimer);
-        btnQuickCheck.disabled = false;
-        btnQuickCheck.innerHTML = `<span>⚡ Check</span>`;
-      }
     };
 
     btnQuickCheck.addEventListener("click", handleQuickCheck);
@@ -1068,6 +1104,7 @@ function initQuickReplyTab() {
   const nagadTypeSelect = document.getElementById("qr-nagad-type");
   const insideFeeInput = document.getElementById("qr-inside-fee");
   const outsideFeeInput = document.getElementById("qr-outside-fee");
+  const freeThresholdInput = document.getElementById("qr-free-threshold");
   const btnSave = document.getElementById("btn-save-qr-config");
   const templateSelect = document.getElementById("qr-preview-template-select");
   const previewTextarea = document.getElementById("qr-preview-textarea");
@@ -1083,6 +1120,7 @@ function initQuickReplyTab() {
     nagadType: "Personal",
     insideDhakaFee: 50,
     outsideDhakaFee: 90,
+    freeShippingThreshold: 2500,
     customNote: ""
   };
 
@@ -1094,6 +1132,7 @@ function initQuickReplyTab() {
     nagadType: (nagadTypeSelect && nagadTypeSelect.value) || "Personal",
     insideDhakaFee: Number(insideFeeInput && insideFeeInput.value) || 50,
     outsideDhakaFee: Number(outsideFeeInput && outsideFeeInput.value) || 90,
+    freeShippingThreshold: Number(freeThresholdInput && freeThresholdInput.value) || 2500,
     customNote: ""
   });
 
@@ -1156,6 +1195,7 @@ function initQuickReplyTab() {
       if (nagadTypeSelect) nagadTypeSelect.value = cfg.nagadType || "Personal";
       if (insideFeeInput) insideFeeInput.value = cfg.insideDhakaFee || 50;
       if (outsideFeeInput) outsideFeeInput.value = cfg.outsideDhakaFee || 90;
+      if (freeThresholdInput) freeThresholdInput.value = cfg.freeShippingThreshold || 2500;
       updatePreview();
     });
   } else {
@@ -1163,7 +1203,7 @@ function initQuickReplyTab() {
   }
 
   // 2. Event listeners for preview updating on typing
-  [storeInput, bkashInput, bkashTypeSelect, nagadInput, nagadTypeSelect, insideFeeInput, outsideFeeInput].forEach(el => {
+  [storeInput, bkashInput, bkashTypeSelect, nagadInput, nagadTypeSelect, insideFeeInput, outsideFeeInput, freeThresholdInput].forEach(el => {
     if (el) {
       el.addEventListener("input", updatePreview);
       el.addEventListener("change", updatePreview);
@@ -1250,10 +1290,6 @@ function initWebMCPTab() {
     get_woocommerce_active_orders: {
       limit: 10
     },
-    ask_deen_ai_assistant: {
-      query: "Summarize our delivery performance, uncollected COD, and high return risks",
-      phone: "01715485035"
-    },
     autofill_pathao_consignment: {
       phone: "01715485035",
       name: "Kazi Morshed",
@@ -1261,8 +1297,21 @@ function initWebMCPTab() {
       cod: 1590,
       orderId: "18304",
       autoSwitch: false
+    },
+    run_tinyfish_web_agent: {
+      url: "https://example.com",
+      goal: "Extract page heading and main summary points as JSON.",
+      browserProfile: "lite",
+      outputSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string" }
+        }
+      }
     }
   };
+
+  const toolCountBadge = document.getElementById("webmcp-tool-count");
 
   const updateToolDisplay = async () => {
     const selected = toolSelect.value;
@@ -1273,6 +1322,9 @@ function initWebMCPTab() {
     if (registry && typeof registry.getTools === "function") {
       try {
         const tools = await registry.getTools();
+        if (toolCountBadge && Array.isArray(tools)) {
+          toolCountBadge.textContent = `${tools.length} Tools`;
+        }
         const found = tools.find(t => t.name === selected);
         if (found && toolDesc) {
           const hintBadge = found.readOnlyHint
@@ -1297,7 +1349,7 @@ function initWebMCPTab() {
         if (outputJson) outputJson.textContent = `❌ JSON Syntax Error:\n${jsonErr.message}`;
         if (execStatus) {
           execStatus.textContent = "Error";
-          execStatus.style.color = "#ef4444";
+          execStatus.style.color = "#f87171";
         }
         return;
       }
@@ -1318,18 +1370,243 @@ function initWebMCPTab() {
         if (outputJson) outputJson.textContent = JSON.stringify(result, null, 2);
         if (execStatus) {
           execStatus.textContent = "✓ Success";
-          execStatus.style.color = "#10b981";
+          execStatus.style.color = "#34d399";
         }
         showToast(`⚡ WebMCP tool '${selected}' executed!`);
       } catch (execErr) {
         if (outputJson) outputJson.textContent = `❌ Execution Error:\n${execErr.message}`;
         if (execStatus) {
           execStatus.textContent = "Failed";
-          execStatus.style.color = "#ef4444";
+          execStatus.style.color = "#f87171";
         }
       }
     });
   }
+
+  initTinyFishAgentRunner();
+}
+
+/**
+ * TinyFish Cloud Web Agent UI Controller (SSE Live Stream + BYOK)
+ */
+function initTinyFishAgentRunner() {
+  const apiKeyInput = document.getElementById("tinyfish-api-key");
+  const profileSelect = document.getElementById("tinyfish-browser-profile");
+  const keyStatus = document.getElementById("tinyfish-key-status");
+  const btnSaveKey = document.getElementById("btn-save-tinyfish-key");
+  const targetUrlInput = document.getElementById("tinyfish-target-url");
+  const btnUseTab = document.getElementById("btn-tinyfish-use-tab");
+  const goalInput = document.getElementById("tinyfish-goal-input");
+  const schemaInput = document.getElementById("tinyfish-schema-input");
+  const btnRun = document.getElementById("btn-run-tinyfish");
+  const btnStop = document.getElementById("btn-stop-tinyfish");
+  const streamMeta = document.getElementById("tinyfish-stream-meta");
+  const runStatus = document.getElementById("tinyfish-run-status");
+  const streamLink = document.getElementById("tinyfish-stream-link");
+  const progressLog = document.getElementById("tinyfish-progress-log");
+
+  if (!btnRun) return;
+
+  let activePort = null;
+  let activeRunId = null;
+
+  function setStatus(label, color) {
+    if (!runStatus) return;
+    runStatus.textContent = label;
+    if (color) runStatus.style.color = color;
+  }
+
+  function appendLog(line) {
+    if (!progressLog) return;
+    progressLog.classList.remove("hidden");
+    progressLog.textContent = (progressLog.textContent ? progressLog.textContent + "\n" : "") + line;
+    progressLog.scrollTop = progressLog.scrollHeight;
+  }
+
+  function resetRunButtons(running) {
+    if (btnRun) btnRun.disabled = running;
+    if (btnStop) btnStop.classList.toggle("hidden", !running);
+  }
+
+  // Load saved BYOK status
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+    chrome.runtime.sendMessage({ action: "get_tinyfish_config" }, (res) => {
+      if (chrome.runtime.lastError || !res || !res.success) return;
+      if (profileSelect && res.browserProfile) profileSelect.value = res.browserProfile;
+      if (keyStatus) {
+        keyStatus.textContent = res.hasApiKey ? `Configured (${res.maskedKey})` : "Not Configured";
+        keyStatus.style.color = res.hasApiKey ? "#10b981" : "";
+      }
+      if (apiKeyInput && res.hasApiKey) {
+        apiKeyInput.placeholder = `${res.maskedKey} (Saved)`;
+      }
+    });
+  }
+
+  // Save API key & profile
+  if (btnSaveKey) {
+    btnSaveKey.addEventListener("click", () => {
+      const apiKey = apiKeyInput ? apiKeyInput.value.trim() : "";
+      const browserProfile = profileSelect ? profileSelect.value : "lite";
+      if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.sendMessage) return;
+
+      chrome.runtime.sendMessage(
+        {
+          action: "save_tinyfish_config",
+          config: {
+            ...(apiKey ? { apiKey } : {}),
+            browserProfile
+          }
+        },
+        (res) => {
+          if (chrome.runtime.lastError || !res || !res.success) {
+            showToast("❌ Failed to save TinyFish configuration");
+            return;
+          }
+          if (keyStatus) {
+            keyStatus.textContent = res.hasApiKey ? "Configured" : "Not Configured";
+            keyStatus.style.color = res.hasApiKey ? "#10b981" : "";
+          }
+          if (apiKeyInput && apiKey) apiKeyInput.value = "";
+          showToast("✅ TinyFish settings saved!");
+        }
+      );
+    });
+  }
+
+  // Populate active tab URL helper
+  if (btnUseTab && targetUrlInput) {
+    btnUseTab.addEventListener("click", async () => {
+      try {
+        if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.query) {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab && tab.url && /^https?:\/\//i.test(tab.url)) {
+            targetUrlInput.value = tab.url;
+            showToast("🔗 Filled URL from active tab");
+          } else {
+            showToast("⚠️ Active tab is not an http(s) URL");
+          }
+        }
+      } catch (e) {}
+    });
+  }
+
+  // Stop / cancel active run
+  if (btnStop) {
+    btnStop.addEventListener("click", () => {
+      if (activePort) {
+        try {
+          activePort.postMessage({ action: "cancel_tinyfish_run", runId: activeRunId });
+          activePort.disconnect();
+        } catch (e) {}
+        activePort = null;
+      }
+      setStatus("Cancelled", "#f59e0b");
+      appendLog("⏹ Cancelled by user.");
+      resetRunButtons(false);
+    });
+  }
+
+  // Start SSE streaming run
+  btnRun.addEventListener("click", () => {
+    const url = targetUrlInput ? targetUrlInput.value.trim() : "";
+    const goal = goalInput ? goalInput.value.trim() : "";
+    const browserProfile = profileSelect ? profileSelect.value : "lite";
+    const rawSchema = schemaInput ? schemaInput.value.trim() : "";
+
+    if (!url || !/^https?:\/\//i.test(url)) {
+      showToast("⚠️ Enter a valid http(s) target URL");
+      return;
+    }
+    if (!goal) {
+      showToast("⚠️ Enter a natural-language goal for TinyFish");
+      return;
+    }
+
+    let outputSchema = null;
+    if (rawSchema) {
+      try {
+        outputSchema = JSON.parse(rawSchema);
+      } catch (err) {
+        showToast(`❌ Invalid JSON Schema: ${err.message}`);
+        return;
+      }
+    }
+
+    if (progressLog) {
+      progressLog.textContent = "";
+      progressLog.classList.remove("hidden");
+    }
+    if (streamMeta) streamMeta.classList.remove("hidden");
+    if (streamLink) {
+      streamLink.classList.add("hidden");
+      streamLink.href = "#";
+    }
+    setStatus("Connecting...", "#38bdf8");
+    appendLog(`🚀 Starting TinyFish (${browserProfile}) on ${url}...`);
+    resetRunButtons(true);
+
+    if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.connect) {
+      setStatus("Unavailable", "#ef4444");
+      appendLog("❌ Extension runtime port unavailable.");
+      resetRunButtons(false);
+      return;
+    }
+
+    if (activePort) {
+      try { activePort.disconnect(); } catch (e) {}
+    }
+
+    activePort = chrome.runtime.connect({ name: "tinyfish_stream" });
+    activeRunId = null;
+
+    activePort.onMessage.addListener((msg) => {
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "tinyfish_event" && msg.event) {
+        const evt = msg.event;
+        if (evt.run_id) activeRunId = evt.run_id;
+
+        if (evt.type === "STREAMING_URL" && evt.streaming_url) {
+          if (streamLink) {
+            streamLink.href = evt.streaming_url;
+            streamLink.classList.remove("hidden");
+          }
+          setStatus("Live Running", "#38bdf8");
+          appendLog(`📺 Live stream ready (${evt.run_id || "run"})`);
+        } else if (evt.type === "PROGRESS") {
+          setStatus("Running...", "#38bdf8");
+          appendLog(`• ${evt.purpose || evt.message || JSON.stringify(evt)}`);
+        } else if (evt.type === "COMPLETE") {
+          setStatus(evt.status || "COMPLETED", evt.status === "FAILED" ? "#ef4444" : "#10b981");
+          appendLog(`\n✅ Result:\n${JSON.stringify(evt.result !== undefined ? evt.result : evt, null, 2)}`);
+        }
+      } else if (msg.type === "tinyfish_done") {
+        const res = msg.result || {};
+        if (res.error) {
+          setStatus("Failed", "#ef4444");
+          appendLog(`❌ ${res.error}`);
+        } else if (!res.events || !res.events.some(e => e.type === "COMPLETE")) {
+          setStatus(res.status || "Done", res.success ? "#10b981" : "#ef4444");
+          appendLog(JSON.stringify(res.result !== undefined ? res.result : res, null, 2));
+        }
+        resetRunButtons(false);
+      } else if (msg.type === "tinyfish_error") {
+        setStatus("Error", "#ef4444");
+        appendLog(`❌ ${msg.error || "Unknown TinyFish error"}`);
+        resetRunButtons(false);
+      }
+    });
+
+    activePort.postMessage({
+      action: "start_tinyfish_run",
+      payload: {
+        url,
+        goal,
+        browserProfile,
+        ...(outputSchema ? { outputSchema } : {})
+      }
+    });
+  });
 }
 
 /**
@@ -1559,8 +1836,12 @@ function initWordPressConnectManager() {
   if (wpModeTabs && wpModeTabs.length > 0) {
     wpModeTabs.forEach(tab => {
       tab.addEventListener("click", () => {
-        wpModeTabs.forEach(t => t.classList.remove("active"));
+        wpModeTabs.forEach(t => {
+          t.classList.remove("active");
+          t.setAttribute("aria-selected", "false");
+        });
         tab.classList.add("active");
+        tab.setAttribute("aria-selected", "true");
         const mode = tab.getAttribute("data-wp-mode");
         if (wpSessionPanel) wpSessionPanel.classList.toggle("hidden", mode !== "session");
         if (wpLoginPanel) wpLoginPanel.classList.toggle("hidden", mode !== "login");
@@ -1871,308 +2152,4 @@ if (typeof module !== "undefined" && module.exports) {
     initWordPressConnectManager,
     initUpdateChecker
   };
-}
-
-
-
-/**
- * ============================================================================
- * DEEN AI Assistant Intelligence Tab Controller
- * Ported from DEEN Commerce Sales-Analysis Intelligence Copilot
- * ============================================================================
- */
-function updateAssistantContextPill() {
-  const summaryEl = document.getElementById("assistant-context-summary");
-  if (!summaryEl) return;
-  const count = (currentRecords && currentRecords.length) || 0;
-  const cod = (currentMetrics && currentMetrics.totalCOD) || 0;
-  summaryEl.textContent = `Telemetry: ${count} parcels (৳${cod.toLocaleString()} COD)`;
-}
-
-async function initAssistantTab() {
-  const chatStream = document.getElementById("assistant-chat-stream");
-  const userInput = document.getElementById("assistant-user-input");
-  const sendBtn = document.getElementById("btn-assistant-send");
-  const modeIndicator = document.getElementById("assistant-mode-indicator");
-  const chipsScroll = document.getElementById("assistant-chips-scroll");
-  const btnToggleByok = document.getElementById("btn-toggle-byok-modal");
-  const btnCloseByok = document.getElementById("btn-close-byok-drawer");
-  const byokDrawer = document.getElementById("assistant-byok-drawer");
-  const byokStatusDot = document.getElementById("byok-status-dot");
-  const providerSelect = document.getElementById("byok-provider-select");
-  const apiKeyInput = document.getElementById("byok-api-key-input");
-  const modelInput = document.getElementById("byok-model-input");
-  const btnVis = document.getElementById("btn-byok-toggle-visibility");
-  const btnTest = document.getElementById("btn-byok-test-connection");
-  const btnSaveByok = document.getElementById("btn-byok-save");
-  const testStatus = document.getElementById("byok-test-result");
-  const btnClearHistory = document.getElementById("btn-clear-chat-history");
-
-  if (!chatStream || !userInput) return;
-
-  const assistant = (typeof window !== "undefined" && window.DeenAssistant) ||
-                    (typeof globalThis !== "undefined" && globalThis.DeenAssistant);
-
-  if (!assistant) {
-    console.warn("DeenAssistant module not loaded");
-    return;
-  }
-
-  function formatMarkdown(text) {
-    if (!text) return "";
-    let safe = text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-
-    safe = safe.replace(/```([a-z]*)\n([\s\S]*?)```/g, "<pre><code>$2</code></pre>");
-    safe = safe.replace(/`([^`]+)`/g, "<code>$1</code>");
-    safe = safe.replace(/^### (.*$)/gim, "<strong>$1</strong><br/>");
-    safe = safe.replace(/^## (.*$)/gim, "<strong>$1</strong><br/>");
-    safe = safe.replace(/^# (.*$)/gim, "<strong>$1</strong><br/>");
-    safe = safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    safe = safe.replace(/^\s*-\s+(.*$)/gim, "• $1<br/>");
-    safe = safe.replace(/\n\n/g, "<br/><br/>").replace(/\n/g, "<br/>");
-    return safe;
-  }
-
-  function appendChatMessage(role, content, source) {
-    const msgDiv = document.createElement("div");
-    msgDiv.className = `chat-msg chat-msg-${role === "user" ? "user" : "bot"}`;
-
-    if (role === "user") {
-      msgDiv.innerHTML = `
-        <div class="chat-avatar chat-avatar-user">👤</div>
-        <div class="chat-bubble">
-          <div class="chat-sender">You</div>
-          <div class="chat-text">${formatMarkdown(content)}</div>
-        </div>
-      `;
-    } else {
-      const srcLabel = source ? `<span class="chat-tag">${source}</span>` : "";
-      msgDiv.innerHTML = `
-        <div class="chat-avatar">
-          <img src="icons/icon32.png" alt="DEEN AI" />
-        </div>
-        <div class="chat-bubble">
-          <div class="chat-sender">DEEN Assistant ${srcLabel}</div>
-          <div class="chat-text">${formatMarkdown(content)}</div>
-        </div>
-      `;
-    }
-
-    chatStream.appendChild(msgDiv);
-    chatStream.scrollTop = chatStream.scrollHeight;
-    return msgDiv;
-  }
-
-  async function refreshBYOKUI() {
-    const byok = await assistant.loadBYOKConfig();
-    const hasKey = Boolean(byok.apiKey && byok.apiKey.trim().length > 5);
-
-    if (providerSelect) providerSelect.value = byok.provider || "gemini";
-    if (apiKeyInput) apiKeyInput.value = byok.apiKey || "";
-    if (modelInput) modelInput.value = byok.model || "gemini-2.5-flash";
-
-    if (byokStatusDot) {
-      if (hasKey && byok.isActive) {
-        byokStatusDot.className = "byok-dot byok-dot-on";
-        byokStatusDot.title = `Active: ${byok.provider} (${byok.model})`;
-      } else {
-        byokStatusDot.className = "byok-dot byok-dot-off";
-        byokStatusDot.title = "No custom API key active. Using In-Memory Deterministic Engine.";
-      }
-    }
-
-    if (modeIndicator) {
-      if (hasKey && byok.isActive) {
-        modeIndicator.textContent = `Mode: ${byok.provider.toUpperCase()} (${byok.model})`;
-        modeIndicator.style.color = "#10b981";
-      } else {
-        modeIndicator.textContent = "Mode: In-Memory Deterministic Engine (Zero-Cost)";
-        modeIndicator.style.color = "#38bdf8";
-      }
-    }
-  }
-
-  await refreshBYOKUI();
-  updateAssistantContextPill();
-
-  const history = await assistant.loadChatHistory();
-  if (history && history.length > 0) {
-    chatStream.innerHTML = "";
-    history.forEach(m => appendChatMessage(m.role, m.content, m.source));
-  }
-
-  async function handleSendMessage(queryText) {
-    const text = (queryText || userInput.value || "").trim();
-    if (!text) return;
-
-    userInput.value = "";
-    userInput.style.height = "auto";
-    sendBtn.disabled = true;
-
-    appendChatMessage("user", text);
-    await assistant.saveChatMessage({ role: "user", content: text, timestamp: Date.now() });
-
-    const typingDiv = document.createElement("div");
-    typingDiv.className = "chat-msg chat-msg-bot";
-    typingDiv.id = "assistant-typing-placeholder";
-    typingDiv.innerHTML = `
-      <div class="chat-avatar">
-        <img src="icons/icon32.png" alt="DEEN AI" />
-      </div>
-      <div class="chat-bubble">
-        <div class="chat-sender">DEEN Assistant <span class="chat-tag">Analyzing...</span></div>
-        <div class="assistant-typing-indicator">
-          <span class="assistant-typing-dot"></span>
-          <span class="assistant-typing-dot"></span>
-          <span class="assistant-typing-dot"></span>
-        </div>
-      </div>
-    `;
-    chatStream.appendChild(typingDiv);
-    chatStream.scrollTop = chatStream.scrollHeight;
-
-    try {
-      const activePhone = (typeof lastCheckedPhone !== "undefined" && lastCheckedPhone) ? lastCheckedPhone : "";
-      const reply = await assistant.generateDeenAssistantReply({
-        query: text,
-        records: currentRecords || [],
-        metrics: currentMetrics || null,
-        phone: activePhone
-      });
-
-      const p = document.getElementById("assistant-typing-placeholder");
-      if (p) p.remove();
-
-      appendChatMessage("assistant", reply.answer, reply.source);
-      await assistant.saveChatMessage({
-        role: "assistant",
-        content: reply.answer,
-        source: reply.source,
-        timestamp: Date.now()
-      });
-    } catch (err) {
-      const p = document.getElementById("assistant-typing-placeholder");
-      if (p) p.remove();
-      appendChatMessage("assistant", `⚠️ An error occurred while generating response: ${err.message}`, "error");
-    } finally {
-      sendBtn.disabled = false;
-      userInput.focus();
-    }
-  }
-
-  sendBtn.addEventListener("click", () => handleSendMessage());
-  userInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  });
-
-  userInput.addEventListener("input", () => {
-    userInput.style.height = "auto";
-    userInput.style.height = Math.min(80, userInput.scrollHeight) + "px";
-  });
-
-  if (chipsScroll) {
-    chipsScroll.querySelectorAll(".assistant-chip").forEach(chip => {
-      chip.addEventListener("click", () => {
-        const prompt = chip.getAttribute("data-prompt");
-        if (prompt) handleSendMessage(prompt);
-      });
-    });
-  }
-
-  if (btnClearHistory) {
-    btnClearHistory.addEventListener("click", async () => {
-      if (confirm("Clear DEEN Assistant conversation history?")) {
-        await assistant.clearChatHistory();
-        chatStream.innerHTML = `
-          <div class="chat-msg chat-msg-bot">
-            <div class="chat-avatar">
-              <img src="icons/icon32.png" alt="DEEN AI" />
-            </div>
-            <div class="chat-bubble">
-              <div class="chat-sender">DEEN Assistant <span class="chat-tag">Executive Intelligence</span></div>
-              <div class="chat-text">
-                History cleared. How can I assist you with your courier parcels, COD, or sales analytics today?
-              </div>
-            </div>
-          </div>
-        `;
-      }
-    });
-  }
-
-  if (btnToggleByok && byokDrawer) {
-    btnToggleByok.addEventListener("click", () => {
-      byokDrawer.classList.toggle("hidden");
-    });
-  }
-
-  if (btnCloseByok && byokDrawer) {
-    btnCloseByok.addEventListener("click", () => {
-      byokDrawer.classList.add("hidden");
-    });
-  }
-
-  if (btnVis && apiKeyInput) {
-    btnVis.addEventListener("click", () => {
-      apiKeyInput.type = apiKeyInput.type === "password" ? "text" : "password";
-      btnVis.textContent = apiKeyInput.type === "password" ? "👁️" : "🔒";
-    });
-  }
-
-  if (providerSelect && modelInput) {
-    providerSelect.addEventListener("change", () => {
-      if (providerSelect.value === "gemini") {
-        modelInput.value = "gemini-2.5-flash";
-      } else if (providerSelect.value === "openai") {
-        modelInput.value = "gpt-4o-mini";
-      } else if (providerSelect.value === "groq") {
-        modelInput.value = "llama-3.3-70b-versatile";
-      }
-    });
-  }
-
-  if (btnTest && testStatus) {
-    btnTest.addEventListener("click", async () => {
-      testStatus.classList.remove("hidden", "byok-test-success", "byok-test-error");
-      testStatus.textContent = "⏳ Testing API connection...";
-
-      const res = await assistant.testBYOKConnection({
-        provider: providerSelect.value,
-        apiKey: apiKeyInput.value.trim(),
-        model: modelInput.value.trim()
-      });
-
-      if (res.success) {
-        testStatus.classList.add("byok-test-success");
-        testStatus.textContent = `✅ Connection verified! (${res.provider} / ${res.model})`;
-      } else {
-        testStatus.classList.add("byok-test-error");
-        testStatus.textContent = `❌ ${res.error}`;
-      }
-    });
-  }
-
-  if (btnSaveByok) {
-    btnSaveByok.addEventListener("click", async () => {
-      const apiKey = apiKeyInput.value.trim();
-      const updated = await assistant.saveBYOKConfig({
-        provider: providerSelect.value,
-        apiKey: apiKey,
-        model: modelInput.value.trim(),
-        isActive: Boolean(apiKey.length > 0)
-      });
-
-      await refreshBYOKUI();
-      if (byokDrawer) byokDrawer.classList.add("hidden");
-      if (typeof showToast === "function") {
-        showToast(updated.isActive ? "🔑 AI key saved & activated!" : "ℹ️ AI key cleared. Using in-memory engine.");
-      }
-    });
-  }
 }
