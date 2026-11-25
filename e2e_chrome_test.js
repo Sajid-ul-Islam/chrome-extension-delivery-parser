@@ -6,9 +6,11 @@ const fs = require('fs');
 const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const EXT_PATH = path.resolve(__dirname);
 const TEMP_USER_DATA = path.resolve(__dirname, 'temp_chrome_e2e_profile');
-const ARTIFACT_DIR = fs.existsSync('C:\\Users\\deenb\\.gemini\\antigravity-ide\\brain\\6d2a513e-f233-4d5a-b383-4216bd8a34c0')
-  ? 'C:\\Users\\deenb\\.gemini\\antigravity-ide\\brain\\6d2a513e-f233-4d5a-b383-4216bd8a34c0'
-  : path.resolve(__dirname, 'test_artifacts');
+const ARTIFACT_DIR = fs.existsSync('C:\\Users\\hp\\.gemini\\antigravity\\brain\\b84ba74f-c286-46f0-a95e-7b520d5eef44')
+  ? 'C:\\Users\\hp\\.gemini\\antigravity\\brain\\b84ba74f-c286-46f0-a95e-7b520d5eef44'
+  : (fs.existsSync('C:\\Users\\deenb\\.gemini\\antigravity-ide\\brain\\6d2a513e-f233-4d5a-b383-4216bd8a34c0')
+    ? 'C:\\Users\\deenb\\.gemini\\antigravity-ide\\brain\\6d2a513e-f233-4d5a-b383-4216bd8a34c0'
+    : path.resolve(__dirname, 'test_artifacts'));
 
 if (!fs.existsSync(ARTIFACT_DIR)) {
   fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
